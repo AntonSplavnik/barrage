@@ -50,8 +50,16 @@ Server (all in `server/`):
 - `server/input.js`: Client input processing (drag, aim, release, reset), game state reset.
 - `server/network.js`: Broadcast and state serialization to WebSocket clients.
 
-Client:
-- `public/client.js`: Browser Babylon renderer, GLB import, pointer input, WebSocket client, visual state application.
+Client (all in `public/client/`):
+- `public/client/index.js`: Entry point — imports modules, starts render loop, resize handler.
+- `public/client/engine.js`: Babylon Engine/Scene creation, canvas, DOM element refs, CONFIG re-export.
+- `public/client/utils.js`: Pure helpers — naming, rotation, descendants, clamp.
+- `public/client/state.js`: Shared state maps (visualObjects, latestObjectStates, trebuchetArmNodes), applyState.
+- `public/client/network.js`: WebSocket connection, message handling, sendInput.
+- `public/client/level.js`: GLB loading, visual root registration, camera/light/shadow setup.
+- `public/client/input.js`: Pointer handling, drag/aim logic, release velocity sampling.
+
+Shared:
 - `public/config.js`: Shared editable gameplay/render/input config imported by server and client.
 - `public/assets/level1.glb`: Current Blender level.
 - `readme.md`: Original concept/design notes.
@@ -354,7 +362,13 @@ node --check server/trebuchet.js
 node --check server/level.js
 node --check server/input.js
 node --check server/network.js
-node --check public/client.js
+node --check public/client/index.js
+node --check public/client/engine.js
+node --check public/client/utils.js
+node --check public/client/state.js
+node --check public/client/network.js
+node --check public/client/level.js
+node --check public/client/input.js
 node --check public/config.js
 ```
 
