@@ -37,10 +37,22 @@ The server serves static files with `Cache-Control: no-store`, but hard refresh 
 
 ## Main Files
 
-- `server.js`: Express + WebSocket authoritative master, Babylon `NullEngine`, Havok physics, GLB import, game state, input protocol.
+Server (all in `server/`):
+- `server/index.js`: Entry point — Express, HTTP, WebSocket setup, game loop.
+- `server/config.js`: Server-only physics/world constants and runtime settings (PORT, TICK_RATE).
+- `server/state.js`: Shared mutable state — Babylon engine/scene, Maps for clients, gameObjects, physics aggregates.
+- `server/utils.js`: Pure math helpers, naming detection, bounds computation, protocol conversion.
+- `server/physics.js`: Havok initialization, physics body creation/sync/teleport/trigger management.
+- `server/simulation.js`: Game loop physics step — Havok stepping, trebuchet fire state machine, fallback physics.
+- `server/collision.js`: AABB collision detection and resolution with impulse transfer.
+- `server/trebuchet.js`: Trebuchet mechanics — aim, fire, missile loading, load target computation.
+- `server/level.js`: GLB loading, mesh root registration, arm rest pose setup.
+- `server/input.js`: Client input processing (drag, aim, release, reset), game state reset.
+- `server/network.js`: Broadcast and state serialization to WebSocket clients.
+
+Client:
 - `public/client.js`: Browser Babylon renderer, GLB import, pointer input, WebSocket client, visual state application.
 - `public/config.js`: Shared editable gameplay/render/input config imported by server and client.
-- `config/server.js`: Server-only physics/world constants.
 - `public/assets/level1.glb`: Current Blender level.
 - `readme.md`: Original concept/design notes.
 
@@ -331,7 +343,17 @@ Watch out:
 Check syntax:
 
 ```sh
-node --check server.js
+node --check server/index.js
+node --check server/config.js
+node --check server/state.js
+node --check server/utils.js
+node --check server/physics.js
+node --check server/simulation.js
+node --check server/collision.js
+node --check server/trebuchet.js
+node --check server/level.js
+node --check server/input.js
+node --check server/network.js
 node --check public/client.js
 node --check public/config.js
 ```
