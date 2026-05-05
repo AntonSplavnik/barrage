@@ -1,6 +1,7 @@
 export const BARRAGE_CONFIG = {
   // Level asset.
   levelUrl: "/assets/level1.glb",
+  musicTuneUrl: "/strudel.js",
 
   // Rendering.
   importedLightIntensityScale: 0.01,
@@ -53,6 +54,7 @@ export const BARRAGE_CONFIG = {
   trebuchetFireVelocityMax: 33,
   fireReleaseAnimationMs: 180,
   fireReturnAnimationMs: 220,
+  musicKickVoiceFlightVelocityMin: 10,
   aimArrowStartColor: "#ffffff",
   aimArrowEndColor: "#39ff14",
   aimArrowMaxLength: 4.5,

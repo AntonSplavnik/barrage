@@ -1511,18 +1511,25 @@ wss.on("connection", (socket) => {
   });
 });
 
-await new Promise((resolve) => {
-  httpServer.listen(PORT, () => {
-    console.log(`Barrage server running at http://localhost:${PORT}`);
-    resolve();
+async function startServer() {
+  await new Promise((resolve) => {
+    httpServer.listen(PORT, () => {
+      console.log(`Barrage server running at http://localhost:${PORT}`);
+      resolve();
+    });
   });
+
+  await enableHavokPhysics();
+  await loadLevelIfPresent();
+
+  simulationInterval = setInterval(() => {
+    tick += 1;
+    simulatePhysics(TICK_MS / 1000);
+    sendState();
+  }, TICK_MS);
+}
+
+startServer().catch((error) => {
+  console.error("Failed to start Barrage server.", error);
+  process.exit(1);
 });
-
-await enableHavokPhysics();
-await loadLevelIfPresent();
-
-simulationInterval = setInterval(() => {
-  tick += 1;
-  simulatePhysics(TICK_MS / 1000);
-  sendState();
-}, TICK_MS);

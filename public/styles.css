@@ -33,6 +33,7 @@ body {
   color: #ffd166;
 }
 
+#music-toggle,
 #reset,
 #restart-server {
   appearance: none;
@@ -45,6 +46,44 @@ body {
   cursor: pointer;
 }
 
+#music-toggle {
+  position: relative;
+  width: 34px;
+  min-width: 34px;
+  padding: 5px 0;
+}
+
+#music-toggle::after {
+  content: "";
+  position: absolute;
+  inset: 6px 15px 6px 15px;
+  background: #ff6b6b;
+  border-radius: 999px;
+  transform: rotate(-34deg);
+}
+
+#music-toggle.is-enabled::after {
+  display: none;
+}
+
+.music-note {
+  display: inline-block;
+  font-size: 16px;
+  line-height: 1;
+}
+
+#music-toggle.is-enabled {
+  color: #f4d35e;
+  background: rgb(244 211 94 / 18%);
+  border-color: rgb(244 211 94 / 32%);
+}
+
+#music-toggle:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+#music-toggle:hover,
 #reset:hover,
 #restart-server:hover {
   background: rgb(255 255 255 / 16%);

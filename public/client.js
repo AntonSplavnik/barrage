@@ -1,3 +1,4 @@
+import { createMusicController } from "./music.js";
 import { BARRAGE_CONFIG } from "./config.js";
 
 const {
@@ -18,6 +19,7 @@ const LEVEL_URL = CONFIG.levelUrl ?? "/assets/level1.glb";
 const canvas = document.getElementById("game");
 const connectionEl = document.getElementById("connection");
 const playerEl = document.getElementById("player");
+const musicToggleEl = document.getElementById("music-toggle");
 const resetEl = document.getElementById("reset");
 const restartServerEl = document.getElementById("restart-server");
 
@@ -46,9 +48,27 @@ let aimArrowShaft = null;
 let aimArrowHeadLeft = null;
 let aimArrowHeadRight = null;
 let aimArrowMaterial = null;
+const musicController = createMusicController(musicToggleEl, {
+  onStatus: setStatus,
+});
 
 function setStatus(text) {
   connectionEl.textContent = text;
+}
+
+function isMissileInFlight(object) {
+  const lowerName = object.id?.toLowerCase() ?? "";
+  if (!lowerName.includes("missile")) return false;
+  if (object.loadedInto) return false;
+
+  const speed = Math.hypot(object.vx || 0, object.vy || 0, object.vz || 0);
+  const minSpeed = CONFIG.musicKickVoiceFlightVelocityMin ?? 10;
+  return speed >= minSpeed;
+}
+
+function updateMusicFromState(message) {
+  const kickVoiceGain = (message.objects || []).some(isMissileInFlight) ? 1 : 0;
+  musicController.setKickVoiceGain(kickVoiceGain);
 }
 
 function protocolToBabylonRotation(rotDegrees) {
@@ -568,6 +588,7 @@ socket.addEventListener("message", (event) => {
 
   if (message.type === "state") {
     applyState(message);
+    updateMusicFromState(message);
   }
 });
 
@@ -588,6 +609,15 @@ function sendInput(action, payload) {
 
 resetEl.addEventListener("click", () => {
   sendInput("reset", {});
+});
+
+musicToggleEl.addEventListener("click", async () => {
+  try {
+    await musicController.toggle();
+  } catch (error) {
+    console.error("Failed to toggle music.", error);
+    setStatus("Music failed");
+  }
 });
 
 restartServerEl.addEventListener("click", async () => {
