@@ -159,6 +159,12 @@ export function constrainWorldBounds(object) {
   object.x = clamp(object.x, SERVER_CONFIG.worldMinX, SERVER_CONFIG.worldMaxX);
   object.z = clamp(object.z, SERVER_CONFIG.worldMinZ, SERVER_CONFIG.worldMaxZ);
 
+  const floorY = SERVER_CONFIG.groundY + object.halfY - (object.offsetY ?? 0);
+  if (object.y < floorY) {
+    object.y = floorY;
+    if (object.vy < 0) object.vy = 0;
+  }
+
   if (object.x === SERVER_CONFIG.worldMinX && object.vx < 0) object.vx = 0;
   if (object.x === SERVER_CONFIG.worldMaxX && object.vx > 0) object.vx = 0;
   if (object.z === SERVER_CONFIG.worldMinZ && object.vz < 0) object.vz = 0;

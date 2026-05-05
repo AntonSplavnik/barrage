@@ -127,6 +127,7 @@ function simulateHavokPhysics() {
 
   for (const object of gameObjects.values()) {
     if (!object.dynamic) continue;
+    if (object.draggedBy || object.loadedInto) continue;
 
     const aggregate = physicsAggregates.get(object.id);
     if (!aggregate) continue;
