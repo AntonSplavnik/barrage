@@ -19,6 +19,7 @@ const canvas = document.getElementById("game");
 const connectionEl = document.getElementById("connection");
 const playerEl = document.getElementById("player");
 const resetEl = document.getElementById("reset");
+const restartServerEl = document.getElementById("restart-server");
 
 const engine = new Engine(canvas, true);
 const scene = new Scene(engine);
@@ -27,8 +28,10 @@ scene.imageProcessingConfiguration.exposure = CONFIG.exposure ?? 1.0;
 scene.imageProcessingConfiguration.contrast = CONFIG.contrast ?? 1.0;
 
 const visualObjects = new Map();
+const visualBaseRotations = new Map();
 const latestObjectStates = new Map();
 const trebuchetArmNodes = new Map();
+const trebuchetLoadTargets = new Map();
 let seq = 0;
 let selectedEntityId = null;
 let pointerMode = "drag";
@@ -38,6 +41,11 @@ let latestDragPoint = null;
 let releaseSamples = [];
 let releaseSampleTimer = null;
 let releaseVelocity = { x: 0, y: 0, z: 0 };
+let aimWorldPoint = null;
+let aimArrowShaft = null;
+let aimArrowHeadLeft = null;
+let aimArrowHeadRight = null;
+let aimArrowMaterial = null;
 
 function setStatus(text) {
   connectionEl.textContent = text;
@@ -59,6 +67,9 @@ function childRole(name) {
 }
 
 function registerVisualRoots() {
+  visualObjects.clear();
+  visualBaseRotations.clear();
+
   for (const transform of scene.transformNodes) {
     if (transform.parent && transform.parent.name !== "__root__") continue;
 
@@ -77,6 +88,12 @@ function registerVisualRoots() {
     }
 
     visualObjects.set(transform.name, transform);
+    const baseRotation = transform.rotationQuaternion?.toEulerAngles() ?? transform.rotation;
+    visualBaseRotations.set(transform.name, {
+      x: baseRotation.x,
+      y: baseRotation.y,
+      z: baseRotation.z,
+    });
   }
 }
 
@@ -90,6 +107,23 @@ function registerTrebuchetArmNodes() {
     if (!root) continue;
 
     trebuchetArmNodes.set(root.name, transform);
+  }
+}
+
+function registerTrebuchetLoadTargets() {
+  trebuchetLoadTargets.clear();
+
+  for (const transform of scene.transformNodes) {
+    if (!transform.name.toLowerCase().includes("missile-load-target")) continue;
+
+    const root = findGameplayRoot(transform);
+    if (!root) continue;
+
+    trebuchetLoadTargets.set(root.name, {
+      targetNode: transform,
+      rootNode: root,
+      armNode: findTrebuchetArmAncestor(transform),
+    });
   }
 }
 
@@ -122,6 +156,10 @@ function isTrebuchetArmName(name) {
   return lowerName.includes("trebuche") && lowerName.includes("arm");
 }
 
+function isTrebuchetName(name) {
+  return name.toLowerCase().includes("trebuche");
+}
+
 function isTrebuchetArmRoot(transform) {
   const lowerName = transform.name.toLowerCase();
   return isTrebuchetArmName(transform.name)
@@ -136,6 +174,40 @@ function isTrebuchetArmRoot(transform) {
 function isLeftSideTrebuchetName(name) {
   const lowerName = name.toLowerCase();
   return lowerName.includes("p1") || lowerName.includes("left") || lowerName.includes("1");
+}
+
+function findTrebuchetArmAncestor(node) {
+  let current = node;
+
+  while (current) {
+    if (isTrebuchetArmRoot(current)) {
+      return current;
+    }
+
+    current = current.parent;
+  }
+
+  return null;
+}
+
+function isForwardPullPoint(trebuchetId, point, releasePoint) {
+  if (isLeftSideTrebuchetName(trebuchetId)) {
+    return point.x > releasePoint.x;
+  }
+
+  return point.x < releasePoint.x;
+}
+
+function clampAimTailPoint(headPoint, tailPoint) {
+  const backVector = tailPoint.subtract(headPoint);
+  const arrowLength = backVector.length();
+  const maxArrowLength = CONFIG.aimArrowMaxLength ?? CONFIG.aimMaxPullDistance ?? 6;
+
+  if (arrowLength <= maxArrowLength || arrowLength <= 0.0001) {
+    return tailPoint;
+  }
+
+  return headPoint.add(backVector.scale(maxArrowLength / arrowLength));
 }
 
 function findGameplayRoot(node) {
@@ -247,12 +319,179 @@ function setupShadows() {
   });
 }
 
+function createAimArrowMeshes() {
+  if (!aimArrowMaterial) {
+    aimArrowMaterial = new StandardMaterial("AimArrowMaterial", scene);
+    aimArrowMaterial.diffuseColor = Color3.FromHexString(CONFIG.aimArrowStartColor ?? "#ffffff");
+    aimArrowMaterial.emissiveColor = Color3.FromHexString(CONFIG.aimArrowStartColor ?? "#ffffff");
+    aimArrowMaterial.specularColor = Color3.Black();
+    aimArrowMaterial.disableLighting = true;
+    aimArrowMaterial.disableDepthWrite = true;
+    aimArrowMaterial.depthFunction = BABYLON.Engine.ALWAYS;
+  }
+
+  if (!aimArrowShaft) {
+    aimArrowShaft = MeshBuilder.CreateTube("AimArrowShaft", {
+      path: [Vector3.Zero(), Vector3.Right()],
+      radius: CONFIG.aimArrowRadius ?? 0.06,
+      updatable: true,
+    }, scene);
+    aimArrowShaft.material = aimArrowMaterial;
+    aimArrowShaft.isPickable = false;
+    aimArrowShaft.renderingGroupId = 2;
+    aimArrowShaft.alwaysSelectAsActiveMesh = true;
+    aimArrowShaft.setEnabled(false);
+  }
+
+  if (!aimArrowHeadLeft) {
+    aimArrowHeadLeft = MeshBuilder.CreateTube("AimArrowHeadLeft", {
+      path: [Vector3.Zero(), Vector3.Right()],
+      radius: CONFIG.aimArrowRadius ?? 0.06,
+      updatable: true,
+    }, scene);
+    aimArrowHeadLeft.material = aimArrowMaterial;
+    aimArrowHeadLeft.isPickable = false;
+    aimArrowHeadLeft.renderingGroupId = 2;
+    aimArrowHeadLeft.alwaysSelectAsActiveMesh = true;
+    aimArrowHeadLeft.setEnabled(false);
+  }
+
+  if (!aimArrowHeadRight) {
+    aimArrowHeadRight = MeshBuilder.CreateTube("AimArrowHeadRight", {
+      path: [Vector3.Zero(), Vector3.Right()],
+      radius: CONFIG.aimArrowRadius ?? 0.06,
+      updatable: true,
+    }, scene);
+    aimArrowHeadRight.material = aimArrowMaterial;
+    aimArrowHeadRight.isPickable = false;
+    aimArrowHeadRight.renderingGroupId = 2;
+    aimArrowHeadRight.alwaysSelectAsActiveMesh = true;
+    aimArrowHeadRight.setEnabled(false);
+  }
+}
+
+function hideAimArrow() {
+  aimArrowShaft?.setEnabled(false);
+  aimArrowHeadLeft?.setEnabled(false);
+  aimArrowHeadRight?.setEnabled(false);
+}
+
+function updateAimArrowColor(extensionRatio) {
+  if (!aimArrowMaterial) return;
+
+  const startColor = Color3.FromHexString(CONFIG.aimArrowStartColor ?? "#ffffff");
+  const endColor = Color3.FromHexString(CONFIG.aimArrowEndColor ?? "#39ff14");
+  const t = Math.min(1, Math.max(0, extensionRatio));
+  const color = new Color3(
+    startColor.r + (endColor.r - startColor.r) * t,
+    startColor.g + (endColor.g - startColor.g) * t,
+    startColor.b + (endColor.b - startColor.b) * t,
+  );
+  aimArrowMaterial.diffuseColor = color;
+  aimArrowMaterial.emissiveColor = color;
+}
+
+function releasePointForTrebuchet(trebuchetId) {
+  const target = trebuchetLoadTargets.get(trebuchetId);
+  if (!target?.targetNode) return null;
+
+  const restRadians = degreesToRadians(CONFIG.trebuchetArmRestRotationZDegrees ?? 15);
+
+  if (target.armNode) {
+    const originalZ = target.armNode.rotationQuaternion?.toEulerAngles().z ?? target.armNode.rotation.z;
+    target.armNode.rotationQuaternion = null;
+    target.armNode.rotation.z = restRadians;
+    target.rootNode?.computeWorldMatrix(true);
+    target.armNode.computeWorldMatrix(true);
+    target.targetNode.computeWorldMatrix(true);
+    const position = target.targetNode.getAbsolutePosition().clone();
+    target.armNode.rotation.z = originalZ;
+    target.armNode.computeWorldMatrix(true);
+    target.targetNode.computeWorldMatrix(true);
+    return position;
+  }
+
+  target.rootNode?.computeWorldMatrix(true);
+  target.targetNode.computeWorldMatrix(true);
+  return target.targetNode.getAbsolutePosition().clone();
+}
+
+function updateAimArrow() {
+  if (pointerMode !== "aim" || !selectedEntityId || !aimWorldPoint) {
+    hideAimArrow();
+    return;
+  }
+
+  const missileState = latestObjectStates.get(selectedEntityId);
+  const trebuchetId = missileState?.loadedInto;
+  if (!trebuchetId) {
+    hideAimArrow();
+    return;
+  }
+
+  const headPoint = releasePointForTrebuchet(trebuchetId);
+  if (!headPoint) {
+    hideAimArrow();
+    return;
+  }
+
+  if (!isForwardPullPoint(trebuchetId, aimWorldPoint, headPoint)) {
+    hideAimArrow();
+    return;
+  }
+
+  const tailPoint = clampAimTailPoint(headPoint, aimWorldPoint.clone());
+  tailPoint.z = headPoint.z + (CONFIG.aimArrowZOffset ?? 0.05);
+  headPoint.z += CONFIG.aimArrowZOffset ?? 0.05;
+
+  const backVector = tailPoint.subtract(headPoint);
+  const arrowLength = backVector.length();
+  if (arrowLength < (CONFIG.aimArrowMinLength ?? 0.12)) {
+    hideAimArrow();
+    return;
+  }
+
+  const backDir = backVector.scale(1 / arrowLength);
+  const extensionRatio = arrowLength / Math.max(0.001, CONFIG.aimArrowMaxLength ?? CONFIG.aimMaxPullDistance ?? 4.5);
+  updateAimArrowColor(extensionRatio);
+  const headLength = Math.min(
+    CONFIG.aimArrowHeadLengthMax ?? 0.75,
+    Math.max(CONFIG.aimArrowHeadLengthMin ?? 0.2, arrowLength * (CONFIG.aimArrowHeadLengthScale ?? 0.18)),
+  );
+  const headWidth = Math.max(CONFIG.aimArrowHeadWidth ?? 0.12, headLength * (CONFIG.aimArrowHeadWidthScale ?? 0.45));
+  const sideDir = new Vector3(-backDir.y, backDir.x, 0);
+  const leftWing = headPoint.add(backDir.scale(headLength)).add(sideDir.scale(headWidth));
+  const rightWing = headPoint.add(backDir.scale(headLength)).subtract(sideDir.scale(headWidth));
+
+  MeshBuilder.CreateTube("AimArrowShaft", {
+    path: [tailPoint, headPoint],
+    radius: CONFIG.aimArrowRadius ?? 0.06,
+    instance: aimArrowShaft,
+  });
+  MeshBuilder.CreateTube("AimArrowHeadLeft", {
+    path: [leftWing, headPoint],
+    radius: CONFIG.aimArrowRadius ?? 0.06,
+    instance: aimArrowHeadLeft,
+  });
+  MeshBuilder.CreateTube("AimArrowHeadRight", {
+    path: [rightWing, headPoint],
+    radius: CONFIG.aimArrowRadius ?? 0.06,
+    instance: aimArrowHeadRight,
+  });
+
+  aimArrowShaft.setEnabled(true);
+  aimArrowHeadLeft.setEnabled(true);
+  aimArrowHeadRight.setEnabled(true);
+}
+
 async function loadLevel() {
   try {
     await SceneLoader.AppendAsync("", LEVEL_URL, scene);
     applyTrebuchetArmRestPose();
     registerVisualRoots();
     registerTrebuchetArmNodes();
+    registerTrebuchetLoadTargets();
+    createAimArrowMeshes();
 
     if (visualObjects.size === 0) {
       createFallbackScene();
@@ -291,7 +530,14 @@ function applyState(message) {
     visual.position.y = object.y ?? visual.position.y;
     visual.position.z = object.z;
     visual.rotationQuaternion = null;
-    visual.rotation.z = protocolToBabylonRotation(object.rot || 0);
+    const baseRotation = visualBaseRotations.get(object.id);
+    if (baseRotation) {
+      visual.rotation.x = baseRotation.x;
+      visual.rotation.y = baseRotation.y;
+      visual.rotation.z = baseRotation.z + protocolToBabylonRotation(object.rot || 0);
+    } else {
+      visual.rotation.z = protocolToBabylonRotation(object.rot || 0);
+    }
 
     const arm = trebuchetArmNodes.get(object.id);
     if (arm && typeof object.armAngle === "number") {
@@ -299,6 +545,10 @@ function applyState(message) {
       arm.rotation.z = degreesToRadians(object.armAngle);
       arm.computeWorldMatrix(true);
     }
+  }
+
+  if (pointerMode === "aim" && selectedEntityId) {
+    updateAimArrow();
   }
 }
 
@@ -340,6 +590,29 @@ resetEl.addEventListener("click", () => {
   sendInput("reset", {});
 });
 
+restartServerEl.addEventListener("click", async () => {
+  restartServerEl.disabled = true;
+  setStatus("Restarting server...");
+
+  try {
+    const response = await fetch("/admin/restart", {
+      method: "POST",
+    });
+
+    if (!response.ok) {
+      throw new Error(`Restart failed: ${response.status}`);
+    }
+
+    window.setTimeout(() => {
+      window.location.reload();
+    }, 1500);
+  } catch (error) {
+    console.error("Failed to restart server.", error);
+    setStatus("Restart failed");
+    restartServerEl.disabled = false;
+  }
+});
+
 function pickPoint() {
   const pick = scene.pick(scene.pointerX, scene.pointerY);
   if (!pick?.pickedPoint) return null;
@@ -378,23 +651,8 @@ function clampMagnitude(vector, maxMagnitude) {
 function sampleReleasePoint() {
   if (!latestDragPoint) return;
 
-  const now = performance.now();
-  const previous = releaseSamples.at(-1);
-
-  if (previous) {
-    const distance = Math.hypot(
-      latestDragPoint.x - previous.point.x,
-      latestDragPoint.y - previous.point.y,
-      latestDragPoint.z - previous.point.z,
-    );
-
-    if (distance < (CONFIG.releaseVelocityMinSampleDistance ?? 0.05)) {
-      return;
-    }
-  }
-
   releaseSamples.push({
-    time: now,
+    time: performance.now(),
     point: latestDragPoint,
   });
 
@@ -484,6 +742,8 @@ function beginDrag() {
   const objectState = latestObjectStates.get(selectedEntityId);
   if (objectState?.loadedInto) {
     pointerMode = "aim";
+    aimWorldPoint = world.clone();
+    updateAimArrow();
     sendInput("aimStart", {
       entityId: selectedEntityId,
       trebuchetId: objectState.loadedInto,
@@ -507,6 +767,8 @@ function moveDrag() {
   if (!world) return;
 
   if (pointerMode === "aim") {
+    aimWorldPoint = world.clone();
+    updateAimArrow();
     const point = protocolPointFromWorld(world, selectedEntityId);
     sendInput("aimMove", {
       entityId: selectedEntityId,
@@ -537,6 +799,8 @@ function endDrag() {
   const point = world ?? fallback;
 
   if (pointerMode === "aim") {
+    aimWorldPoint = point.clone();
+    updateAimArrow();
     const finalPoint = protocolPointFromWorld(point, selectedEntityId);
     sendInput("aimRelease", {
       entityId: selectedEntityId,
@@ -545,6 +809,8 @@ function endDrag() {
 
     selectedEntityId = null;
     pointerMode = "drag";
+    aimWorldPoint = null;
+    hideAimArrow();
     return;
   }
 
@@ -569,6 +835,8 @@ function endDrag() {
   latestDragPoint = null;
   releaseSamples = [];
   releaseVelocity = { x: 0, y: 0, z: 0 };
+  aimWorldPoint = null;
+  hideAimArrow();
 
   if (CONFIG.cameraControlsEnabled) {
     scene.activeCamera.attachControl(canvas, true);

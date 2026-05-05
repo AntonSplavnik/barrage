@@ -1,5 +1,6 @@
 import express from "express";
 import http from "node:http";
+import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import fs from "node:fs/promises";
@@ -39,7 +40,6 @@ app.use((_request, response, next) => {
   response.setHeader("Cache-Control", "no-store");
   next();
 });
-app.use(express.static(publicDir));
 
 const httpServer = http.createServer(app);
 const wss = new WebSocketServer({ server: httpServer });
@@ -56,6 +56,8 @@ scene.activeCamera = new FreeCamera("HeadlessCamera", new Vector3(0, 10, -10), s
 const clients = new Map();
 let nextClientId = 1;
 let tick = 0;
+let simulationInterval = null;
+let restartInProgress = false;
 
 const gameObjects = new Map();
 const dragState = new Map();
@@ -66,6 +68,87 @@ const ARM_STATE_IDLE = "idle";
 const ARM_STATE_AIMING = "aiming";
 const ARM_STATE_RELEASING = "releasing";
 const ARM_STATE_RETURNING = "returning";
+
+function isLocalRequest(request) {
+  const remoteAddress = request.ip || request.socket.remoteAddress || "";
+  return remoteAddress === "::1"
+    || remoteAddress === "127.0.0.1"
+    || remoteAddress === "::ffff:127.0.0.1";
+}
+
+function closeSocket(socket) {
+  try {
+    socket.terminate();
+  } catch {
+    // Ignore restart close races.
+  }
+}
+
+function closeWithTimeout(closeFn, timeoutMs = 1000) {
+  return new Promise((resolve) => {
+    let settled = false;
+
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+
+    const timer = setTimeout(finish, timeoutMs);
+    closeFn(() => {
+      clearTimeout(timer);
+      finish();
+    });
+  });
+}
+
+async function restartServerProcess() {
+  if (restartInProgress) return;
+  restartInProgress = true;
+  console.log("Restart requested from local browser.");
+
+  if (simulationInterval) {
+    clearInterval(simulationInterval);
+    simulationInterval = null;
+  }
+
+  for (const client of clients.values()) {
+    closeSocket(client.socket);
+  }
+
+  await closeWithTimeout((done) => wss.close(done));
+  await closeWithTimeout((done) => httpServer.close(done));
+
+  const child = spawn(process.execPath, [path.join(__dirname, "server.js")], {
+    cwd: __dirname,
+    detached: true,
+    stdio: "ignore",
+  });
+  child.unref();
+  process.exit(0);
+}
+
+app.post("/admin/restart", (request, response) => {
+  if (!isLocalRequest(request)) {
+    response.status(403).json({ ok: false, error: "local-only" });
+    return;
+  }
+
+  if (restartInProgress) {
+    response.status(409).json({ ok: false, error: "restart-in-progress" });
+    return;
+  }
+
+  response.json({ ok: true, restarting: true });
+  response.on("finish", () => {
+    restartServerProcess().catch((error) => {
+      console.error("Failed to restart server process.", error);
+      process.exit(1);
+    });
+  });
+});
+
+app.use(express.static(publicDir));
 
 function toWireObject(object) {
   return {
@@ -650,17 +733,25 @@ function updateTrebuchetAim(trebuchet, point) {
   const start = trebuchet.aimStart;
   if (!start) return;
 
-  const current = {
+  const requested = {
     x: Number(point.x),
     y: Number(point.y ?? start.y),
     z: Number(point.z ?? start.z),
   };
+  const pullX = requested.x - start.x;
+  const pullY = requested.y - start.y;
+  const pullDistance = Math.hypot(pullX, pullY);
+  const maxPullDistance = BARRAGE_CONFIG.aimMaxPullDistance ?? 6;
+  const clampedDistance = clamp(pullDistance, 0, maxPullDistance);
+  const pullScale = pullDistance > 0.0001 ? clampedDistance / pullDistance : 0;
+  const current = {
+    x: start.x + pullX * pullScale,
+    y: start.y + pullY * pullScale,
+    z: requested.z,
+  };
   trebuchet.aimCurrent = current;
 
-  const pullX = current.x - start.x;
-  const pullY = current.y - start.y;
-  const pullDistance = clamp(Math.hypot(pullX, pullY), 0, BARRAGE_CONFIG.aimMaxPullDistance ?? 8);
-  const pullRatio = pullDistance / Math.max(0.001, BARRAGE_CONFIG.aimMaxPullDistance ?? 8);
+  const pullRatio = clampedDistance / Math.max(0.001, maxPullDistance);
   const maxExtra = BARRAGE_CONFIG.trebuchetArmPullbackMaxDegrees
     ?? BARRAGE_CONFIG.aimArmMaxExtraDegrees
     ?? 45;
@@ -685,9 +776,49 @@ function beginTrebuchetRelease(trebuchet) {
   trebuchet.fireState = ARM_STATE_RELEASING;
   trebuchet.pendingShot = {
     velocity,
+    released: false,
     startArmAngle: trebuchet.armAngle ?? (BARRAGE_CONFIG.trebuchetArmRestRotationZDegrees ?? 15),
   };
   trebuchet.releaseElapsedMs = 0;
+}
+
+function targetPointForTrebuchetAtArmAngle(trebuchet, armAngle) {
+  const previousAngle = trebuchet.armAngle;
+  trebuchet.armAngle = armAngle;
+  const target = loadTargetForTrebuchet(trebuchet);
+  const point = target ? { x: target.x, y: target.y, z: target.z } : null;
+  trebuchet.armAngle = previousAngle;
+  loadTargetForTrebuchet(trebuchet);
+  return point;
+}
+
+function releaseLoadedMissileFromTrebuchet(trebuchet, velocity, armAngle = null) {
+  const missile = trebuchet.loadedMissileId ? gameObjects.get(trebuchet.loadedMissileId) : null;
+  if (!missile || missile.loadedInto !== trebuchet.id) return false;
+
+  const target = armAngle === null
+    ? loadTargetForTrebuchet(trebuchet)
+    : targetPointForTrebuchetAtArmAngle(trebuchet, armAngle);
+
+  if (target) {
+    missile.x = target.x;
+    missile.y = target.y;
+    missile.z = target.z;
+  }
+
+  missile.loadedInto = null;
+  setPhysicsBodyTrigger(missile, false);
+  missile.vx = velocity.x;
+  missile.vy = velocity.y;
+  missile.vz = velocity.z;
+  syncPhysicsBodyFromObject(missile, velocity);
+
+  trebuchet.loaded = false;
+  trebuchet.loadedMissileId = null;
+  trebuchet.aimedBy = null;
+  trebuchet.aimStart = null;
+  trebuchet.aimCurrent = null;
+  return true;
 }
 
 function registerMeshRoots() {
@@ -1299,34 +1430,28 @@ function updateTrebuchetFireState(dt) {
     trebuchet.releaseElapsedMs = (trebuchet.releaseElapsedMs ?? 0) + dt * 1000;
     const progress = clamp(trebuchet.releaseElapsedMs / durationMs, 0, 1);
     const startArmAngle = trebuchet.pendingShot?.startArmAngle ?? trebuchet.armAngle ?? 0;
+    const restArmAngle = restArmAngleForTrebuchet(trebuchet);
+    const previousArmAngle = trebuchet.armAngle ?? startArmAngle;
+    const velocity = trebuchet.pendingShot?.velocity ?? { x: 0, y: 0, z: 0 };
     trebuchet.armAngle = lerp(startArmAngle, 0, progress);
+
+    const shouldReleaseAtRest = !trebuchet.pendingShot?.released
+      && (startArmAngle <= restArmAngle || (previousArmAngle > restArmAngle && trebuchet.armAngle <= restArmAngle));
+
+    if (shouldReleaseAtRest) {
+      releaseLoadedMissileFromTrebuchet(trebuchet, velocity, restArmAngle);
+      if (trebuchet.pendingShot) {
+        trebuchet.pendingShot.released = true;
+      }
+    }
 
     if (progress < 1) continue;
 
-    const missile = trebuchet.loadedMissileId ? gameObjects.get(trebuchet.loadedMissileId) : null;
-    const velocity = trebuchet.pendingShot?.velocity ?? { x: 0, y: 0, z: 0 };
-
-    if (missile && missile.loadedInto === trebuchet.id) {
-      const target = loadTargetForTrebuchet(trebuchet);
-      if (target) {
-        missile.x = target.x;
-        missile.y = target.y;
-        missile.z = target.z;
-      }
-      missile.loadedInto = null;
-      setPhysicsBodyTrigger(missile, false);
-      missile.vx = velocity.x;
-      missile.vy = velocity.y;
-      missile.vz = velocity.z;
-      syncPhysicsBodyFromObject(missile, velocity);
+    if (!trebuchet.pendingShot?.released) {
+      releaseLoadedMissileFromTrebuchet(trebuchet, velocity, restArmAngle);
     }
 
-    trebuchet.loaded = false;
-    trebuchet.loadedMissileId = null;
     trebuchet.fireState = ARM_STATE_RETURNING;
-    trebuchet.aimedBy = null;
-    trebuchet.aimStart = null;
-    trebuchet.aimCurrent = null;
     trebuchet.pendingShot = null;
     trebuchet.returnStartArmAngle = trebuchet.armAngle;
     trebuchet.releaseElapsedMs = 0;
@@ -1396,7 +1521,7 @@ await new Promise((resolve) => {
 await enableHavokPhysics();
 await loadLevelIfPresent();
 
-setInterval(() => {
+simulationInterval = setInterval(() => {
   tick += 1;
   simulatePhysics(TICK_MS / 1000);
   sendState();

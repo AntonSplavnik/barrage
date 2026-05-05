@@ -252,9 +252,15 @@ Flow:
 3. Client sends `aimMove` while dragging.
 4. Server updates `trebuchet.armAngle`.
 5. Client sends `aimRelease`.
-6. Server animates arm from pullback angle to `0`.
-7. At the end of this fast upswing, server releases the missile and applies shot velocity.
-8. Arm then lerps back to the rest angle.
+6. Server animates arm from pullback angle toward `0`.
+7. Missile now detaches when the arm crosses the configured rest angle, not at `0`.
+8. The arm still completes the release animation to `0`, then lerps back to the rest angle.
+
+Client-only aim assist:
+- While aiming a loaded missile, the client renders a procedural arrow in code.
+- The arrow head is placed at the predicted missile release point for the trebuchet's rest angle.
+- The arrow tail follows the player's current drag point.
+- This arrow is not authored in the GLB and is not server-authoritative.
 
 Current `fireState` values:
 - `idle`
