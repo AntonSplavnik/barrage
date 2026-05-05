@@ -112,14 +112,15 @@ export function createMusicController(button, { onStatus } = {}) {
     try {
       await loadTuneSource();
       if (!initialized) {
-        globalThis.initStrudel({
-          prebake: () => {
-            const sampleSource = CONFIG.musicSamplesUrl?.trim();
-            const samplesLoader = globalThis.samples ?? globalThis.strudel?.samples;
-            if (!sampleSource || typeof samplesLoader !== "function") return undefined;
-            return samplesLoader(sampleSource);
-          },
-        });
+        const sampleSource = CONFIG.musicSamplesUrl?.trim();
+        const samplesLoader = globalThis.samples ?? globalThis.strudel?.samples;
+        if (sampleSource && typeof samplesLoader === "function") {
+          globalThis.initStrudel({
+            prebake: () => samplesLoader(sampleSource),
+          });
+        } else {
+          globalThis.initStrudel();
+        }
         runtime = await waitForRuntime();
         initialized = true;
       } else if (!runtime) {

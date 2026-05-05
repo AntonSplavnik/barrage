@@ -1,22 +1,29 @@
 stack(
   s("[bd <hh cp oh rim>]*2")
-    .dec(0.4)
-    .delay(0.18)
+    .bank("tr909")
+    .dec(.4)
+    .delay(0.5)
     .degradeBy(0.5)
-    .gain(0.45),
+    .gain(0.5)
+    ._pianoroll(),
 
   stack(
     s("[bd]*8")
-      .gain(kickVoiceGain * 0.35),
+      .bank("tr909")
+      .gain(kickVoiceGain / 2)
+      ._pianoroll(),
 
     s("[bd]*2")
-      .gain(kickVoiceGain * 0.8)
+      .bank("tr909")
+      .gain(kickVoiceGain)
+      ._pianoroll()
   ),
 
   s("[hh]*16")
     .degradeBy(0.5)
     .delay(0.25)
-    .gain(0.3),
+    .gain(0.5)
+    ._pianoroll(),
 
   note("a1 ~ ~ ~  c2 ~ ~ ~  g1 ~ ~ ~  e1 ~ ~ ~")
     .sound("triangle")
@@ -28,16 +35,19 @@ stack(
     .gain(1)
     .fast(0.5)
     .degradeBy(0.25)
-    .add(24),
+    .add(24)
+    ._pianoroll(),
 
   note("~ ~ [a4,c5,e5] ~  ~ ~ [c4,e3,b5] ~  ~ ~ [g4,b4,d5] ~  ~ ~ [e3,g#3,b3] ~")
-    .sound("sawtooth")
+    .sound("saw")
     .legato(0.3)
-    .pan(sine.range(0, 1).slow(3))
+    .pan(sine.range(0,1).slow(3))
     .resonance(sine.range(0.1, 0.6).slow(12))
     .add(24)
     .delay(0.55)
     .gain(0.3)
     .fast(0.5)
     .degradeBy(0.25)
+    .add(0)
+    ._pianoroll(),
 )
