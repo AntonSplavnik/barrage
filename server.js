@@ -12,7 +12,7 @@ import { Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector.js";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode.js";
 import { HavokPlugin } from "@babylonjs/core/Physics/v2/Plugins/havokPlugin.js";
 import { PhysicsAggregate } from "@babylonjs/core/Physics/v2/physicsAggregate.js";
-import { PhysicsShapeType } from "@babylonjs/core/Physics/v2/IPhysicsEnginePlugin.js";
+import { PhysicsPrestepType, PhysicsShapeType } from "@babylonjs/core/Physics/v2/IPhysicsEnginePlugin.js";
 import "@babylonjs/core/Physics/v2/physicsEngineComponent.js";
 import { Scene } from "@babylonjs/core/scene.js";
 import { SceneLoader } from "@babylonjs/core/Loading/sceneLoader.js";
@@ -160,6 +160,14 @@ function lerp(a, b, t) {
   return a + (b - a) * t;
 }
 
+function shortestAngleDeltaDegrees(from, to) {
+  return ((((to - from) % 360) + 540) % 360) - 180;
+}
+
+function lerpAngleDegrees(from, to, t) {
+  return from + shortestAngleDeltaDegrees(from, to) * t;
+}
+
 function protocolToBabylonRotation(rotDegrees) {
   return -(rotDegrees * Math.PI) / 180;
 }
@@ -189,16 +197,6 @@ function clampAngularVelocity(value) {
   return clamp(value, -max, max);
 }
 
-function addImpactSpin(object, axis, direction, strength) {
-  if (!object.dynamic || isTrebuchetName(object.id)) return;
-
-  const spinScale = BARRAGE_CONFIG.impactSpinScale ?? 10;
-  const axisSign = axis === "z" ? -1 : 1;
-  object.angularVelocity = clampAngularVelocity(
-    (object.angularVelocity ?? 0) + strength * direction * axisSign * spinScale,
-  );
-}
-
 function normalReleaseVelocityMax() {
   return BARRAGE_CONFIG.normalReleaseVelocityMax
     ?? BARRAGE_CONFIG.releaseVelocityMax
@@ -226,6 +224,25 @@ function releaseVelocityForObject(object, velocity = {}, maxVelocity = normalRel
   }
 
   return clamped;
+}
+
+function shouldReturnUprightWhileDragged(object) {
+  return object.dynamic
+    && !isTrebuchetName(object.id)
+    && !isMissileName(object.id)
+    && !object.loadedInto;
+}
+
+function returnDraggedObjectUpright(object) {
+  if (!shouldReturnUprightWhileDragged(object)) return;
+
+  const amount = clamp(BARRAGE_CONFIG.dragUprightLerp ?? 0.25, 0, 1);
+  object.rot = lerpAngleDegrees(object.rot ?? 0, 0, amount);
+
+  const aggregate = physicsAggregates.get(object.id);
+  if (aggregate) {
+    aggregate.body.setAngularVelocity(Vector3.Zero());
+  }
 }
 
 function constrainWorldBounds(object) {
@@ -344,6 +361,7 @@ function maybeLoadMissile(missile) {
     missile.vy = 0;
     missile.vz = 0;
     missile.loadedInto = trebuchet.id;
+    setPhysicsBodyTrigger(missile, true);
     trebuchet.loaded = true;
     trebuchet.loadedMissileId = missile.id;
     trebuchet.fireState = ARM_STATE_IDLE;
@@ -502,9 +520,13 @@ function applyInput(client, message) {
     if (object.loadedInto) return;
 
     object.draggedBy = client.id;
+    if (isMissileName(object.id)) {
+      setPhysicsBodyTrigger(object, true);
+    }
     object.vx = 0;
     object.vy = 0;
     object.vz = 0;
+    returnDraggedObjectUpright(object);
     dragState.set(object.id, { lastTime: Date.now(), lastPoint: message.point });
   }
 
@@ -570,15 +592,12 @@ function applyInput(client, message) {
     object.z = nextZ;
     constrainWorldBounds(object);
     resolveCollisionsForObject(object, { includeDragged: true });
+    returnDraggedObjectUpright(object);
     syncPhysicsBodyFromObject(object, { x: 0, y: 0, z: 0 });
     object.vx = 0;
     object.vy = 0;
     object.vz = 0;
     dragState.set(object.id, { lastTime: now, lastPoint: message.point });
-
-    if (typeof message.rot === "number") {
-      object.rot = message.rot;
-    }
   }
 
   if (message.action === "dragEnd") {
@@ -592,13 +611,16 @@ function applyInput(client, message) {
     object.y = next.y;
     object.z = next.z;
     constrainWorldBounds(object);
+    returnDraggedObjectUpright(object);
     if (!maybeLoadMissile(object)) {
+      setPhysicsBodyTrigger(object, false);
       resolveCollisionsForObject(object, { includeDragged: true });
       object.vx = releaseVelocity.x;
       object.vy = releaseVelocity.y;
       object.vz = releaseVelocity.z;
       syncPhysicsBodyFromObject(object, releaseVelocity);
     } else {
+      setPhysicsBodyTrigger(object, true);
       syncPhysicsBodyFromObject(object, { x: 0, y: 0, z: 0 });
     }
     object.dragVx = 0;
@@ -606,10 +628,6 @@ function applyInput(client, message) {
     object.dragVz = 0;
     object.draggedBy = null;
     dragState.delete(object.id);
-
-    if (typeof message.rot === "number") {
-      object.rot = message.rot;
-    }
   }
 
   if (message.action === "fire") {
@@ -776,7 +794,7 @@ function createPhysicsBodies() {
     };
 
     const aggregate = new PhysicsAggregate(node, shapeType, options, scene);
-    aggregate.body.disablePreStep = false;
+    aggregate.body.disablePreStep = true;
     aggregate.body.setLinearDamping(isTrebuchetName(object.id) ? 2.2 : 0.15);
     aggregate.body.setAngularDamping(isTrebuchetName(object.id) ? 10 : 0.55);
     physicsAggregates.set(object.id, aggregate);
@@ -858,7 +876,10 @@ function resetGameState() {
     object.draggedBy = null;
 
     if (object.loaded !== undefined) object.loaded = false;
-    if (object.loadedInto !== undefined) object.loadedInto = null;
+    if (object.loadedInto !== undefined) {
+      object.loadedInto = null;
+      setPhysicsBodyTrigger(object, false);
+    }
     if (object.armAngle !== undefined) object.armAngle = restArmAngleForTrebuchet(object);
     if (object.fireState !== undefined) object.fireState = ARM_STATE_IDLE;
     if (object.loadedMissileId !== undefined) object.loadedMissileId = null;
@@ -942,8 +963,6 @@ function resolveObjectCollision(object, other, { preferHorizontal = false } = {}
     setVelocityComponent(object, axis, objectVelocity + impulse * direction * invMassA);
     setVelocityComponent(other, axis, otherVelocity - impulse * direction * invMassB);
 
-    addImpactSpin(object, axis, direction, impulse * invMassA);
-    addImpactSpin(other, axis, -direction, impulse * invMassB);
     return true;
   }
 
@@ -1074,11 +1093,24 @@ function syncPhysicsBodyFromObject(object, velocity = null) {
   node.position.set(object.x, object.y, object.z);
   node.rotationQuaternion = rotationQuaternionForObject(object);
   node.computeWorldMatrix(true);
-  aggregate.body.setTargetTransform(node.position, node.rotationQuaternion);
+  teleportPhysicsBody(aggregate);
 
   if (velocity) {
     aggregate.body.setLinearVelocity(new Vector3(velocity.x, velocity.y, velocity.z));
   }
+}
+
+function teleportPhysicsBody(aggregate) {
+  aggregate.body.setPrestepType(PhysicsPrestepType.TELEPORT);
+  aggregate.body._physicsPlugin.setPhysicsBodyTransformation(aggregate.body, aggregate.transformNode);
+  aggregate.body.setPrestepType(PhysicsPrestepType.DISABLED);
+}
+
+function setPhysicsBodyTrigger(object, isTrigger) {
+  const aggregate = physicsAggregates.get(object.id);
+  if (!aggregate?.shape) return;
+
+  aggregate.shape.isTrigger = isTrigger;
 }
 
 function constrainBodyToPlane(object) {
@@ -1108,7 +1140,7 @@ function constrainBodyToPlane(object) {
 
   node.computeWorldMatrix(true);
   if (isTrebuchetName(object.id) || Math.abs(node.position.z - object.originZ) > 0.001) {
-    aggregate.body.setTargetTransform(node.position, node.rotationQuaternion);
+    teleportPhysicsBody(aggregate);
   }
   aggregate.body.setLinearVelocity(linearVelocity);
   aggregate.body.setAngularVelocity(angularVelocity);
@@ -1136,6 +1168,7 @@ function simulateHavokPhysics() {
     }
 
     if (object.draggedBy) {
+      returnDraggedObjectUpright(object);
       syncPhysicsBodyFromObject(object, { x: 0, y: 0, z: 0 });
       continue;
     }
@@ -1281,6 +1314,7 @@ function updateTrebuchetFireState(dt) {
         missile.z = target.z;
       }
       missile.loadedInto = null;
+      setPhysicsBodyTrigger(missile, false);
       missile.vx = velocity.x;
       missile.vy = velocity.y;
       missile.vz = velocity.z;

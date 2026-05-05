@@ -290,6 +290,7 @@ function applyState(message) {
     visual.position.x = object.x;
     visual.position.y = object.y ?? visual.position.y;
     visual.position.z = object.z;
+    visual.rotationQuaternion = null;
     visual.rotation.z = protocolToBabylonRotation(object.rot || 0);
 
     const arm = trebuchetArmNodes.get(object.id);

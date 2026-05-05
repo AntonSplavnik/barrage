@@ -19,10 +19,6 @@ export const BARRAGE_CONFIG = {
   blockFriction: 0.9,
   blockRestitution: 0.15,
   staticFriction: 1.0,
-  impactVelocityTransfer: 0.75,
-  impactSpinScale: 10,
-  angularDamping: 1.4,
-  maxAngularVelocity: 540,
 
   // Pointer/camera controls.
   inputInvertX: true,
@@ -39,6 +35,7 @@ export const BARRAGE_CONFIG = {
 
   // Drag/release behavior for hand-moved objects.
   dragHeightOffset: 0.2,
+  dragUprightLerp: 0.25,
   releaseVelocityScale: 1.0,
   normalReleaseVelocityMax: 8,
   releaseVelocitySampleHz: 60,
