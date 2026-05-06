@@ -22,6 +22,8 @@ const playerEl = document.getElementById("player");
 const musicToggleEl = document.getElementById("music-toggle");
 const resetEl = document.getElementById("reset");
 const restartServerEl = document.getElementById("restart-server");
+const lobbyEl = document.getElementById("lobby");
+const lobbyStatusEl = document.getElementById("lobby-status");
 
 const engine = new Engine(canvas, true);
 const scene = new Scene(engine);
@@ -48,12 +50,31 @@ let aimArrowShaft = null;
 let aimArrowHeadLeft = null;
 let aimArrowHeadRight = null;
 let aimArrowMaterial = null;
+let currentRoomId = null;
+let currentLevelUrl = LEVEL_URL;
+let loadedLevelUrl = null;
+let levelSwitchPromise = Promise.resolve();
+let isMatched = false;
 const musicController = createMusicController(musicToggleEl, {
   onStatus: setStatus,
 });
 
 function setStatus(text) {
   connectionEl.textContent = text;
+}
+
+function setLobbyStatus(text, visible = true) {
+  lobbyStatusEl.textContent = text;
+  lobbyEl.classList.toggle("is-visible", visible);
+}
+
+function switchLevelIfNeeded(levelUrl) {
+  if (!levelUrl || levelUrl === loadedLevelUrl) return levelSwitchPromise;
+  if (!loadedLevelUrl && levelUrl === currentLevelUrl) return levelSwitchPromise;
+
+  currentLevelUrl = levelUrl;
+  levelSwitchPromise = levelSwitchPromise.then(() => loadLevel(levelUrl, { replace: Boolean(loadedLevelUrl) }));
+  return levelSwitchPromise;
 }
 
 function isMissileInFlight(object) {
@@ -608,9 +629,47 @@ function updateAimArrow() {
   aimArrowHeadRight.setEnabled(true);
 }
 
-async function loadLevel() {
+function disposeLevelScene() {
+  hideAimArrow();
+  aimArrowShaft?.dispose();
+  aimArrowHeadLeft?.dispose();
+  aimArrowHeadRight?.dispose();
+  aimArrowShaft = null;
+  aimArrowHeadLeft = null;
+  aimArrowHeadRight = null;
+  aimArrowMaterial = null;
+
+  shadowGenerator?.dispose();
+  shadowGenerator = null;
+
+  for (const mesh of [...scene.meshes]) {
+    mesh.dispose(false, true);
+  }
+  for (const transform of [...scene.transformNodes]) {
+    transform.dispose(false, true);
+  }
+  for (const camera of [...scene.cameras]) {
+    camera.dispose();
+  }
+  for (const light of [...scene.lights]) {
+    light.dispose();
+  }
+
+  visualObjects.clear();
+  visualBaseRotations.clear();
+  latestObjectStates.clear();
+  trebuchetArmNodes.clear();
+  trebuchetLoadTargets.clear();
+  scene.activeCamera = null;
+}
+
+async function loadLevel(levelUrl = LEVEL_URL, { replace = false } = {}) {
+  if (replace) {
+    disposeLevelScene();
+  }
+
   try {
-    await SceneLoader.AppendAsync("", LEVEL_URL, scene);
+    await SceneLoader.AppendAsync("", levelUrl, scene);
     applyTrebuchetArmRestPose();
     registerVisualRoots();
     createMissilePickColliders();
@@ -629,6 +688,7 @@ async function loadLevel() {
   ensureCameraAndLight();
   setupShadows();
   engine.resize();
+  loadedLevelUrl = levelUrl;
 }
 
 function applyTrebuchetArmRestPose() {
@@ -691,7 +751,48 @@ socket.addEventListener("message", (event) => {
     playerEl.textContent = message.playerId;
   }
 
+  if (message.type === "lobby") {
+    currentRoomId = message.roomId;
+    currentLevelUrl = message.level ?? currentLevelUrl;
+    isMatched = false;
+    setLobbyStatus(message.status === "spectating"
+      ? `${message.playerId} waiting for a player slot...`
+      : `${message.playerId} waiting for opponent...`);
+    if (message.status === "spectating") {
+      switchLevelIfNeeded(currentLevelUrl);
+    }
+  }
+
+  if (message.type === "matched") {
+    currentRoomId = message.roomId;
+    currentLevelUrl = message.level ?? currentLevelUrl;
+    isMatched = false;
+    playerEl.textContent = message.playerId;
+    setLobbyStatus("Loading match...");
+    switchLevelIfNeeded(currentLevelUrl).then(() => {
+      isMatched = true;
+      setLobbyStatus("", false);
+    });
+  }
+
+  if (message.type === "roundEnded") {
+    isMatched = false;
+    setLobbyStatus(`${message.winner} won round ${message.roundNumber}`);
+  }
+
+  if (message.type === "levelChanged") {
+    if (message.roomId && currentRoomId && message.roomId !== currentRoomId) return;
+    currentLevelUrl = message.level ?? currentLevelUrl;
+    isMatched = false;
+    setLobbyStatus("Loading next level...");
+    switchLevelIfNeeded(currentLevelUrl).then(() => {
+      isMatched = true;
+      setLobbyStatus("", false);
+    });
+  }
+
   if (message.type === "state") {
+    if (message.roomId && currentRoomId && message.roomId !== currentRoomId) return;
     applyState(message);
     updateMusicFromState(message);
   }
@@ -699,10 +800,13 @@ socket.addEventListener("message", (event) => {
 
 socket.addEventListener("close", () => {
   setStatus("Disconnected");
+  isMatched = false;
+  setLobbyStatus("Disconnected");
 });
 
 function sendInput(action, payload) {
   if (socket.readyState !== WebSocket.OPEN) return;
+  if (!isMatched) return;
 
   socket.send(JSON.stringify({
     type: "input",
@@ -864,6 +968,8 @@ function pointerWorldAtDragDepth() {
 }
 
 function beginDrag() {
+  if (!isMatched) return;
+
   const root = pickDraggableRoot();
   if (!root) return;
 
@@ -992,9 +1098,11 @@ scene.onPointerObservable.add((pointerInfo) => {
   }
 });
 
-loadLevel().then(() => {
+levelSwitchPromise = loadLevel(currentLevelUrl).then(() => {
   engine.runRenderLoop(() => {
-    scene.render();
+    if (scene.activeCamera) {
+      scene.render();
+    }
   });
 });
 

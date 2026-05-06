@@ -1,1 +1,7 @@
-there are som issues with the collider for the trebuche arm.  the arm is a child of trebuche and the collider is a child of the arm, examine the glb and you will see.  when the ball is dragged close to the trebuche it starts pushing it when it it further out than the collider.
+I want to add logic for "rooms" so that once two players have joined the server they become P1 nd P2 are matched into a game/room then the next two players to join the server become P3 & P4 who get matched into a game/rooms and if someone drops out then the next player should receive their number and be matched accordingly.  the server needs to make a seperate simulation for each room of course
+
+Maybe we need a lobby/landing page where you are momentarily until you are matched, then wen you are the second player or the 4th player a game starts, or if p1 dropss out the next connection gets P1 and is matched to P2.  if you are unpaired you are redirected to lobby page until matched?
+
+can the logic for this be put into seperate files because i ma working with a teamate who needs to do a big merge.
+
+just answer with opinions and plans but take no action yet

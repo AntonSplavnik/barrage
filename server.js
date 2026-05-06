@@ -20,6 +20,8 @@ import { SceneLoader } from "@babylonjs/core/Loading/sceneLoader.js";
 import "@babylonjs/loaders/glTF/index.js";
 import { SERVER_CONFIG } from "./config/server.js";
 import { BARRAGE_CONFIG } from "./public/config.js";
+import { firstLevel, nextLevel } from "./server/levelCatalog.js";
+import { RoomManager } from "./server/roomManager.js";
 
 const { XMLHttpRequest } = xhr2;
 globalThis.XMLHttpRequest = XMLHttpRequest;
@@ -30,10 +32,8 @@ const __dirname = path.dirname(__filename);
 const PORT = Number(process.env.PORT || 3000);
 const TICK_RATE = 60;
 const TICK_MS = 1000 / TICK_RATE;
-const LEVEL_FILE = "level1.glb";
 const publicDir = path.join(__dirname, "public");
 const assetsDir = path.join(publicDir, "assets");
-const levelPath = path.join(assetsDir, LEVEL_FILE);
 
 const app = express();
 app.use((_request, response, next) => {
@@ -44,30 +44,98 @@ app.use((_request, response, next) => {
 const httpServer = http.createServer(app);
 const wss = new WebSocketServer({ server: httpServer });
 
-const engine = new NullEngine({
-  renderHeight: 1,
-  renderWidth: 1,
-  textureSize: 1,
-  deterministicLockstep: false,
-});
-const scene = new Scene(engine);
-scene.activeCamera = new FreeCamera("HeadlessCamera", new Vector3(0, 10, -10), scene);
-
 const clients = new Map();
 let nextClientId = 1;
-let tick = 0;
 let simulationInterval = null;
 let restartInProgress = false;
-
-const gameObjects = new Map();
-const dragState = new Map();
-const loadTargets = new Map();
-const physicsAggregates = new Map();
+let activeRoom = null;
+let engine = null;
+let scene = null;
+let tick = 0;
+let gameObjects = null;
+let dragState = null;
+let loadTargets = null;
+let physicsAggregates = null;
+let havokInterfacePromise = null;
 
 const ARM_STATE_IDLE = "idle";
 const ARM_STATE_AIMING = "aiming";
 const ARM_STATE_RELEASING = "releasing";
 const ARM_STATE_RETURNING = "returning";
+
+function createRoomRuntime(room) {
+  room.engine?.dispose?.();
+  room.scene?.dispose?.();
+
+  const roomEngine = new NullEngine({
+    renderHeight: 1,
+    renderWidth: 1,
+    textureSize: 1,
+    deterministicLockstep: false,
+  });
+  const roomScene = new Scene(roomEngine);
+  roomScene.activeCamera = new FreeCamera(`HeadlessCamera-${room.id}`, new Vector3(0, 10, -10), roomScene);
+
+  room.engine = roomEngine;
+  room.scene = roomScene;
+  room.tick = 0;
+  room.gameObjects = new Map();
+  room.dragState = new Map();
+  room.loadTargets = new Map();
+  room.physicsAggregates = new Map();
+}
+
+function createRoomState({ id, index, playerIds }) {
+  const room = {
+    id,
+    index,
+    playerIds,
+    clients: new Map(),
+    level: firstLevel(),
+    roundNumber: 1,
+    scores: Object.fromEntries(playerIds.map((playerId) => [playerId, 0])),
+    roundWinner: null,
+    paused: false,
+  };
+  createRoomRuntime(room);
+  return room;
+}
+
+function resetRoomProgress(room) {
+  room.level = firstLevel();
+  room.roundNumber = 1;
+  room.roundWinner = null;
+  room.paused = false;
+  room.scores = Object.fromEntries(room.playerIds.map((playerId) => [playerId, 0]));
+}
+
+function bindRoom(room) {
+  activeRoom = room;
+  engine = room.engine;
+  scene = room.scene;
+  tick = room.tick;
+  gameObjects = room.gameObjects;
+  dragState = room.dragState;
+  loadTargets = room.loadTargets;
+  physicsAggregates = room.physicsAggregates;
+}
+
+function saveActiveRoomTick() {
+  if (activeRoom) {
+    activeRoom.tick = tick;
+  }
+}
+
+const roomManager = new RoomManager({
+  async createRoom(roomInfo) {
+    const room = createRoomState(roomInfo);
+    bindRoom(room);
+    await enableHavokPhysics();
+    await loadLevelIfPresent();
+    saveActiveRoomTick();
+    return room;
+  },
+});
 
 function isLocalRequest(request) {
   const remoteAddress = request.ip || request.socket.remoteAddress || "";
@@ -576,9 +644,27 @@ function isGroundName(name) {
   return name.toLowerCase().includes("ground");
 }
 
+function isLeftSideKingName(name) {
+  const lowerName = name.toLowerCase();
+  return lowerName.includes("kingl")
+    || lowerName.includes("left")
+    || lowerName.includes("p1")
+    || lowerName.endsWith("l");
+}
+
+function playerIdForKing(king) {
+  return isLeftSideKingName(king.id) ? activeRoom.playerIds[0] : activeRoom.playerIds[1];
+}
+
+function opponentPlayerId(playerId) {
+  return activeRoom.playerIds.find((candidate) => candidate !== playerId) ?? null;
+}
+
 function broadcast(message) {
+  if (!activeRoom) return;
+
   const payload = JSON.stringify(message);
-  for (const client of clients.values()) {
+  for (const client of activeRoom.clients.values()) {
     if (client.socket.readyState === client.socket.OPEN) {
       client.socket.send(payload);
     }
@@ -586,12 +672,105 @@ function broadcast(message) {
 }
 
 function sendState() {
-  broadcast({
+  const message = {
     type: "state",
+    roomId: activeRoom.id,
     tick,
     serverTime: Date.now(),
+    level: activeRoom.level.url,
+    roundNumber: activeRoom.roundNumber,
+    scores: activeRoom.scores,
     objects: [...gameObjects.values()].map(toWireObject),
+  };
+  broadcast(message);
+  broadcastRoomOneToSpectators(message);
+}
+
+function recordRoundWin(loserPlayerId) {
+  if (activeRoom.roundWinner) return;
+
+  const winner = opponentPlayerId(loserPlayerId);
+  if (!winner) return;
+
+  activeRoom.roundWinner = winner;
+  activeRoom.paused = true;
+  activeRoom.scores[winner] = (activeRoom.scores[winner] ?? 0) + 1;
+
+  broadcast({
+    type: "roundEnded",
+    roomId: activeRoom.id,
+    tick,
+    winner,
+    loser: loserPlayerId,
+    roundNumber: activeRoom.roundNumber,
+    scores: activeRoom.scores,
   });
+
+  const room = activeRoom;
+  setTimeout(() => {
+    advanceRoomAfterRound(room).catch((error) => {
+      console.error(`Failed to advance ${room.id} after round.`, error);
+    });
+  }, BARRAGE_CONFIG.roundEndDelayMs ?? 1800);
+}
+
+async function advanceRoomAfterRound(room) {
+  if (!roomManager.isMatched(room)) {
+    room.paused = false;
+    return;
+  }
+
+  room.level = nextLevel(room.level.id);
+  room.roundNumber += 1;
+  room.roundWinner = null;
+  createRoomRuntime(room);
+  bindRoom(room);
+  await enableHavokPhysics();
+  await loadLevelIfPresent();
+  room.paused = false;
+  saveActiveRoomTick();
+
+  broadcast({
+    type: "levelChanged",
+    roomId: room.id,
+    level: room.level.url,
+    roundNumber: room.roundNumber,
+    scores: room.scores,
+  });
+  sendState();
+}
+
+function maybeRecordKingHit(object, other) {
+  const missile = isMissileName(object.id) ? object : isMissileName(other.id) ? other : null;
+  const king = isKingName(object.id) ? object : isKingName(other.id) ? other : null;
+  if (!missile || !king || missile.loadedInto || activeRoom.roundWinner) return;
+
+  const speed = Math.hypot(missile.vx || 0, missile.vy || 0, missile.vz || 0);
+  if (speed < (BARRAGE_CONFIG.kingHitVelocityMin ?? 3)) return;
+
+  missile.hitKingIds ??= new Set();
+  if (missile.hitKingIds.has(king.id)) return;
+  missile.hitKingIds.add(king.id);
+
+  king.hits = Math.min((king.hits ?? 0) + 1, king.maxHits ?? 3);
+  const loser = playerIdForKing(king);
+
+  broadcast({
+    type: "event",
+    roomId: activeRoom.id,
+    tick,
+    events: [{
+      kind: "kingHit",
+      kingId: king.id,
+      playerId: loser,
+      hits: king.hits,
+      maxHits: king.maxHits ?? 3,
+    }],
+  });
+
+  if (king.hits >= (king.maxHits ?? 3)) {
+    recordRoundWin(loser);
+  }
 }
 
 function applyInput(client, message) {
@@ -722,6 +901,7 @@ function applyInput(client, message) {
     object.dragVy = 0;
     object.dragVz = 0;
     object.draggedBy = null;
+    object.hitKingIds = null;
     dragState.delete(object.id);
   }
 
@@ -1060,6 +1240,8 @@ function resolveObjectCollision(object, other, { preferHorizontal = false } = {}
   const overlapZ = overlapOnAxis(a.minZ, a.maxZ, b.minZ, b.maxZ);
 
   if (overlapX <= 0 || overlapY <= 0 || overlapZ <= 0) return;
+
+  maybeRecordKingHit(object, other);
 
   const centerAX = object.x + object.offsetX;
   const centerAY = object.y + object.offsetY;
@@ -1483,55 +1665,219 @@ function updateTrebuchetFireState(dt) {
 }
 
 async function loadLevelIfPresent() {
+  const room = activeRoom;
+  const level = room.level;
+  const levelPath = path.join(assetsDir, level.file);
+
   try {
     await fs.access(levelPath);
   } catch {
-    console.log(`No GLB found at public/assets/${LEVEL_FILE}; starting with an empty scene.`);
+    console.log(`No GLB found at public/assets/${level.file}; ${room.id} starting with an empty scene.`);
     return;
   }
 
-  await SceneLoader.AppendAsync(`http://localhost:${PORT}/assets/`, LEVEL_FILE, scene);
+  await SceneLoader.AppendAsync(`http://localhost:${PORT}/assets/`, level.file, room.scene);
+  bindRoom(room);
   applyTrebuchetArmRestPose();
   registerMeshRoots();
-  console.log(`Loaded ${LEVEL_FILE} with ${gameObjects.size} gameplay objects.`);
+  console.log(`Loaded ${level.file} for ${room.id} with ${gameObjects.size} gameplay objects.`);
   for (const object of gameObjects.values()) {
     console.log(
-      `Object ${object.id}: dynamic=${object.dynamic} pos=(${object.x.toFixed(2)}, ${object.y.toFixed(2)}, ${object.z.toFixed(2)}) half=(${object.halfX.toFixed(2)}, ${object.halfY.toFixed(2)}, ${object.halfZ.toFixed(2)}) offset=(${object.offsetX.toFixed(2)}, ${object.offsetY.toFixed(2)}, ${object.offsetZ.toFixed(2)})`,
+      `${room.id} object ${object.id}: dynamic=${object.dynamic} pos=(${object.x.toFixed(2)}, ${object.y.toFixed(2)}, ${object.z.toFixed(2)}) half=(${object.halfX.toFixed(2)}, ${object.halfY.toFixed(2)}, ${object.halfZ.toFixed(2)}) offset=(${object.offsetX.toFixed(2)}, ${object.offsetY.toFixed(2)}, ${object.offsetZ.toFixed(2)})`,
     );
   }
 }
 
 async function enableHavokPhysics() {
-  const wasmBinary = await fs.readFile(path.join(__dirname, "node_modules/@babylonjs/havok/lib/esm/HavokPhysics.wasm"));
-  const havokInterface = await HavokPhysics({ wasmBinary });
+  const room = activeRoom;
+  havokInterfacePromise ??= fs
+    .readFile(path.join(__dirname, "node_modules/@babylonjs/havok/lib/esm/HavokPhysics.wasm"))
+    .then((wasmBinary) => HavokPhysics({ wasmBinary }));
+
+  const havokInterface = await havokInterfacePromise;
+  bindRoom(room);
   const havokPlugin = new HavokPlugin(true, havokInterface);
   scene.enablePhysics(new Vector3(0, SERVER_CONFIG.gravity, 0), havokPlugin);
 }
 
+function sendToClient(client, message) {
+  if (client.socket.readyState === client.socket.OPEN) {
+    client.socket.send(JSON.stringify(message));
+  }
+}
+
+function roomOpponentFor(client) {
+  for (const other of client.room.clients.values()) {
+    if (other.id !== client.id) return other;
+  }
+
+  return null;
+}
+
+function sendWelcome(client) {
+  sendToClient(client, {
+    type: "welcome",
+    clientId: client.id,
+    playerId: client.playerId,
+    tickRate: TICK_RATE,
+  });
+}
+
+function sendLobby(client) {
+  if (!client.room) {
+    const room = roomManager.rooms[0] ?? null;
+    sendToClient(client, {
+      type: "lobby",
+      roomId: room?.id ?? null,
+      playerId: client.playerId,
+      status: "spectating",
+      level: room?.level.url ?? firstLevel().url,
+    });
+    return;
+  }
+
+  sendToClient(client, {
+    type: "lobby",
+    roomId: client.room.id,
+    playerId: client.playerId,
+    status: "waiting",
+    level: client.room.level.url,
+  });
+}
+
+function notifySpectatorRenames(clientsToNotify) {
+  for (const client of clientsToNotify) {
+    sendWelcome(client);
+    sendLobby(client);
+  }
+}
+
+function broadcastRoomOneToSpectators(message) {
+  if (activeRoom !== roomManager.rooms[0]) return;
+
+  const payload = JSON.stringify(message);
+  for (const client of roomManager.spectators.values()) {
+    if (client.socket.readyState === client.socket.OPEN) {
+      client.socket.send(payload);
+    }
+  }
+}
+
+async function resetRoomToFirstLevel(room) {
+  resetRoomProgress(room);
+  createRoomRuntime(room);
+  bindRoom(room);
+  await enableHavokPhysics();
+  await loadLevelIfPresent();
+  saveActiveRoomTick();
+}
+
+function sendMatched(room) {
+  for (const client of room.clients.values()) {
+    const opponent = roomOpponentFor(client);
+    sendToClient(client, {
+      type: "matched",
+      roomId: room.id,
+      playerId: client.playerId,
+      opponentId: opponent?.playerId ?? null,
+      level: room.level.url,
+      roundNumber: room.roundNumber,
+      scores: room.scores,
+    });
+  }
+}
+
+function notifyRoomStatus(room) {
+  if (roomManager.isMatched(room)) {
+    bindRoom(room);
+    room.paused = false;
+    room.roundWinner = null;
+    resetGameState();
+    saveActiveRoomTick();
+    sendMatched(room);
+    sendState();
+    return;
+  }
+
+  for (const client of room.clients.values()) {
+    sendLobby(client);
+  }
+}
+
+function compactAndNotifyWaitingRooms() {
+  const moves = roomManager.compactWaitingRooms();
+  if (moves.length === 0) return false;
+
+  const touchedRooms = new Set();
+  for (const move of moves) {
+    touchedRooms.add(move.sourceRoom);
+    touchedRooms.add(move.targetRoom);
+  }
+
+  for (const room of touchedRooms) {
+    notifyRoomStatus(room);
+  }
+
+  return true;
+}
+
+async function handlePlayerVacancy({ room, playerId }) {
+  const promotion = roomManager.promoteSpectatorToSlot(room, playerId);
+  if (promotion) {
+    const { spectator: promoted, spectatorRenames } = promotion;
+    sendWelcome(promoted);
+    notifySpectatorRenames(spectatorRenames);
+    await resetRoomToFirstLevel(room);
+    notifyRoomStatus(room);
+    return;
+  }
+
+  if (!compactAndNotifyWaitingRooms()) {
+    notifyRoomStatus(room);
+  }
+}
+
 wss.on("connection", (socket) => {
   const clientId = nextClientId++;
-  const playerId = clientId === 1 ? "P1" : clientId === 2 ? "P2" : `Spectator_${clientId}`;
-  const client = { id: clientId, playerId, socket };
+  const client = { id: clientId, playerId: null, room: null, socket };
   clients.set(clientId, client);
 
-  socket.send(JSON.stringify({
-    type: "welcome",
-    clientId,
-    playerId,
-    tickRate: TICK_RATE,
-    level: `/assets/${LEVEL_FILE}`,
-  }));
-
-  socket.on("message", (raw) => {
-    try {
-      applyInput(client, JSON.parse(raw.toString()));
-    } catch (error) {
-      socket.send(JSON.stringify({ type: "error", message: "Invalid message JSON" }));
+  roomManager.assignClient(client).then(({ room, becameMatched, spectator }) => {
+    sendWelcome(client);
+    if (spectator) {
+      sendLobby(client);
+    } else if (becameMatched) {
+      notifyRoomStatus(room);
+    } else if (!roomManager.isMatched(room)) {
+      sendLobby(client);
     }
-  });
 
-  socket.on("close", () => {
-    clients.delete(clientId);
+    socket.on("message", (raw) => {
+      try {
+        if (!client.room || !roomManager.isMatched(client.room)) return;
+        bindRoom(client.room);
+        applyInput(client, JSON.parse(raw.toString()));
+        saveActiveRoomTick();
+      } catch (error) {
+        sendToClient(client, { type: "error", message: "Invalid message JSON" });
+      }
+    });
+
+    socket.on("close", () => {
+      clients.delete(clientId);
+      const removal = roomManager.removeClient(client);
+      if (removal?.room) {
+        handlePlayerVacancy(removal).catch((error) => {
+          console.error("Failed to handle player vacancy.", error);
+        });
+      } else if (removal?.spectatorRenames) {
+        notifySpectatorRenames(removal.spectatorRenames);
+      }
+    });
+  }).catch((error) => {
+    console.error("Failed to assign client to room.", error);
+    sendToClient(client, { type: "error", message: "Failed to join a room" });
+    closeSocket(socket);
   });
 });
 
@@ -1543,13 +1889,14 @@ async function startServer() {
     });
   });
 
-  await enableHavokPhysics();
-  await loadLevelIfPresent();
-
   simulationInterval = setInterval(() => {
-    tick += 1;
-    simulatePhysics(TICK_MS / 1000);
-    sendState();
+    for (const room of roomManager.activeRooms()) {
+      bindRoom(room);
+      tick += 1;
+      simulatePhysics(TICK_MS / 1000);
+      sendState();
+      saveActiveRoomTick();
+    }
   }, TICK_MS);
 }
 

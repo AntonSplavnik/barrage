@@ -88,3 +88,37 @@ body {
 #restart-server:hover {
   background: rgb(255 255 255 / 16%);
 }
+
+#lobby {
+  position: fixed;
+  inset: 0;
+  display: none;
+  place-items: center;
+  color: #f6f2e8;
+  pointer-events: none;
+}
+
+#lobby.is-visible {
+  display: grid;
+}
+
+.lobby-panel {
+  width: min(360px, calc(100vw - 32px));
+  padding: 18px 20px;
+  background: rgb(18 23 25 / 88%);
+  border: 1px solid rgb(255 255 255 / 16%);
+  border-radius: 8px;
+  text-align: center;
+}
+
+.lobby-panel h1 {
+  margin: 0 0 8px;
+  font-size: 26px;
+  font-weight: 700;
+}
+
+.lobby-panel p {
+  margin: 0;
+  color: #ffd166;
+  font-size: 15px;
+}
