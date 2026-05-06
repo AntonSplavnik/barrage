@@ -2,6 +2,7 @@ export const BARRAGE_CONFIG = {
   // Level asset.
   levelUrl: "/assets/level1.glb",
   musicTuneUrl: "/strudel.js",
+  musicSamplesUrl: "https://raw.githubusercontent.com/felixroos/dough-samples/main/tidal-drum-machines.json",
 
   // Rendering.
   importedLightIntensityScale: 0.01,

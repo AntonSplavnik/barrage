@@ -850,12 +850,21 @@ function registerMeshRoots() {
     }
   }
 
-  for (const transform of scene.transformNodes) {
-    if (transform.parent && transform.parent.name !== "__root__") continue;
+  const candidateRoots = [
+    ...scene.transformNodes.filter((transform) => !transform.parent || transform.parent.name === "__root__"),
+    ...scene.meshes.filter((mesh) => !mesh.parent || mesh.parent.name === "__root__"),
+  ];
+  const seenRootNames = new Set();
 
-    const hasGameplayChild = descendantsOf(transform).some((child) => childRole(child.name));
+  for (const transform of candidateRoots) {
+    if (transform.name === "__root__") continue;
+    if (seenRootNames.has(transform.name)) continue;
+    seenRootNames.add(transform.name);
 
-    if (!hasGameplayChild) continue;
+    const hasGameplayRole = Boolean(childRole(transform.name))
+      || descendantsOf(transform).some((child) => childRole(child.name));
+
+    if (!hasGameplayRole) continue;
 
     const position = transform.position;
     const dynamic = isDynamicName(transform.name);

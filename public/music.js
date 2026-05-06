@@ -31,6 +31,32 @@ async function waitForRuntime(timeoutMs = STRUDEL_RUNTIME_TIMEOUT_MS) {
   throw new Error("Strudel runtime not ready");
 }
 
+function installSampleAliases() {
+  const soundAlias = globalThis.soundAlias ?? globalThis.strudel?.soundAlias;
+  if (typeof soundAlias !== "function") return;
+
+  const aliasPairs = [
+    ["RolandTR909_bd", "tr909_bd"],
+    ["RolandTR909_hh", "tr909_hh"],
+    ["RolandTR909_cp", "tr909_cp"],
+    ["RolandTR909_oh", "tr909_oh"],
+    ["RolandTR909_rim", "tr909_rim"],
+    ["RolandTR909_bd", "bd"],
+    ["RolandTR909_hh", "hh"],
+    ["RolandTR909_cp", "cp"],
+    ["RolandTR909_oh", "oh"],
+    ["RolandTR909_rim", "rim"],
+  ];
+
+  for (const [source, alias] of aliasPairs) {
+    try {
+      soundAlias(source, alias);
+    } catch {
+      // Ignore duplicate or missing alias registration errors.
+    }
+  }
+}
+
 export function createMusicController(button, { onStatus } = {}) {
   const status = typeof onStatus === "function" ? onStatus : () => {};
 
@@ -115,16 +141,18 @@ export function createMusicController(button, { onStatus } = {}) {
         const sampleSource = CONFIG.musicSamplesUrl?.trim();
         const samplesLoader = globalThis.samples ?? globalThis.strudel?.samples;
         if (sampleSource && typeof samplesLoader === "function") {
-          globalThis.initStrudel({
+          await Promise.resolve(globalThis.initStrudel({
             prebake: () => samplesLoader(sampleSource),
-          });
+          }));
         } else {
-          globalThis.initStrudel();
+          await Promise.resolve(globalThis.initStrudel());
         }
         runtime = await waitForRuntime();
+        installSampleAliases();
         initialized = true;
       } else if (!runtime) {
         runtime = await waitForRuntime();
+        installSampleAliases();
       }
 
       enabled = true;

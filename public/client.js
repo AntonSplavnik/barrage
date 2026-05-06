@@ -90,16 +90,26 @@ function registerVisualRoots() {
   visualObjects.clear();
   visualBaseRotations.clear();
 
-  for (const transform of scene.transformNodes) {
-    if (transform.parent && transform.parent.name !== "__root__") continue;
+  const candidateRoots = [
+    ...scene.transformNodes.filter((transform) => !transform.parent || transform.parent.name === "__root__"),
+    ...scene.meshes.filter((mesh) => !mesh.parent || mesh.parent.name === "__root__"),
+  ];
+  const seenRootNames = new Set();
+
+  for (const transform of candidateRoots) {
+    if (transform.name === "__root__") continue;
+    if (seenRootNames.has(transform.name)) continue;
+    seenRootNames.add(transform.name);
 
     const descendants = descendantsOf(transform);
+    const selfRole = childRole(transform.name);
     const visualChild = descendants.find((child) => {
       const role = childRole(child.name);
       return role === "Vis" || role === "ColVis";
     });
+    const hasVisualRole = selfRole === "Vis" || selfRole === "ColVis" || Boolean(visualChild);
 
-    if (!visualChild) continue;
+    if (!hasVisualRole) continue;
 
     for (const child of descendants) {
       if (childRole(child.name) === "Col" && child.setEnabled) {
