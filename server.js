@@ -1287,7 +1287,8 @@ function constrainBodyToPlane(object) {
 }
 
 function simulateHavokPhysics() {
-  updateTrebuchetFireState(TICK_MS / 1000);
+  const scaledDt = (TICK_MS / 1000) * (BARRAGE_CONFIG.physicsTimeScale ?? 1);
+  updateTrebuchetFireState(scaledDt);
 
   for (const object of gameObjects.values()) {
     if (!object.dynamic) continue;
@@ -1324,7 +1325,7 @@ function simulateHavokPhysics() {
     }
   }
 
-  scene.getPhysicsEngine()?._step(TICK_MS / 1000);
+  scene.getPhysicsEngine()?._step(scaledDt);
 
   for (const object of gameObjects.values()) {
     if (!object.dynamic) continue;
@@ -1348,12 +1349,14 @@ function simulateHavokPhysics() {
 }
 
 function simulatePhysics(dt) {
+  const scaledDt = dt * (BARRAGE_CONFIG.physicsTimeScale ?? 1);
+
   if (physicsAggregates.size > 0) {
     simulateHavokPhysics();
     return;
   }
 
-  updateTrebuchetFireState(dt);
+  updateTrebuchetFireState(scaledDt);
 
   for (const object of gameObjects.values()) {
     if (!object.dynamic || object.draggedBy) continue;
@@ -1372,21 +1375,21 @@ function simulatePhysics(dt) {
     }
 
     if (isTrebuchetName(object.id)) {
-      object.x += object.vx * dt;
+      object.x += object.vx * scaledDt;
       object.x = constrainedPointForObject(object, { x: object.x, y: object.y, z: object.z }).x;
       object.y = object.originY;
       object.z = object.originZ;
-      object.vx *= Math.max(0, 1 - SERVER_CONFIG.trebuchetReleaseFriction * dt);
+      object.vx *= Math.max(0, 1 - SERVER_CONFIG.trebuchetReleaseFriction * scaledDt);
       if (Math.abs(object.vx) < 0.01) object.vx = 0;
       object.vy = 0;
       object.vz = 0;
       continue;
     }
 
-    object.vy += SERVER_CONFIG.gravity * dt;
-    object.x += object.vx * dt;
-    object.y += object.vy * dt;
-    object.z += object.vz * dt;
+    object.vy += SERVER_CONFIG.gravity * scaledDt;
+    object.x += object.vx * scaledDt;
+    object.y += object.vy * scaledDt;
+    object.z += object.vz * scaledDt;
     constrainWorldBounds(object);
 
     const floorY = SERVER_CONFIG.groundY + object.halfY - object.offsetY;
@@ -1399,7 +1402,7 @@ function simulatePhysics(dt) {
         object.vy = 0;
       }
 
-      const frictionScale = Math.max(0, 1 - object.friction * dt * 3);
+      const frictionScale = Math.max(0, 1 - object.friction * scaledDt * 3);
       object.vx *= frictionScale;
       object.vz *= frictionScale;
 
