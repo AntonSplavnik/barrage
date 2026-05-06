@@ -173,6 +173,10 @@ function descendantsOf(transform) {
   return descendants;
 }
 
+function isMissileName(name) {
+  return name.toLowerCase().includes("missile");
+}
+
 function isDraggableRoot(root) {
   const name = root.name.toLowerCase();
   return name.includes("block")
@@ -188,6 +192,96 @@ function isTrebuchetArmName(name) {
 
 function isTrebuchetName(name) {
   return name.toLowerCase().includes("trebuche");
+}
+
+function colliderNodesFor(root) {
+  const selfRole = childRole(root.name);
+  const descendants = descendantsOf(root);
+  const nodes = descendants.filter((child) => {
+    const role = childRole(child.name);
+    return role === "Col" || role === "ColVis";
+  });
+
+  if (selfRole === "Col" || selfRole === "ColVis") {
+    nodes.push(root);
+  }
+
+  return nodes.length > 0 ? nodes : [root];
+}
+
+function boundsForNodes(nodes) {
+  const bounds = nodes.reduce((accumulator, node) => {
+    if (typeof node.getHierarchyBoundingVectors !== "function") return accumulator;
+
+    const nodeBounds = node.getHierarchyBoundingVectors(true);
+    return {
+      minX: Math.min(accumulator.minX, nodeBounds.min.x),
+      minY: Math.min(accumulator.minY, nodeBounds.min.y),
+      minZ: Math.min(accumulator.minZ, nodeBounds.min.z),
+      maxX: Math.max(accumulator.maxX, nodeBounds.max.x),
+      maxY: Math.max(accumulator.maxY, nodeBounds.max.y),
+      maxZ: Math.max(accumulator.maxZ, nodeBounds.max.z),
+    };
+  }, {
+    minX: Infinity,
+    minY: Infinity,
+    minZ: Infinity,
+    maxX: -Infinity,
+    maxY: -Infinity,
+    maxZ: -Infinity,
+  });
+
+  if (!Number.isFinite(bounds.minX)) return null;
+  return bounds;
+}
+
+function maxWorldScale(node) {
+  const matrix = node.getWorldMatrix().m;
+  return Math.max(
+    Math.hypot(matrix[0], matrix[1], matrix[2]),
+    Math.hypot(matrix[4], matrix[5], matrix[6]),
+    Math.hypot(matrix[8], matrix[9], matrix[10]),
+    0.0001,
+  );
+}
+
+function createMissilePickColliders() {
+  const scale = CONFIG.missilePickColliderScale ?? 1;
+  if (scale <= 1) return;
+
+  const material = new StandardMaterial("MissilePickColliderMat", scene);
+  material.alpha = 0;
+
+  for (const root of visualObjects.values()) {
+    if (!isMissileName(root.name)) continue;
+
+    const bounds = boundsForNodes(colliderNodesFor(root));
+    if (!bounds) continue;
+
+    const center = new Vector3(
+      (bounds.minX + bounds.maxX) / 2,
+      (bounds.minY + bounds.maxY) / 2,
+      (bounds.minZ + bounds.maxZ) / 2,
+    );
+    const worldToRoot = root.getWorldMatrix().clone().invert();
+    const worldDiameter = Math.max(
+      bounds.maxX - bounds.minX,
+      bounds.maxY - bounds.minY,
+      bounds.maxZ - bounds.minZ,
+      0.1,
+    ) * scale;
+    const pickCollider = MeshBuilder.CreateSphere(`${root.name}-PickCollider`, {
+      diameter: worldDiameter / maxWorldScale(root),
+      segments: 16,
+    }, scene);
+
+    pickCollider.parent = root;
+    pickCollider.position = Vector3.TransformCoordinates(center, worldToRoot);
+    pickCollider.material = material;
+    pickCollider.visibility = 0;
+    pickCollider.isPickable = true;
+    pickCollider.receiveShadows = false;
+  }
 }
 
 function isTrebuchetArmRoot(transform) {
@@ -519,6 +613,7 @@ async function loadLevel() {
     await SceneLoader.AppendAsync("", LEVEL_URL, scene);
     applyTrebuchetArmRestPose();
     registerVisualRoots();
+    createMissilePickColliders();
     registerTrebuchetArmNodes();
     registerTrebuchetLoadTargets();
     createAimArrowMeshes();
