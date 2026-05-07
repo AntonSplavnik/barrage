@@ -105,9 +105,7 @@ export function applyInput(client, message) {
     if (object.loadedInto) return;
 
     object.draggedBy = client.id;
-    if (isMissileName(object.id)) {
-      setPhysicsBodyTrigger(object, true);
-    }
+    setPhysicsBodyTrigger(object, true);
     object.vx = 0;
     object.vy = 0;
     object.vz = 0;

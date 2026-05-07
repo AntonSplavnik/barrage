@@ -11,7 +11,7 @@ import {
   ARM_STATE_IDLE,
   ARM_STATE_RELEASING,
 } from "./utils.js";
-import { setPhysicsBodyTrigger } from "./physics.js";
+import { setPhysicsBodyTrigger, syncPhysicsBodyFromObject } from "./physics.js";
 
 export function loadTargetForTrebuchet(trebuchet) {
   const target = loadTargets.get(trebuchet.id) ?? loadTargets.get("default") ?? null;
@@ -84,17 +84,25 @@ export function updateTrebuchetAim(trebuchet, point) {
   const start = trebuchet.aimStart;
   if (!start) return;
 
-  const current = {
+  const requested = {
     x: Number(point.x),
     y: Number(point.y ?? start.y),
     z: Number(point.z ?? start.z),
   };
+  const pullX = requested.x - start.x;
+  const pullY = requested.y - start.y;
+  const pullDistance = Math.hypot(pullX, pullY);
+  const maxPullDistance = BARRAGE_CONFIG.aimMaxPullDistance ?? 6;
+  const clampedDistance = clamp(pullDistance, 0, maxPullDistance);
+  const pullScale = pullDistance > 0.0001 ? clampedDistance / pullDistance : 0;
+  const current = {
+    x: start.x + pullX * pullScale,
+    y: start.y + pullY * pullScale,
+    z: requested.z,
+  };
   trebuchet.aimCurrent = current;
 
-  const pullX = current.x - start.x;
-  const pullY = current.y - start.y;
-  const pullDistance = clamp(Math.hypot(pullX, pullY), 0, BARRAGE_CONFIG.aimMaxPullDistance ?? 8);
-  const pullRatio = pullDistance / Math.max(0.001, BARRAGE_CONFIG.aimMaxPullDistance ?? 8);
+  const pullRatio = clampedDistance / Math.max(0.001, maxPullDistance);
   const maxExtra = BARRAGE_CONFIG.trebuchetArmPullbackMaxDegrees
     ?? BARRAGE_CONFIG.aimArmMaxExtraDegrees
     ?? 45;
@@ -119,7 +127,47 @@ export function beginTrebuchetRelease(trebuchet) {
   trebuchet.fireState = ARM_STATE_RELEASING;
   trebuchet.pendingShot = {
     velocity,
+    released: false,
     startArmAngle: trebuchet.armAngle ?? (BARRAGE_CONFIG.trebuchetArmRestRotationZDegrees ?? 15),
   };
   trebuchet.releaseElapsedMs = 0;
+}
+
+export function targetPointForTrebuchetAtArmAngle(trebuchet, armAngle) {
+  const previousAngle = trebuchet.armAngle;
+  trebuchet.armAngle = armAngle;
+  const target = loadTargetForTrebuchet(trebuchet);
+  const point = target ? { x: target.x, y: target.y, z: target.z } : null;
+  trebuchet.armAngle = previousAngle;
+  loadTargetForTrebuchet(trebuchet);
+  return point;
+}
+
+export function releaseLoadedMissileFromTrebuchet(trebuchet, velocity, armAngle = null) {
+  const missile = trebuchet.loadedMissileId ? gameObjects.get(trebuchet.loadedMissileId) : null;
+  if (!missile || missile.loadedInto !== trebuchet.id) return false;
+
+  const target = armAngle === null
+    ? loadTargetForTrebuchet(trebuchet)
+    : targetPointForTrebuchetAtArmAngle(trebuchet, armAngle);
+
+  if (target) {
+    missile.x = target.x;
+    missile.y = target.y;
+    missile.z = target.z;
+  }
+
+  missile.loadedInto = null;
+  setPhysicsBodyTrigger(missile, false);
+  missile.vx = velocity.x;
+  missile.vy = velocity.y;
+  missile.vz = velocity.z;
+  syncPhysicsBodyFromObject(missile, velocity);
+
+  trebuchet.loaded = false;
+  trebuchet.loadedMissileId = null;
+  trebuchet.aimedBy = null;
+  trebuchet.aimStart = null;
+  trebuchet.aimCurrent = null;
+  return true;
 }

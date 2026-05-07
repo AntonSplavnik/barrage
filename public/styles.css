@@ -33,7 +33,8 @@ body {
   color: #ffd166;
 }
 
-#reset {
+#reset,
+#restart-server {
   appearance: none;
   padding: 5px 8px;
   color: #f6f2e8;
@@ -44,6 +45,7 @@ body {
   cursor: pointer;
 }
 
-#reset:hover {
+#reset:hover,
+#restart-server:hover {
   background: rgb(255 255 255 / 16%);
 }

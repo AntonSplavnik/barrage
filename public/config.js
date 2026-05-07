@@ -15,7 +15,7 @@ export const BARRAGE_CONFIG = {
   // Basic physics tuning.
   physicsEnabled: true,
   gravity: -9.81,
-  blockMass: 6,
+  blockMass: 20,
   blockFriction: 0.9,
   blockRestitution: 0.15,
   staticFriction: 1.0,
@@ -47,12 +47,23 @@ export const BARRAGE_CONFIG = {
 
   // Trebuchet firing.
   trebuchetArmRestRotationZDegrees: 15,
-  aimMaxPullDistance: 8,
-  aimPowerScale: 4,
-  trebuchetArmPullbackMaxDegrees: 80,
-  trebuchetFireVelocityMax: 28,
+  aimMaxPullDistance: 4.5,
+  aimPowerScale: 8,
+  trebuchetArmPullbackMaxDegrees: 75,
+  trebuchetFireVelocityMax: 33,
   fireReleaseAnimationMs: 180,
   fireReturnAnimationMs: 220,
+  aimArrowStartColor: "#ffffff",
+  aimArrowEndColor: "#39ff14",
+  aimArrowMaxLength: 4.5,
+  aimArrowRadius: 0.06,
+  aimArrowZOffset: 0.05,
+  aimArrowMinLength: 0.12,
+  aimArrowHeadLengthMin: 0.2,
+  aimArrowHeadLengthMax: 0.75,
+  aimArrowHeadLengthScale: 0.18,
+  aimArrowHeadWidth: 0.12,
+  aimArrowHeadWidthScale: 0.45,
 };
 
 if (typeof window !== "undefined") {

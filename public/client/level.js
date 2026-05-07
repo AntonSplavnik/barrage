@@ -1,6 +1,7 @@
 import { engine, scene, canvas, CONFIG } from "./engine.js";
-import { childRole, descendantsOf, isTrebuchetArmRoot } from "./utils.js";
-import { visualObjects, trebuchetArmNodes, findGameplayRoot } from "./state.js";
+import { childRole, descendantsOf, isTrebuchetArmRoot, findTrebuchetArmAncestor } from "./utils.js";
+import { visualObjects, visualBaseRotations, trebuchetArmNodes, trebuchetLoadTargets, findGameplayRoot } from "./state.js";
+import { createAimArrowMeshes } from "./aim.js";
 
 const {
   ArcRotateCamera,
@@ -16,6 +17,9 @@ const {
 const LEVEL_URL = CONFIG.levelUrl ?? "/assets/level1.glb";
 
 function registerVisualRoots() {
+  visualObjects.clear();
+  visualBaseRotations.clear();
+
   for (const transform of scene.transformNodes) {
     if (transform.parent && transform.parent.name !== "__root__") continue;
 
@@ -34,6 +38,29 @@ function registerVisualRoots() {
     }
 
     visualObjects.set(transform.name, transform);
+    const baseRotation = transform.rotationQuaternion?.toEulerAngles() ?? transform.rotation;
+    visualBaseRotations.set(transform.name, {
+      x: baseRotation.x,
+      y: baseRotation.y,
+      z: baseRotation.z,
+    });
+  }
+}
+
+function registerTrebuchetLoadTargets() {
+  trebuchetLoadTargets.clear();
+
+  for (const transform of scene.transformNodes) {
+    if (!transform.name.toLowerCase().includes("missile-load-target")) continue;
+
+    const root = findGameplayRoot(transform);
+    if (!root) continue;
+
+    trebuchetLoadTargets.set(root.name, {
+      targetNode: transform,
+      rootNode: root,
+      armNode: findTrebuchetArmAncestor(transform),
+    });
   }
 }
 
@@ -164,6 +191,8 @@ export async function loadLevel() {
     applyTrebuchetArmRestPose();
     registerVisualRoots();
     registerTrebuchetArmNodes();
+    registerTrebuchetLoadTargets();
+    createAimArrowMeshes();
 
     if (visualObjects.size === 0) {
       createFallbackScene();

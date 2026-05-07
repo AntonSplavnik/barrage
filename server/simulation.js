@@ -21,7 +21,7 @@ import {
   returnDraggedObjectUpright,
 } from "./physics.js";
 import { resolveCollisions } from "./collision.js";
-import { loadTargetForTrebuchet } from "./trebuchet.js";
+import { loadTargetForTrebuchet, releaseLoadedMissileFromTrebuchet } from "./trebuchet.js";
 
 function updateTrebuchetFireState(dt) {
   for (const trebuchet of gameObjects.values()) {
@@ -51,34 +51,28 @@ function updateTrebuchetFireState(dt) {
     trebuchet.releaseElapsedMs = (trebuchet.releaseElapsedMs ?? 0) + dt * 1000;
     const progress = clamp(trebuchet.releaseElapsedMs / durationMs, 0, 1);
     const startArmAngle = trebuchet.pendingShot?.startArmAngle ?? trebuchet.armAngle ?? 0;
+    const restArmAngle = restArmAngleForTrebuchet(trebuchet);
+    const previousArmAngle = trebuchet.armAngle ?? startArmAngle;
+    const velocity = trebuchet.pendingShot?.velocity ?? { x: 0, y: 0, z: 0 };
     trebuchet.armAngle = lerp(startArmAngle, 0, progress);
+
+    const shouldReleaseAtRest = !trebuchet.pendingShot?.released
+      && (startArmAngle <= restArmAngle || (previousArmAngle > restArmAngle && trebuchet.armAngle <= restArmAngle));
+
+    if (shouldReleaseAtRest) {
+      releaseLoadedMissileFromTrebuchet(trebuchet, velocity, restArmAngle);
+      if (trebuchet.pendingShot) {
+        trebuchet.pendingShot.released = true;
+      }
+    }
 
     if (progress < 1) continue;
 
-    const missile = trebuchet.loadedMissileId ? gameObjects.get(trebuchet.loadedMissileId) : null;
-    const velocity = trebuchet.pendingShot?.velocity ?? { x: 0, y: 0, z: 0 };
-
-    if (missile && missile.loadedInto === trebuchet.id) {
-      const target = loadTargetForTrebuchet(trebuchet);
-      if (target) {
-        missile.x = target.x;
-        missile.y = target.y;
-        missile.z = target.z;
-      }
-      missile.loadedInto = null;
-      setPhysicsBodyTrigger(missile, false);
-      missile.vx = velocity.x;
-      missile.vy = velocity.y;
-      missile.vz = velocity.z;
-      syncPhysicsBodyFromObject(missile, velocity);
+    if (!trebuchet.pendingShot?.released) {
+      releaseLoadedMissileFromTrebuchet(trebuchet, velocity, restArmAngle);
     }
 
-    trebuchet.loaded = false;
-    trebuchet.loadedMissileId = null;
     trebuchet.fireState = ARM_STATE_RETURNING;
-    trebuchet.aimedBy = null;
-    trebuchet.aimStart = null;
-    trebuchet.aimCurrent = null;
     trebuchet.pendingShot = null;
     trebuchet.returnStartArmAngle = trebuchet.armAngle;
     trebuchet.releaseElapsedMs = 0;
@@ -144,6 +138,14 @@ function simulateHavokPhysics() {
     object.vx = linearVelocity.x;
     object.vy = linearVelocity.y;
     object.vz = 0;
+
+    const floorY = SERVER_CONFIG.groundY + object.halfY - (object.offsetY ?? 0);
+    if (object.y < floorY) {
+      object.y = floorY;
+      if (object.vy < 0) object.vy = 0;
+      node.position.y = floorY;
+      aggregate.body.setLinearVelocity(new Vector3(object.vx, 0, 0));
+    }
   }
 }
 

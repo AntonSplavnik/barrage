@@ -1,7 +1,8 @@
-import { scene, canvas, resetEl, CONFIG } from "./engine.js";
+import { scene, canvas, resetEl, restartServerEl, connectionEl, CONFIG } from "./engine.js";
 import { isDraggableRoot, clampMagnitude } from "./utils.js";
 import { visualObjects, latestObjectStates, findGameplayRoot } from "./state.js";
 import { sendInput } from "./network.js";
+import { setAimRefs, updateAimArrow, hideAimArrow } from "./aim.js";
 
 const { Vector3 } = BABYLON;
 
@@ -12,6 +13,17 @@ let latestDragPoint = null;
 let releaseSamples = [];
 let releaseSampleTimer = null;
 let releaseVelocity = { x: 0, y: 0, z: 0 };
+let aimWorldPoint = null;
+
+setAimRefs(
+  () => pointerMode,
+  () => selectedEntityId,
+  () => aimWorldPoint,
+);
+
+function setStatus(text) {
+  connectionEl.textContent = text;
+}
 
 function shouldInvertXForEntity(entityId) {
   if (entityId.toLowerCase().includes("trebuche")) {
@@ -32,23 +44,8 @@ function protocolPointFromWorld(world, entityId = "") {
 function sampleReleasePoint() {
   if (!latestDragPoint) return;
 
-  const now = performance.now();
-  const previous = releaseSamples.at(-1);
-
-  if (previous) {
-    const distance = Math.hypot(
-      latestDragPoint.x - previous.point.x,
-      latestDragPoint.y - previous.point.y,
-      latestDragPoint.z - previous.point.z,
-    );
-
-    if (distance < (CONFIG.releaseVelocityMinSampleDistance ?? 0.05)) {
-      return;
-    }
-  }
-
   releaseSamples.push({
-    time: now,
+    time: performance.now(),
     point: latestDragPoint,
   });
 
@@ -138,6 +135,8 @@ function beginDrag() {
   const objectState = latestObjectStates.get(selectedEntityId);
   if (objectState?.loadedInto) {
     pointerMode = "aim";
+    aimWorldPoint = world.clone();
+    updateAimArrow();
     sendInput("aimStart", {
       entityId: selectedEntityId,
       trebuchetId: objectState.loadedInto,
@@ -161,6 +160,8 @@ function moveDrag() {
   if (!world) return;
 
   if (pointerMode === "aim") {
+    aimWorldPoint = world.clone();
+    updateAimArrow();
     const point = protocolPointFromWorld(world, selectedEntityId);
     sendInput("aimMove", {
       entityId: selectedEntityId,
@@ -191,6 +192,8 @@ function endDrag() {
   const point = world ?? fallback;
 
   if (pointerMode === "aim") {
+    aimWorldPoint = point.clone();
+    updateAimArrow();
     const finalPoint = protocolPointFromWorld(point, selectedEntityId);
     sendInput("aimRelease", {
       entityId: selectedEntityId,
@@ -199,6 +202,8 @@ function endDrag() {
 
     selectedEntityId = null;
     pointerMode = "drag";
+    aimWorldPoint = null;
+    hideAimArrow();
     return;
   }
 
@@ -223,6 +228,8 @@ function endDrag() {
   latestDragPoint = null;
   releaseSamples = [];
   releaseVelocity = { x: 0, y: 0, z: 0 };
+  aimWorldPoint = null;
+  hideAimArrow();
 
   if (CONFIG.cameraControlsEnabled) {
     scene.activeCamera.attachControl(canvas, true);
@@ -232,6 +239,29 @@ function endDrag() {
 export function setupInput() {
   resetEl.addEventListener("click", () => {
     sendInput("reset", {});
+  });
+
+  restartServerEl.addEventListener("click", async () => {
+    restartServerEl.disabled = true;
+    setStatus("Restarting server...");
+
+    try {
+      const response = await fetch("/admin/restart", {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        throw new Error(`Restart failed: ${response.status}`);
+      }
+
+      window.setTimeout(() => {
+        window.location.reload();
+      }, 1500);
+    } catch (error) {
+      console.error("Failed to restart server.", error);
+      setStatus("Restart failed");
+      restartServerEl.disabled = false;
+    }
   });
 
   scene.onPointerObservable.add((pointerInfo) => {

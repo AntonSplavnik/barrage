@@ -2,6 +2,7 @@ import { engine, scene } from "./engine.js";
 import { loadLevel } from "./level.js";
 import { setupInput } from "./input.js";
 import "./network.js";
+import "./aim.js";
 
 setupInput();
 
