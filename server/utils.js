@@ -155,10 +155,13 @@ export function constrainWorldBounds(object) {
   if (object.z === SERVER_CONFIG.worldMaxZ && object.vz > 0) object.vz = 0;
 }
 
-export function constrainedPointForObject(object, point) {
+export function constrainedPointForObject(object, point, clientId = null) {
   if (!isTrebuchetName(object.id)) {
+    let x = Number(point.x);
+    if (clientId === 1) x = Math.min(x, 0);
+    if (clientId === 2) x = Math.max(x, 0);
     return {
-      x: Number(point.x),
+      x,
       y: Number(point.y ?? object.y),
       z: Number(point.z),
     };
