@@ -29,6 +29,23 @@ export function descendantsOf(transform) {
   return descendants;
 }
 
+export function isMissileName(name) {
+  return name.toLowerCase().includes("missile");
+}
+
+export function colliderNodesFor(root) {
+  const descendants = descendantsOf(root);
+  const nodes = descendants.filter((child) => {
+    const role = childRole(child.name);
+    return role === "Col" || role === "ColVis";
+  });
+  const selfRole = childRole(root.name);
+  if (selfRole === "Col" || selfRole === "ColVis") {
+    nodes.push(root);
+  }
+  return nodes.length > 0 ? nodes : [root];
+}
+
 export function isDraggableRoot(root) {
   const name = root.name.toLowerCase();
   return name.includes("block")

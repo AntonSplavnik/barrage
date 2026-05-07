@@ -1,5 +1,5 @@
 import { engine, scene, canvas, CONFIG } from "./engine.js";
-import { childRole, descendantsOf, isTrebuchetArmRoot, findTrebuchetArmAncestor } from "./utils.js";
+import { childRole, descendantsOf, isTrebuchetArmRoot, findTrebuchetArmAncestor, isMissileName, colliderNodesFor } from "./utils.js";
 import { visualObjects, visualBaseRotations, trebuchetArmNodes, trebuchetLoadTargets, findGameplayRoot } from "./state.js";
 import { createAimArrowMeshes } from "./aim.js";
 
@@ -138,6 +138,83 @@ function ensureCameraAndLight() {
   });
 }
 
+let missilePickColliderMat = null;
+
+function boundsForVisualNodes(nodes) {
+  let minX = Infinity, minY = Infinity, minZ = Infinity;
+  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+
+  for (const node of nodes) {
+    if (typeof node.getHierarchyBoundingVectors !== "function") continue;
+    const b = node.getHierarchyBoundingVectors(true);
+    minX = Math.min(minX, b.min.x);
+    minY = Math.min(minY, b.min.y);
+    minZ = Math.min(minZ, b.min.z);
+    maxX = Math.max(maxX, b.max.x);
+    maxY = Math.max(maxY, b.max.y);
+    maxZ = Math.max(maxZ, b.max.z);
+  }
+
+  if (!Number.isFinite(minX)) return null;
+  return { minX, minY, minZ, maxX, maxY, maxZ };
+}
+
+function maxWorldScale(node) {
+  const m = node.getWorldMatrix().m;
+  return Math.max(
+    Math.hypot(m[0], m[1], m[2]),
+    Math.hypot(m[4], m[5], m[6]),
+    Math.hypot(m[8], m[9], m[10]),
+    0.0001,
+  );
+}
+
+export function createMissilePickCollider(root) {
+  const scale = CONFIG.missilePickColliderScale ?? 1;
+  if (scale <= 1) return;
+
+  const bounds = boundsForVisualNodes(colliderNodesFor(root));
+  if (!bounds) return;
+
+  if (!missilePickColliderMat) {
+    missilePickColliderMat = new StandardMaterial("MissilePickColliderMat", scene);
+    missilePickColliderMat.disableLighting = true;
+  }
+
+  const sizeX = (bounds.maxX - bounds.minX) * scale;
+  const sizeY = (bounds.maxY - bounds.minY) * scale;
+  const sizeZ = (bounds.maxZ - bounds.minZ) * scale;
+  const ws = maxWorldScale(root);
+
+  const pickCollider = MeshBuilder.CreateBox(`${root.name}-PickCollider`, {
+    width: Math.max(sizeX, 0.1) / ws,
+    height: Math.max(sizeY, 0.1) / ws,
+    depth: Math.max(sizeZ, 0.1) / ws,
+  }, scene);
+
+  const center = new Vector3(
+    (bounds.minX + bounds.maxX) / 2,
+    (bounds.minY + bounds.maxY) / 2,
+    (bounds.minZ + bounds.maxZ) / 2,
+  );
+  const worldToRoot = root.getWorldMatrix().clone().invert();
+
+  pickCollider.parent = root;
+  pickCollider.position = Vector3.TransformCoordinates(center, worldToRoot);
+  pickCollider.material = missilePickColliderMat;
+  pickCollider.visibility = 0;
+  pickCollider.isPickable = true;
+  pickCollider.receiveShadows = false;
+}
+
+function createMissilePickColliders() {
+  for (const root of visualObjects.values()) {
+    if (isMissileName(root.name)) {
+      createMissilePickCollider(root);
+    }
+  }
+}
+
 function isShadowCapableLight(light) {
   return light.getClassName() !== "HemisphericLight";
 }
@@ -190,6 +267,7 @@ export async function loadLevel() {
     await SceneLoader.AppendAsync("", LEVEL_URL, scene);
     applyTrebuchetArmRestPose();
     registerVisualRoots();
+    createMissilePickColliders();
     registerTrebuchetArmNodes();
     registerTrebuchetLoadTargets();
     createAimArrowMeshes();

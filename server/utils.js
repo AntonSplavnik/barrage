@@ -244,11 +244,21 @@ export function boundsForNodes(nodes) {
   };
 }
 
+function isNestedTrebuchetArmDescendant(root, node) {
+  let current = node.parent;
+  while (current && current !== root) {
+    if (isTrebuchetArmRoot(current)) return true;
+    current = current.parent;
+  }
+  return false;
+}
+
 export function colliderBoundsFor(transform) {
   try {
     const colliderNodes = descendantsOf(transform).filter((child) => {
       const role = childRole(child.name);
-      return role === "Col" || role === "ColVis";
+      return (role === "Col" || role === "ColVis")
+        && !isNestedTrebuchetArmDescendant(transform, child);
     });
     const bounds = boundsForNodes(colliderNodes.length > 0 ? colliderNodes : [transform]);
     const absolutePosition = transform.getAbsolutePosition();

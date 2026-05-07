@@ -44,7 +44,8 @@ export const BARRAGE_CONFIG = {
   releaseVelocityMinSampleDistance: 0.05,
 
   // Missile loading.
-  missileLoadRange: 0.5,
+  missileLoadRange: 2,
+  missilePickColliderScale: 2,
 
   // Trebuchet firing.
   trebuchetArmRestRotationZDegrees: 15,
