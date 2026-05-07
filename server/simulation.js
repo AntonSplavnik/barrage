@@ -76,7 +76,8 @@ function updateTrebuchetFireState(dt) {
 }
 
 function simulateHavokPhysics() {
-  updateTrebuchetFireState(TICK_MS / 1000);
+  const scaledDt = (TICK_MS / 1000) * (BARRAGE_CONFIG.physicsTimeScale ?? 1);
+  updateTrebuchetFireState(scaledDt);
 
   for (const object of gameObjects.values()) {
     if (!object.dynamic) continue;
@@ -113,7 +114,7 @@ function simulateHavokPhysics() {
     }
   }
 
-  scene.getPhysicsEngine()?._step(TICK_MS / 1000);
+  scene.getPhysicsEngine()?._step(scaledDt);
 
   for (const object of gameObjects.values()) {
     if (!object.dynamic) continue;

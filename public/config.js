@@ -15,6 +15,7 @@ export const BARRAGE_CONFIG = {
   // Basic physics tuning.
   physicsEnabled: true,
   gravity: -9.81,
+  physicsTimeScale: 1.5,
   blockMass: 20,
   blockFriction: 0.9,
   blockRestitution: 0.15,
