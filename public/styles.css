@@ -51,8 +51,8 @@ body {
 #crowns-left,
 #crowns-right {
   position: fixed;
-  top: 58px;
-  font-size: 22px;
+  top: 64px;
+  font-size: 44px;
   line-height: 1;
   pointer-events: none;
 }
