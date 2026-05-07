@@ -103,6 +103,11 @@ export function applyInput(client, message) {
     if (!object.dynamic) return;
     if (object.loadedInto) return;
 
+    if (!isTrebuchetName(object.id)) {
+      if (client.id === 1 && object.x > 0) return;
+      if (client.id === 2 && object.x < 0) return;
+    }
+
     object.draggedBy = client.id;
     if (isMissileName(object.id)) setPhysicsBodyTrigger(object, true);
     object.vx = 0;
@@ -161,7 +166,7 @@ export function applyInput(client, message) {
     const now = Date.now();
     const previous = dragState.get(object.id);
     const dt = Math.max(0.001, (now - (previous?.lastTime ?? now)) / 1000);
-    const next = constrainedPointForObject(object, message.point);
+    const next = constrainedPointForObject(object, message.point, client.id);
     const nextX = next.x;
     const nextY = next.y;
     const nextZ = next.z;
@@ -186,7 +191,7 @@ export function applyInput(client, message) {
     if (!object || !message.point) return;
     if (object.draggedBy !== client.id) return;
 
-    const next = constrainedPointForObject(object, message.point);
+    const next = constrainedPointForObject(object, message.point, client.id);
     const releaseVelocity = usableReleaseVelocity(object, message);
     object.x = next.x;
     object.y = next.y;
