@@ -22,6 +22,7 @@ import { SERVER_CONFIG } from "./config/server.js";
 import { BARRAGE_CONFIG } from "./public/config.js";
 import { firstLevel, nextLevel } from "./server/levelCatalog.js";
 import { RoomManager } from "./server/roomManager.js";
+import { playerSide, canGrab, isInPlayerZone, zoneLimitX, checkKingKnockout } from "./server/gameManager.js";
 
 const { XMLHttpRequest } = xhr2;
 globalThis.XMLHttpRequest = XMLHttpRequest;
@@ -693,8 +694,10 @@ function recordRoundWin(loserPlayerId) {
   if (!winner) return;
 
   activeRoom.roundWinner = winner;
-  activeRoom.paused = true;
   activeRoom.scores[winner] = (activeRoom.scores[winner] ?? 0) + 1;
+
+  const room = activeRoom;
+  setTimeout(() => { room.paused = true; }, BARRAGE_CONFIG.postWinSimulationMs ?? 1000);
 
   broadcast({
     type: "roundEnded",
@@ -706,12 +709,11 @@ function recordRoundWin(loserPlayerId) {
     scores: activeRoom.scores,
   });
 
-  const room = activeRoom;
   setTimeout(() => {
     advanceRoomAfterRound(room).catch((error) => {
       console.error(`Failed to advance ${room.id} after round.`, error);
     });
-  }, BARRAGE_CONFIG.roundEndDelayMs ?? 1800);
+  }, BARRAGE_CONFIG.roundEndDelayMs ?? 5000);
 }
 
 async function advanceRoomAfterRound(room) {
@@ -773,6 +775,28 @@ function maybeRecordKingHit(object, other) {
   }
 }
 
+function releaseDrag(object, releaseVelocity) {
+  constrainWorldBounds(object);
+  returnDraggedObjectUpright(object);
+  if (!maybeLoadMissile(object)) {
+    setPhysicsBodyTrigger(object, false);
+    resolveCollisionsForObject(object, { includeDragged: true });
+    object.vx = releaseVelocity.x;
+    object.vy = releaseVelocity.y;
+    object.vz = releaseVelocity.z;
+    syncPhysicsBodyFromObject(object, releaseVelocity);
+  } else {
+    setPhysicsBodyTrigger(object, true);
+    syncPhysicsBodyFromObject(object, { x: 0, y: 0, z: 0 });
+  }
+  object.dragVx = 0;
+  object.dragVy = 0;
+  object.dragVz = 0;
+  object.draggedBy = null;
+  object.hitKingIds = null;
+  dragState.delete(object.id);
+}
+
 function applyInput(client, message) {
   if (message.type !== "input") return;
 
@@ -790,8 +814,8 @@ function applyInput(client, message) {
     const object = gameObjects.get(message.entityId);
     if (!object || !message.point) return;
     if (!object.dynamic) return;
-
     if (object.loadedInto) return;
+    if (!canGrab(client.playerId, object)) return;
 
     object.draggedBy = client.id;
     if (isMissileName(object.id)) {
@@ -854,6 +878,16 @@ function applyInput(client, message) {
     const previous = dragState.get(object.id);
     const dt = Math.max(0.001, (now - (previous?.lastTime ?? now)) / 1000);
     const next = constrainedPointForObject(object, message.point);
+
+    const side = playerSide(client.playerId);
+    if (side && !isInPlayerZone(side, next.x)) {
+      object.x = zoneLimitX(side);
+      object.y = next.y;
+      object.z = next.z;
+      releaseDrag(object, { x: 0, y: 0, z: 0 });
+      return;
+    }
+
     const nextX = next.x;
     const nextY = next.y;
     const nextZ = next.z;
@@ -880,29 +914,10 @@ function applyInput(client, message) {
     if (object.draggedBy !== client.id) return;
 
     const next = constrainedPointForObject(object, message.point);
-    const releaseVelocity = usableReleaseVelocity(object, message);
     object.x = next.x;
     object.y = next.y;
     object.z = next.z;
-    constrainWorldBounds(object);
-    returnDraggedObjectUpright(object);
-    if (!maybeLoadMissile(object)) {
-      setPhysicsBodyTrigger(object, false);
-      resolveCollisionsForObject(object, { includeDragged: true });
-      object.vx = releaseVelocity.x;
-      object.vy = releaseVelocity.y;
-      object.vz = releaseVelocity.z;
-      syncPhysicsBodyFromObject(object, releaseVelocity);
-    } else {
-      setPhysicsBodyTrigger(object, true);
-      syncPhysicsBodyFromObject(object, { x: 0, y: 0, z: 0 });
-    }
-    object.dragVx = 0;
-    object.dragVy = 0;
-    object.dragVz = 0;
-    object.draggedBy = null;
-    object.hitKingIds = null;
-    dragState.delete(object.id);
+    releaseDrag(object, usableReleaseVelocity(object, message));
   }
 
   if (message.action === "fire") {
@@ -1894,6 +1909,8 @@ async function startServer() {
       bindRoom(room);
       tick += 1;
       simulatePhysics(TICK_MS / 1000);
+      const knockedKing = checkKingKnockout(gameObjects);
+      if (knockedKing) recordRoundWin(playerIdForKing(knockedKing));
       sendState();
       saveActiveRoomTick();
     }

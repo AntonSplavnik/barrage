@@ -17,6 +17,7 @@ const {
 const CONFIG = BARRAGE_CONFIG;
 const LEVEL_URL = CONFIG.levelUrl ?? "/assets/level1.glb";
 const canvas = document.getElementById("game");
+const hudEl = document.getElementById("hud");
 const connectionEl = document.getElementById("connection");
 const playerEl = document.getElementById("player");
 const musicToggleEl = document.getElementById("music-toggle");
@@ -24,6 +25,12 @@ const resetEl = document.getElementById("reset");
 const restartServerEl = document.getElementById("restart-server");
 const lobbyEl = document.getElementById("lobby");
 const lobbyStatusEl = document.getElementById("lobby-status");
+const lobbyPanelEl = document.querySelector(".lobby-panel");
+const roundCounterEl = document.getElementById("round-counter");
+const crownsLeftEl = document.getElementById("crowns-left");
+const crownsRightEl = document.getElementById("crowns-right");
+const hudOpponentEl = document.getElementById("hud-opponent");
+const opponentPlayerEl = document.getElementById("opponent-player");
 
 const engine = new Engine(canvas, true);
 const scene = new Scene(engine);
@@ -55,6 +62,9 @@ let currentLevelUrl = LEVEL_URL;
 let loadedLevelUrl = null;
 let levelSwitchPromise = Promise.resolve();
 let isMatched = false;
+let myPlayerId = null;
+let displayedRound = 0;
+let displayedScores = {};
 const musicController = createMusicController(musicToggleEl, {
   onStatus: setStatus,
 });
@@ -63,9 +73,38 @@ function setStatus(text) {
   connectionEl.textContent = text;
 }
 
-function setLobbyStatus(text, visible = true) {
+function setLobbyStatus(text, visible = true, winnerPlayerId = null) {
   lobbyStatusEl.textContent = text;
   lobbyEl.classList.toggle("is-visible", visible);
+  lobbyPanelEl.classList.remove("winner-odd", "winner-even");
+  if (winnerPlayerId) {
+    const num = parseInt(winnerPlayerId.split("_")[1], 10);
+    if (Number.isFinite(num)) {
+      lobbyPanelEl.classList.add(num % 2 === 1 ? "winner-odd" : "winner-even");
+    }
+  }
+}
+
+function updateRoundCounter(roundNumber) {
+  if (roundNumber === displayedRound) return;
+  displayedRound = roundNumber;
+  roundCounterEl.textContent = `Round ${roundNumber}`;
+  roundCounterEl.classList.add("is-visible");
+}
+
+function updateCrowns(scores) {
+  if (JSON.stringify(scores) === JSON.stringify(displayedScores)) return;
+  displayedScores = scores;
+  let leftCount = 0;
+  let rightCount = 0;
+  for (const [playerId, wins] of Object.entries(scores)) {
+    const num = parseInt(playerId.split("_")[1], 10);
+    if (!Number.isFinite(num)) continue;
+    if (num % 2 === 1) leftCount += wins;
+    else rightCount += wins;
+  }
+  crownsLeftEl.textContent = "👑".repeat(leftCount);
+  crownsRightEl.textContent = "👑".repeat(rightCount);
 }
 
 function switchLevelIfNeeded(levelUrl) {
@@ -748,7 +787,13 @@ socket.addEventListener("message", (event) => {
   const message = JSON.parse(event.data);
 
   if (message.type === "welcome") {
+    myPlayerId = message.playerId;
     playerEl.textContent = message.playerId;
+    const playerNum = parseInt(message.playerId?.split("_")[1], 10);
+    if (Number.isFinite(playerNum)) {
+      hudEl.classList.remove("player-odd", "player-even");
+      hudEl.classList.add(playerNum % 2 === 1 ? "player-odd" : "player-even");
+    }
   }
 
   if (message.type === "lobby") {
@@ -768,6 +813,17 @@ socket.addEventListener("message", (event) => {
     currentLevelUrl = message.level ?? currentLevelUrl;
     isMatched = false;
     playerEl.textContent = message.playerId;
+    if (message.opponentId) {
+      const oppNum = parseInt(message.opponentId.split("_")[1], 10);
+      opponentPlayerEl.textContent = message.opponentId;
+      hudOpponentEl.classList.remove("player-odd", "player-even");
+      if (Number.isFinite(oppNum)) {
+        hudOpponentEl.classList.add(oppNum % 2 === 1 ? "player-odd" : "player-even");
+      }
+      hudOpponentEl.style.display = "block";
+    }
+    updateRoundCounter(message.roundNumber);
+    updateCrowns(message.scores ?? {});
     setLobbyStatus("Loading match...");
     switchLevelIfNeeded(currentLevelUrl).then(() => {
       isMatched = true;
@@ -777,13 +833,16 @@ socket.addEventListener("message", (event) => {
 
   if (message.type === "roundEnded") {
     isMatched = false;
-    setLobbyStatus(`${message.winner} won round ${message.roundNumber}`);
+    updateCrowns(message.scores ?? {});
+    setLobbyStatus(`${message.winner} won round ${message.roundNumber}`, true, message.winner);
   }
 
   if (message.type === "levelChanged") {
     if (message.roomId && currentRoomId && message.roomId !== currentRoomId) return;
     currentLevelUrl = message.level ?? currentLevelUrl;
     isMatched = false;
+    updateRoundCounter(message.roundNumber);
+    updateCrowns(message.scores ?? {});
     setLobbyStatus("Loading next level...");
     switchLevelIfNeeded(currentLevelUrl).then(() => {
       isMatched = true;
@@ -793,6 +852,8 @@ socket.addEventListener("message", (event) => {
 
   if (message.type === "state") {
     if (message.roomId && currentRoomId && message.roomId !== currentRoomId) return;
+    updateRoundCounter(message.roundNumber);
+    updateCrowns(message.scores ?? {});
     applyState(message);
     updateMusicFromState(message);
   }
@@ -801,6 +862,7 @@ socket.addEventListener("message", (event) => {
 socket.addEventListener("close", () => {
   setStatus("Disconnected");
   isMatched = false;
+  hudOpponentEl.style.display = "none";
   setLobbyStatus("Disconnected");
 });
 

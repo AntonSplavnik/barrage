@@ -4,6 +4,11 @@ export const LEVELS = [
     file: "level1.glb",
     url: "/assets/level1.glb",
   },
+  {
+    id: "level2",
+    file: "level2.glb",
+    url: "/assets/level2.glb",
+  },
 ];
 
 export function firstLevel() {
