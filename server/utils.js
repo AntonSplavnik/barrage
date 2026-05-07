@@ -61,10 +61,6 @@ export function isLeftSideTrebuchetName(name) {
   return lowerName.includes("p1") || lowerName.includes("left") || lowerName.includes("1");
 }
 
-export function isGroundName(name) {
-  return name.toLowerCase().includes("ground");
-}
-
 export function sideSignForTrebuchet(name) {
   return isLeftSideTrebuchetName(name) ? 1 : -1;
 }
@@ -111,18 +107,6 @@ export function babylonToProtocolRotationZ(radians) {
 
 export function rotationQuaternionForObject(object) {
   return Quaternion.FromEulerAngles(0, 0, protocolToBabylonRotation(object.rot ?? 0));
-}
-
-export function velocityComponent(object, axis) {
-  if (axis === "x") return object.vx;
-  if (axis === "y") return object.vy;
-  return object.vz;
-}
-
-export function setVelocityComponent(object, axis, value) {
-  if (axis === "x") object.vx = value;
-  if (axis === "y") object.vy = value;
-  if (axis === "z") object.vz = value;
 }
 
 export function clampAngularVelocity(value) {
@@ -295,17 +279,3 @@ export function estimateHalfHeight(transform) {
   return colliderBoundsFor(transform).halfY;
 }
 
-export function aabbFor(object) {
-  const centerX = object.x + object.offsetX;
-  const centerY = object.y + object.offsetY;
-  const centerZ = object.z + object.offsetZ;
-
-  return {
-    minX: centerX - object.halfX,
-    maxX: centerX + object.halfX,
-    minY: centerY - object.halfY,
-    maxY: centerY + object.halfY,
-    minZ: centerZ - object.halfZ,
-    maxZ: centerZ + object.halfZ,
-  };
-}

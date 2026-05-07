@@ -82,6 +82,7 @@ export function setPhysicsBodyTrigger(object, isTrigger) {
   aggregate.shape.isTrigger = isTrigger;
 }
 
+
 export function constrainBodyToPlane(object) {
   const aggregate = physicsAggregates.get(object.id);
   if (!aggregate) return;

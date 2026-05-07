@@ -149,6 +149,6 @@ await loadLevelIfPresent();
 
 simulationInterval = setInterval(() => {
   gameState.tick += 1;
-  simulatePhysics(TICK_MS / 1000);
+  simulatePhysics();
   sendState();
 }, TICK_MS);

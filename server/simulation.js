@@ -4,8 +4,6 @@ import { SERVER_CONFIG, TICK_MS } from "./config.js";
 import { BARRAGE_CONFIG } from "../public/config.js";
 import {
   isTrebuchetName,
-  constrainWorldBounds,
-  constrainedPointForObject,
   babylonToProtocolRotationZ,
   lerp,
   clamp,
@@ -16,11 +14,9 @@ import {
 } from "./utils.js";
 import {
   syncPhysicsBodyFromObject,
-  setPhysicsBodyTrigger,
   constrainBodyToPlane,
   returnDraggedObjectUpright,
 } from "./physics.js";
-import { resolveCollisions } from "./collision.js";
 import { loadTargetForTrebuchet, releaseLoadedMissileFromTrebuchet } from "./trebuchet.js";
 
 function updateTrebuchetFireState(dt) {
@@ -149,66 +145,6 @@ function simulateHavokPhysics() {
   }
 }
 
-export function simulatePhysics(dt) {
-  if (physicsAggregates.size > 0) {
-    simulateHavokPhysics();
-    return;
-  }
-
-  updateTrebuchetFireState(dt);
-
-  for (const object of gameObjects.values()) {
-    if (!object.dynamic || object.draggedBy) continue;
-    if (object.loadedInto) {
-      const trebuchet = gameObjects.get(object.loadedInto);
-      const target = trebuchet ? loadTargetForTrebuchet(trebuchet) : null;
-      if (target) {
-        object.x = target.x;
-        object.y = target.y;
-        object.z = target.z;
-      }
-      object.vx = 0;
-      object.vy = 0;
-      object.vz = 0;
-      continue;
-    }
-
-    if (isTrebuchetName(object.id)) {
-      object.x += object.vx * dt;
-      object.x = constrainedPointForObject(object, { x: object.x, y: object.y, z: object.z }).x;
-      object.y = object.originY;
-      object.z = object.originZ;
-      object.vx *= Math.max(0, 1 - SERVER_CONFIG.trebuchetReleaseFriction * dt);
-      if (Math.abs(object.vx) < 0.01) object.vx = 0;
-      object.vy = 0;
-      object.vz = 0;
-      continue;
-    }
-
-    object.vy += SERVER_CONFIG.gravity * dt;
-    object.x += object.vx * dt;
-    object.y += object.vy * dt;
-    object.z += object.vz * dt;
-    constrainWorldBounds(object);
-
-    const floorY = SERVER_CONFIG.groundY + object.halfY - object.offsetY;
-    if (object.y < floorY) {
-      object.y = floorY;
-
-      if (Math.abs(object.vy) > 0.4) {
-        object.vy = -object.vy * object.restitution;
-      } else {
-        object.vy = 0;
-      }
-
-      const frictionScale = Math.max(0, 1 - object.friction * dt * 3);
-      object.vx *= frictionScale;
-      object.vz *= frictionScale;
-
-      if (Math.abs(object.vx) < 0.01) object.vx = 0;
-      if (Math.abs(object.vz) < 0.01) object.vz = 0;
-    }
-  }
-
-  resolveCollisions();
+export function simulatePhysics() {
+  simulateHavokPhysics();
 }

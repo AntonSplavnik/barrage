@@ -18,7 +18,6 @@ import {
   setPhysicsBodyTrigger,
   returnDraggedObjectUpright,
 } from "./physics.js";
-import { resolveCollisionsForObject } from "./collision.js";
 import { maybeLoadMissile, updateTrebuchetAim, beginTrebuchetRelease } from "./trebuchet.js";
 import { broadcast } from "./network.js";
 
@@ -105,7 +104,7 @@ export function applyInput(client, message) {
     if (object.loadedInto) return;
 
     object.draggedBy = client.id;
-    setPhysicsBodyTrigger(object, true);
+    if (isMissileName(object.id)) setPhysicsBodyTrigger(object, true);
     object.vx = 0;
     object.vy = 0;
     object.vz = 0;
@@ -174,7 +173,6 @@ export function applyInput(client, message) {
     object.y = nextY;
     object.z = nextZ;
     constrainWorldBounds(object);
-    resolveCollisionsForObject(object, { includeDragged: true });
     returnDraggedObjectUpright(object);
     syncPhysicsBodyFromObject(object, { x: 0, y: 0, z: 0 });
     object.vx = 0;
@@ -196,8 +194,7 @@ export function applyInput(client, message) {
     constrainWorldBounds(object);
     returnDraggedObjectUpright(object);
     if (!maybeLoadMissile(object)) {
-      setPhysicsBodyTrigger(object, false);
-      resolveCollisionsForObject(object, { includeDragged: true });
+      if (isMissileName(object.id)) setPhysicsBodyTrigger(object, false);
       object.vx = releaseVelocity.x;
       object.vy = releaseVelocity.y;
       object.vz = releaseVelocity.z;
