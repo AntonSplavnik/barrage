@@ -11,6 +11,8 @@ import { NullEngine } from "@babylonjs/core/Engines/nullEngine.js";
 import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera.js";
 import { Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector.js";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode.js";
+import { Mesh } from "@babylonjs/core/Meshes/mesh.js";
+import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData.js";
 import { HavokPlugin } from "@babylonjs/core/Physics/v2/Plugins/havokPlugin.js";
 import { PhysicsAggregate } from "@babylonjs/core/Physics/v2/physicsAggregate.js";
 import { PhysicsPrestepType, PhysicsShapeType } from "@babylonjs/core/Physics/v2/IPhysicsEnginePlugin.js";
@@ -55,6 +57,7 @@ let scene = null;
 let tick = 0;
 let gameObjects = null;
 let dragState = null;
+let fragmentTemplateData = null;
 let loadTargets = null;
 let physicsAggregates = null;
 let havokInterfacePromise = null;
@@ -133,6 +136,7 @@ const roomManager = new RoomManager({
     bindRoom(room);
     await enableHavokPhysics();
     await loadLevelIfPresent();
+    await loadFragmentTemplates();
     saveActiveRoomTick();
     return room;
   },
@@ -277,6 +281,11 @@ function isMissileName(name) {
 
 function isKingName(name) {
   return name.toLowerCase().includes("king");
+}
+
+function isBlockName(name) {
+  const lowerName = name.toLowerCase();
+  return lowerName.includes("block") && !lowerName.includes("frag");
 }
 
 function isLeftSideTrebuchetName(name) {
@@ -729,6 +738,7 @@ async function advanceRoomAfterRound(room) {
   bindRoom(room);
   await enableHavokPhysics();
   await loadLevelIfPresent();
+  await loadFragmentTemplates();
   room.paused = false;
   saveActiveRoomTick();
 
@@ -775,6 +785,256 @@ function maybeRecordKingHit(object, other) {
   }
 }
 
+async function loadFragmentTemplates() {
+  if (fragmentTemplateData !== null) return;
+
+  fragmentTemplateData = {};
+  for (const [side, file] of [["L", "fragmented_blockL.glb"], ["R", "fragmented_blockR.glb"]]) {
+    const fragPath = path.join(assetsDir, file);
+    try {
+      const glbBuffer = await fs.readFile(fragPath);
+      fragmentTemplateData[side] = parseFragmentGlb(glbBuffer);
+      console.log(`Loaded ${fragmentTemplateData[side].length} fragment templates from ${file}.`);
+    } catch (err) {
+      console.warn(`Could not load ${file}: ${err.message}`);
+      fragmentTemplateData[side] = [];
+    }
+  }
+}
+
+function parseFragmentGlb(buffer) {
+  if (buffer.readUInt32LE(0) !== 0x46546C67) throw new Error("Not a GLB file");
+
+  const jsonChunkLen = buffer.readUInt32LE(12);
+  const gltf = JSON.parse(buffer.subarray(20, 20 + jsonChunkLen).toString("utf8"));
+
+  const binStart = (20 + jsonChunkLen + 3) & ~3;
+  const binData = buffer.subarray(binStart + 8);
+
+  const templates = [];
+
+  for (const node of gltf.nodes ?? []) {
+    if (node.mesh === undefined) continue;
+    const mesh = gltf.meshes?.[node.mesh];
+    const posAccIdx = mesh?.primitives?.[0]?.attributes?.POSITION;
+    if (posAccIdx === undefined) continue;
+
+    const nodeName = node.name ?? mesh.name ?? "";
+    const role = childRole(nodeName);
+    if (role !== "ColVis" && role !== "Col") continue;
+
+    const accessor = gltf.accessors[posAccIdx];
+    const bufView = gltf.bufferViews[accessor.bufferView];
+    const byteOffset = (bufView.byteOffset ?? 0) + (accessor.byteOffset ?? 0);
+    const count = accessor.count;
+    const stride = bufView.byteStride ?? 12;
+
+    const positions = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+      const off = byteOffset + i * stride;
+      positions[i * 3]     = binData.readFloatLE(off);
+      positions[i * 3 + 1] = binData.readFloatLE(off + 4);
+      positions[i * 3 + 2] = binData.readFloatLE(off + 8);
+    }
+
+    const [lx = 0, ly = 0, lz = 0] = node.translation ?? [0, 0, 0];
+
+    let minX = Infinity, minY = Infinity, minZ = Infinity;
+    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+    for (let i = 0; i < count; i++) {
+      minX = Math.min(minX, positions[i * 3]);     maxX = Math.max(maxX, positions[i * 3]);
+      minY = Math.min(minY, positions[i * 3 + 1]); maxY = Math.max(maxY, positions[i * 3 + 1]);
+      minZ = Math.min(minZ, positions[i * 3 + 2]); maxZ = Math.max(maxZ, positions[i * 3 + 2]);
+    }
+
+    templates.push({
+      localX: lx,
+      localY: ly,
+      localZ: lz,
+      positions,
+      offsetX: (minX + maxX) / 2,
+      offsetY: (minY + maxY) / 2,
+      offsetZ: (minZ + maxZ) / 2,
+      halfX: Math.max(0.05, (maxX - minX) / 2),
+      halfY: Math.max(0.05, (maxY - minY) / 2),
+      halfZ: Math.max(0.05, (maxZ - minZ) / 2),
+    });
+  }
+
+  return templates;
+}
+
+function fragmentBlock(block, missile) {
+  if (!fragmentTemplateData) return;
+  const side = block.id.toLowerCase().includes("blockl") ? "L" : "R";
+  const fragmentTemplates = fragmentTemplateData[side];
+  if (!fragmentTemplates?.length) return;
+
+  const rotRad = -(block.rot ?? 0) * Math.PI / 180;
+  const cosR = Math.cos(rotRad);
+  const sinR = Math.sin(rotRad);
+  const fragIds = [];
+
+  for (let i = 0; i < fragmentTemplates.length; i++) {
+    const tmpl = fragmentTemplates[i];
+    const fragId = `${block.id}_frag_${i}`;
+
+    const worldX = block.x + tmpl.localX * cosR - tmpl.localY * sinR;
+    const worldY = block.y + tmpl.localX * sinR + tmpl.localY * cosR;
+    const worldZ = block.originZ;
+
+    const spreadX = (Math.random() - 0.5) * 4;
+    const spreadY = Math.random() * 2 + 0.5;
+    const vx = (missile.vx ?? 0) * 0.5 + spreadX;
+    const vy = (missile.vy ?? 0) * 0.3 + spreadY;
+
+    const fragObj = {
+      id: fragId,
+      x: worldX,
+      y: worldY,
+      z: worldZ,
+      originX: worldX,
+      originY: worldY,
+      originZ: worldZ,
+      rot: block.rot ?? 0,
+      vx,
+      vy,
+      vz: 0,
+      angularVelocity: 0,
+      dragVx: 0,
+      dragVy: 0,
+      dragVz: 0,
+      dynamic: true,
+      isFragment: true,
+      parentBlockId: block.id,
+      draggedBy: null,
+      offsetX: tmpl.offsetX,
+      offsetY: tmpl.offsetY,
+      offsetZ: tmpl.offsetZ,
+      halfX: tmpl.halfX,
+      halfY: tmpl.halfY,
+      halfZ: tmpl.halfZ,
+      halfHeight: tmpl.halfY,
+      mass: SERVER_CONFIG.dynamicMass,
+      friction: SERVER_CONFIG.dynamicFriction,
+      restitution: SERVER_CONFIG.dynamicRestitution,
+    };
+
+    gameObjects.set(fragId, fragObj);
+
+    const shapeOptions = {
+      mass: SERVER_CONFIG.dynamicMass,
+      friction: SERVER_CONFIG.dynamicFriction,
+      restitution: SERVER_CONFIG.dynamicRestitution,
+    };
+
+    let physNode;
+    let shapeType;
+
+    let usedConvex = false;
+    if (tmpl.positions?.length > 0) {
+      try {
+        const hullMesh = new Mesh(`hull-${fragId}`, scene);
+        const vd = new VertexData();
+        vd.positions = tmpl.positions;
+        const numVerts = tmpl.positions.length / 3;
+        const indices = [];
+        for (let j = 1; j < numVerts - 1; j++) indices.push(0, j, j + 1);
+        vd.indices = indices;
+        vd.applyToMesh(hullMesh, false);
+        hullMesh.position.set(worldX, worldY, worldZ);
+        hullMesh.rotationQuaternion = rotationQuaternionForObject(fragObj);
+        hullMesh.computeWorldMatrix(true);
+        physNode = hullMesh;
+        shapeType = PhysicsShapeType.CONVEX_HULL;
+        usedConvex = true;
+      } catch (err) {
+        console.warn(`Convex hull mesh creation failed for frag ${i}:`, err.message);
+      }
+    }
+    if (!usedConvex) {
+      physNode = new TransformNode(`physics-${fragId}`, scene);
+      physNode.position.set(worldX, worldY, worldZ);
+      physNode.rotationQuaternion = rotationQuaternionForObject(fragObj);
+      shapeType = PhysicsShapeType.BOX;
+      shapeOptions.center = new Vector3(tmpl.offsetX, tmpl.offsetY, tmpl.offsetZ);
+      shapeOptions.extents = new Vector3(tmpl.halfX * 2, tmpl.halfY * 2, tmpl.halfZ * 2);
+    }
+
+    const aggregate = new PhysicsAggregate(physNode, shapeType, shapeOptions, scene);
+
+    aggregate.body.disablePreStep = true;
+    aggregate.body.setLinearDamping(0.15);
+    aggregate.body.setAngularDamping(0.55);
+    physicsAggregates.set(fragId, aggregate);
+    teleportPhysicsBody(aggregate);
+    aggregate.body.setLinearVelocity(new Vector3(vx, vy, 0));
+    aggregate.body.setAngularVelocity(new Vector3(0, 0, (Math.random() - 0.5) * 12));
+
+    fragIds.push(fragId);
+  }
+
+  const blockAgg = physicsAggregates.get(block.id);
+  if (blockAgg) {
+    blockAgg.dispose();
+    physicsAggregates.delete(block.id);
+  }
+  gameObjects.delete(block.id);
+
+  broadcast({
+    type: "event",
+    roomId: activeRoom.id,
+    tick,
+    events: [{ kind: "blockBroken", blockId: block.id, fragIds }],
+  });
+}
+
+function maybeRecordBlockHit(object, other) {
+  const missile = isMissileName(object.id) ? object : isMissileName(other.id) ? other : null;
+  const block = isBlockName(object.id) ? object : isBlockName(other.id) ? other : null;
+  if (!missile || !block || missile.loadedInto || block.pendingFragment || activeRoom?.roundWinner) return;
+
+  const speed = Math.hypot(missile.vx ?? 0, missile.vy ?? 0, missile.vz ?? 0);
+  if (speed < (BARRAGE_CONFIG.blockHitVelocityMin ?? 3)) return;
+
+  missile.hitBlockIds ??= new Set();
+  if (missile.hitBlockIds.has(block.id)) return;
+  missile.hitBlockIds.add(block.id);
+
+  block.hits = (block.hits ?? 0) + 1;
+
+  broadcast({
+    type: "event",
+    roomId: activeRoom.id,
+    tick,
+    events: [{ kind: "blockHit", blockId: block.id, hits: block.hits, maxHits: block.maxHits }],
+  });
+
+  if (block.hits >= block.maxHits) {
+    block.pendingFragment = missile;
+  }
+}
+
+function checkMissileBlockHits() {
+  const expand = 0.2;
+  for (const missile of gameObjects.values()) {
+    if (!isMissileName(missile.id) || missile.loadedInto || missile.draggedBy) continue;
+    const speed = Math.hypot(missile.vx ?? 0, missile.vy ?? 0, missile.vz ?? 0);
+    if (speed < (BARRAGE_CONFIG.blockHitVelocityMin ?? 3)) continue;
+    const ma = aabbFor(missile);
+    for (const block of gameObjects.values()) {
+      if (!isBlockName(block.id) || block.pendingFragment) continue;
+      const ba = aabbFor(block);
+      if (
+        ma.maxX > ba.minX - expand && ma.minX < ba.maxX + expand &&
+        ma.maxY > ba.minY - expand && ma.minY < ba.maxY + expand
+      ) {
+        maybeRecordBlockHit(missile, block);
+      }
+    }
+  }
+}
+
 function releaseDrag(object, releaseVelocity) {
   constrainWorldBounds(object);
   returnDraggedObjectUpright(object);
@@ -794,6 +1054,7 @@ function releaseDrag(object, releaseVelocity) {
   object.dragVz = 0;
   object.draggedBy = null;
   object.hitKingIds = null;
+  object.hitBlockIds = null;
   dragState.delete(object.id);
 }
 
@@ -815,6 +1076,7 @@ function applyInput(client, message) {
     if (!object || !message.point) return;
     if (!object.dynamic) return;
     if (object.loadedInto) return;
+    if (object.isFragment) return;
     if (!canGrab(client.playerId, object)) return;
 
     object.draggedBy = client.id;
@@ -1118,6 +1380,7 @@ function registerMeshRoots() {
       } : {}),
       ...(isMissileName(transform.name) ? { loadedInto: null } : {}),
       ...(isKingName(transform.name) ? { hits: 0, maxHits: 3 } : {}),
+      ...(isBlockName(transform.name) ? { hits: 0, maxHits: BARRAGE_CONFIG.blockMaxHits ?? 3, pendingFragment: null } : {}),
     });
   }
 
@@ -1237,9 +1500,8 @@ function resetGameState() {
     if (object.returnStartArmAngle !== undefined) object.returnStartArmAngle = null;
     if (object.releaseElapsedMs !== undefined) object.releaseElapsedMs = 0;
 
-    if (object.hits !== undefined) {
-      object.hits = 0;
-    }
+    if (object.hits !== undefined) object.hits = 0;
+    if (object.pendingFragment !== undefined) object.pendingFragment = null;
 
     syncPhysicsBodyFromObject(object, { x: 0, y: 0, z: 0 });
   }
@@ -1257,6 +1519,7 @@ function resolveObjectCollision(object, other, { preferHorizontal = false } = {}
   if (overlapX <= 0 || overlapY <= 0 || overlapZ <= 0) return;
 
   maybeRecordKingHit(object, other);
+  maybeRecordBlockHit(object, other);
 
   const centerAX = object.x + object.offsetX;
   const centerAY = object.y + object.offsetY;
@@ -1909,6 +2172,17 @@ async function startServer() {
       bindRoom(room);
       tick += 1;
       simulatePhysics(TICK_MS / 1000);
+      checkMissileBlockHits();
+      for (const object of [...gameObjects.values()]) {
+        if (object.pendingFragment) {
+          try {
+            fragmentBlock(object, object.pendingFragment);
+          } catch (err) {
+            console.error(`fragmentBlock failed for ${object.id}:`, err);
+            object.pendingFragment = null;
+          }
+        }
+      }
       const knockedKing = checkKingKnockout(gameObjects);
       if (knockedKing) recordRoundWin(playerIdForKing(knockedKing));
       sendState();

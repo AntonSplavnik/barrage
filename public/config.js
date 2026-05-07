@@ -48,6 +48,8 @@ export const BARRAGE_CONFIG = {
   // Zone rules.
   noMansLandX: 5,
   kingKnockoutAngle: 45,
+  blockMaxHits: 5,
+  blockHitVelocityMin: 3,
   postWinSimulationMs: 5000,
   roundEndDelayMs: 5000,
 

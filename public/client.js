@@ -63,6 +63,8 @@ let loadedLevelUrl = null;
 let levelSwitchPromise = Promise.resolve();
 let isMatched = false;
 let myPlayerId = null;
+const fragmentTemplateNodes = { L: [], R: [] };
+const hitVisualTemplates = { L: {}, R: {} };
 let displayedRound = 0;
 let displayedScores = {};
 const musicController = createMusicController(musicToggleEl, {
@@ -105,6 +107,46 @@ function updateCrowns(scores) {
   }
   crownsLeftEl.textContent = "👑".repeat(leftCount);
   crownsRightEl.textContent = "👑".repeat(rightCount);
+}
+
+async function loadFragmentTemplates() {
+  for (const side of ["L", "R"]) {
+    for (const node of fragmentTemplateNodes[side]) {
+      if (!node.isDisposed()) node.dispose();
+    }
+    fragmentTemplateNodes[side] = [];
+  }
+
+  for (const [side, file] of [["L", "/assets/fragmented_blockL.glb"], ["R", "/assets/fragmented_blockR.glb"]]) {
+    try {
+      const existingIds = new Set(scene.meshes.map((m) => m.uniqueId));
+      await SceneLoader.AppendAsync("", file, scene);
+      const newMeshes = scene.meshes.filter((m) => !existingIds.has(m.uniqueId) && m.name !== "__root__");
+
+      fragmentTemplateNodes[side] = [];
+      hitVisualTemplates[side] = {};
+
+      for (const mesh of newMeshes) {
+        mesh.setEnabled(false);
+        const role = childRole(mesh.name);
+        if (role === "Vis") {
+          const hitMatch = mesh.name.match(/hit(\d+)/i);
+          if (hitMatch) {
+            const n = parseInt(hitMatch[1], 10);
+            // Disable back-face culling to handle mirrored/flipped Blender exports
+            if (mesh.material) mesh.material.backFaceCulling = false;
+            hitVisualTemplates[side][n] = mesh;
+            console.log(`[frag ${side}] hit visual ${n} stored, scale=(${mesh.scaling.x.toFixed(2)},${mesh.scaling.y.toFixed(2)},${mesh.scaling.z.toFixed(2)})`);
+          }
+        } else {
+          fragmentTemplateNodes[side].push(mesh);
+        }
+      }
+      console.log(`[frag ${side}] fragments=${fragmentTemplateNodes[side].length} hitVisuals=`, Object.keys(hitVisualTemplates[side]));
+    } catch (err) {
+      console.warn(`Could not load fragment templates for ${side}:`, err);
+    }
+  }
 }
 
 function switchLevelIfNeeded(levelUrl) {
@@ -715,6 +757,7 @@ async function loadLevel(levelUrl = LEVEL_URL, { replace = false } = {}) {
     registerTrebuchetArmNodes();
     registerTrebuchetLoadTargets();
     createAimArrowMeshes();
+    await loadFragmentTemplates();
 
     if (visualObjects.size === 0) {
       createFallbackScene();
@@ -848,6 +891,52 @@ socket.addEventListener("message", (event) => {
       isMatched = true;
       setLobbyStatus("", false);
     });
+  }
+
+  if (message.type === "event") {
+    for (const ev of message.events ?? []) {
+      if (ev.kind === "blockHit") {
+        const side = ev.blockId.toLowerCase().includes("blockl") ? "L" : "R";
+        const template = hitVisualTemplates[side][ev.hits];
+        if (template) {
+          const originalBase = visualBaseRotations.get(ev.blockId) ?? { x: 0, y: 0, z: 0 };
+          const current = visualObjects.get(ev.blockId);
+          if (current) current.setEnabled(false);
+          const clone = template.clone(`${ev.blockId}-hit${ev.hits}`, null, true);
+          if (clone) {
+            clone.setEnabled(true);
+            visualObjects.set(ev.blockId, clone);
+            visualBaseRotations.set(ev.blockId, originalBase);
+            const state = latestObjectStates.get(ev.blockId);
+            if (state) {
+              clone.position.set(state.x, state.y ?? clone.position.y, state.z);
+              clone.rotationQuaternion = null;
+              clone.rotation.x = originalBase.x;
+              clone.rotation.y = originalBase.y;
+              clone.rotation.z = originalBase.z + protocolToBabylonRotation(state.rot || 0);
+            }
+          }
+        }
+      }
+
+      if (ev.kind === "blockBroken") {
+        const blockVisual = visualObjects.get(ev.blockId);
+        if (blockVisual) blockVisual.setEnabled(false);
+
+        const side = ev.blockId.toLowerCase().includes("blockl") ? "L" : "R";
+        const templates = fragmentTemplateNodes[side];
+
+        for (let i = 0; i < ev.fragIds.length; i++) {
+          const template = templates[i];
+          if (!template) continue;
+          const clone = template.clone(ev.fragIds[i], null, true);
+          if (!clone) continue;
+          clone.setEnabled(true);
+          visualObjects.set(ev.fragIds[i], clone);
+          visualBaseRotations.set(ev.fragIds[i], { x: 0, y: 0, z: 0 });
+        }
+      }
+    }
   }
 
   if (message.type === "state") {
