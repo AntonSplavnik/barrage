@@ -128,21 +128,19 @@ async function loadFragmentTemplates() {
 
       for (const mesh of newMeshes) {
         mesh.setEnabled(false);
+        // Disable back-face culling to handle mirrored/flipped Blender exports
+        if (mesh.material) mesh.material.backFaceCulling = false;
         const role = childRole(mesh.name);
         if (role === "Vis") {
           const hitMatch = mesh.name.match(/hit(\d+)/i);
           if (hitMatch) {
             const n = parseInt(hitMatch[1], 10);
-            // Disable back-face culling to handle mirrored/flipped Blender exports
-            if (mesh.material) mesh.material.backFaceCulling = false;
             hitVisualTemplates[side][n] = mesh;
-            console.log(`[frag ${side}] hit visual ${n} stored, scale=(${mesh.scaling.x.toFixed(2)},${mesh.scaling.y.toFixed(2)},${mesh.scaling.z.toFixed(2)})`);
           }
         } else {
           fragmentTemplateNodes[side].push(mesh);
         }
       }
-      console.log(`[frag ${side}] fragments=${fragmentTemplateNodes[side].length} hitVisuals=`, Object.keys(hitVisualTemplates[side]));
     } catch (err) {
       console.warn(`Could not load fragment templates for ${side}:`, err);
     }
@@ -626,7 +624,7 @@ function releasePointForTrebuchet(trebuchetId) {
   if (target.armNode) {
     const originalZ = target.armNode.rotationQuaternion?.toEulerAngles().z ?? target.armNode.rotation.z;
     target.armNode.rotationQuaternion = null;
-    target.armNode.rotation.z = restRadians;
+    target.armNode.rotation.z = armAngleSign(trebuchetId) * restRadians;
     target.rootNode?.computeWorldMatrix(true);
     target.armNode.computeWorldMatrix(true);
     target.targetNode.computeWorldMatrix(true);
@@ -773,15 +771,21 @@ async function loadLevel(levelUrl = LEVEL_URL, { replace = false } = {}) {
   loadedLevelUrl = levelUrl;
 }
 
+function armAngleSign(trebuchetId) {
+  return isLeftSideTrebuchetName(trebuchetId) ? 1 : -1;
+}
+
 function applyTrebuchetArmRestPose() {
   for (const transform of scene.transformNodes) {
     if (!isTrebuchetArmRoot(transform)) continue;
 
     const degrees = CONFIG.trebuchetArmRestRotationZDegrees ?? 15;
     const radians = (degrees * Math.PI) / 180;
+    const root = findGameplayRoot(transform);
+    const sign = root ? armAngleSign(root.name) : 1;
 
     transform.rotationQuaternion = null;
-    transform.rotation.z = radians;
+    transform.rotation.z = sign * radians;
     transform.computeWorldMatrix(true);
   }
 }
@@ -809,7 +813,7 @@ function applyState(message) {
     const arm = trebuchetArmNodes.get(object.id);
     if (arm && typeof object.armAngle === "number") {
       arm.rotationQuaternion = null;
-      arm.rotation.z = degreesToRadians(object.armAngle);
+      arm.rotation.z = armAngleSign(object.id) * degreesToRadians(object.armAngle);
       arm.computeWorldMatrix(true);
     }
   }
@@ -905,17 +909,31 @@ socket.addEventListener("message", (event) => {
           const clone = template.clone(`${ev.blockId}-hit${ev.hits}`, null, true);
           if (clone) {
             clone.setEnabled(true);
+            clone.isVisible = true;
             visualObjects.set(ev.blockId, clone);
             visualBaseRotations.set(ev.blockId, originalBase);
-            const state = latestObjectStates.get(ev.blockId);
-            if (state) {
-              clone.position.set(state.x, state.y ?? clone.position.y, state.z);
-              clone.rotationQuaternion = null;
-              clone.rotation.x = originalBase.x;
-              clone.rotation.y = originalBase.y;
-              clone.rotation.z = originalBase.z + protocolToBabylonRotation(state.rot || 0);
-            }
           }
+        }
+      }
+
+      if (ev.kind === "fragmentHit") {
+        const mesh = visualObjects.get(ev.fragId);
+        if (mesh) {
+          visualObjects.delete(ev.fragId);
+          visualBaseRotations.delete(ev.fragId);
+          latestObjectStates.delete(ev.fragId);
+          const duration = CONFIG.fragmentShrinkMs ?? 500;
+          const startScale = mesh.scaling.clone();
+          const startTime = performance.now();
+          const observer = scene.onBeforeRenderObservable.add(() => {
+            const t = Math.min(1, (performance.now() - startTime) / duration);
+            const s = 1 - t;
+            mesh.scaling.set(startScale.x * s, startScale.y * s, startScale.z * s);
+            if (t >= 1) {
+              scene.onBeforeRenderObservable.remove(observer);
+              mesh.dispose();
+            }
+          });
         }
       }
 
@@ -932,6 +950,7 @@ socket.addEventListener("message", (event) => {
           const clone = template.clone(ev.fragIds[i], null, true);
           if (!clone) continue;
           clone.setEnabled(true);
+          clone.isVisible = true;
           visualObjects.set(ev.fragIds[i], clone);
           visualBaseRotations.set(ev.fragIds[i], { x: 0, y: 0, z: 0 });
         }

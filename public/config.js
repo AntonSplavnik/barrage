@@ -50,6 +50,7 @@ export const BARRAGE_CONFIG = {
   kingKnockoutAngle: 45,
   blockMaxHits: 5,
   blockHitVelocityMin: 3,
+  fragmentShrinkMs: 500,
   postWinSimulationMs: 5000,
   roundEndDelayMs: 5000,
 

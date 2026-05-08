@@ -477,7 +477,7 @@ function loadTargetForTrebuchet(trebuchet) {
 
     if (target.armNode && typeof trebuchet.armAngle === "number") {
       target.armNode.rotationQuaternion = null;
-      target.armNode.rotation.z = (trebuchet.armAngle * Math.PI) / 180;
+      target.armNode.rotation.z = sideSignForTrebuchet(trebuchet.id) * (trebuchet.armAngle * Math.PI) / 180;
     }
 
     target.rootNode.computeWorldMatrix(true);
@@ -1030,6 +1030,29 @@ function checkMissileBlockHits() {
         ma.maxY > ba.minY - expand && ma.minY < ba.maxY + expand
       ) {
         maybeRecordBlockHit(missile, block);
+      }
+    }
+  }
+}
+
+function checkMissileFragmentHits() {
+  const expand = 0.2;
+  for (const missile of gameObjects.values()) {
+    if (!isMissileName(missile.id) || missile.loadedInto || missile.draggedBy) continue;
+    const speed = Math.hypot(missile.vx ?? 0, missile.vy ?? 0, missile.vz ?? 0);
+    if (speed < (BARRAGE_CONFIG.blockHitVelocityMin ?? 3)) continue;
+    const ma = aabbFor(missile);
+    for (const fragment of gameObjects.values()) {
+      if (!fragment.isFragment || fragment.pendingRemove) continue;
+      const fa = aabbFor(fragment);
+      if (
+        ma.maxX > fa.minX - expand && ma.minX < fa.maxX + expand &&
+        ma.maxY > fa.minY - expand && ma.minY < fa.maxY + expand
+      ) {
+        missile.hitFragIds ??= new Set();
+        if (missile.hitFragIds.has(fragment.id)) continue;
+        missile.hitFragIds.add(fragment.id);
+        fragment.pendingRemove = true;
       }
     }
   }
@@ -2173,6 +2196,7 @@ async function startServer() {
       tick += 1;
       simulatePhysics(TICK_MS / 1000);
       checkMissileBlockHits();
+      checkMissileFragmentHits();
       for (const object of [...gameObjects.values()]) {
         if (object.pendingFragment) {
           try {
@@ -2181,6 +2205,20 @@ async function startServer() {
             console.error(`fragmentBlock failed for ${object.id}:`, err);
             object.pendingFragment = null;
           }
+        }
+        if (object.pendingRemove && object.isFragment) {
+          const agg = physicsAggregates.get(object.id);
+          if (agg) {
+            agg.dispose();
+            physicsAggregates.delete(object.id);
+          }
+          gameObjects.delete(object.id);
+          broadcast({
+            type: "event",
+            roomId: activeRoom.id,
+            tick,
+            events: [{ kind: "fragmentHit", fragId: object.id }],
+          });
         }
       }
       const knockedKing = checkKingKnockout(gameObjects);

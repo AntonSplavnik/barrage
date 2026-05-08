@@ -1,7 +1,4 @@
-I want to add logic for "rooms" so that once two players have joined the server they become P1 nd P2 are matched into a game/room then the next two players to join the server become P3 & P4 who get matched into a game/rooms and if someone drops out then the next player should receive their number and be matched accordingly.  the server needs to make a seperate simulation for each room of course
+i want the fragments when they recieve a missile hit to do a small shrinking animation and then disappear.  So over 500ms (tunable) they will scale from current scale to zero and be deleted.  this animation will apply to both the physics collider in simulation and the visual mesh in client.  So once the block fragments, each block perisits until the fragments them selves are hit then they shink to zero scale and are deleted.
 
-Maybe we need a lobby/landing page where you are momentarily until you are matched, then wen you are the second player or the 4th player a game starts, or if p1 dropss out the next connection gets P1 and is matched to P2.  if you are unpaired you are redirected to lobby page until matched?
 
-can the logic for this be put into seperate files because i ma working with a teamate who needs to do a big merge.
-
-just answer with opinions and plans but take no action yet
+i want the to be a force threshold for fragemntation and also a cooldown so one shot does not cause multiple blocks to fragment
