@@ -69,7 +69,7 @@ export const BARRAGE_CONFIG = {
 
   // Trebuchet firing.
   trebuchetArmRestRotationZDegrees: 15,   // deg
-  aimMaxPullDistance: 6,               // m
+  aimMaxPullDistance: 8,               // m
   aimPowerScale: 8,                       // multiplier
   trebuchetArmPullbackMaxDegrees: 75,     // deg
   trebuchetFireVelocityMax: 40,           // m/s
@@ -77,8 +77,8 @@ export const BARRAGE_CONFIG = {
   fireReturnAnimationMs: 220,             // ms
   musicKickVoiceFlightVelocityMin: 10,    // m/s
   aimArrowStartColor: "#ffffff",
-  aimArrowEndColor: "#39ff14",
-  aimArrowMaxLength: 5,                 // m
+  aimArrowEndColor: "#1ecb00",
+  aimArrowMaxLength: 8,                 // m
   aimArrowRadius: 0.1,                   // m
   aimArrowZOffset: 0.05,                  // m
   aimArrowMinLength: 0.12,                // m
@@ -87,6 +87,15 @@ export const BARRAGE_CONFIG = {
   aimArrowHeadLengthScale: 0.18,          // multiplier of arrow length
   aimArrowHeadWidth: 0.4,               // m
   aimArrowHeadWidthScale: 1,           // multiplier of arrow length
+
+  // Camera behaviour.
+  playerCamOffsetX: 15,                  // m  — target shift toward player's side
+  playerCamOffsetY: -4,                  // m  — vertical shift (negative = lower/closer)
+  playerCamOffsetZ: -30,                 // m  — zoom in (negative = closer to scene)
+  cameraInitialPanMs: 4000,             // ms — battlefield → player on level load
+  cameraAimZoomOutMs: 700,              // ms — player → battlefield when aiming
+  cameraReturnDelayMs: 4000,            // ms — wait after shot fires before panning back
+  cameraReturnMs: 2000,                  // ms — battlefield → player after shot
 };
 
 if (typeof window !== "undefined") {

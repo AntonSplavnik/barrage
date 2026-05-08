@@ -1,4 +1,5 @@
 import { createMusicController } from "./music.js";
+import { createCameraController } from "./camera_control.js";
 import { BARRAGE_CONFIG } from "./config.js";
 
 const {
@@ -72,6 +73,7 @@ let displayedScores = {};
 const musicController = createMusicController(musicToggleEl, {
   onStatus: setStatus,
 });
+const cameraControl = createCameraController(scene, () => myPlayerId);
 
 function setStatus(text) {
   connectionEl.textContent = text;
@@ -741,6 +743,7 @@ function disposeLevelScene() {
   latestObjectStates.clear();
   trebuchetArmNodes.clear();
   trebuchetLoadTargets.clear();
+  cameraControl.dispose();
   initialBlockVisuals.clear();
   for (const { observer, mesh } of shrinkObservers.values()) {
     scene.onBeforeRenderObservable.remove(observer);
@@ -780,6 +783,7 @@ async function loadLevel(levelUrl = LEVEL_URL, { replace = false } = {}) {
   }
 
   ensureCameraAndLight();
+  cameraControl.snapshotAndPan();
   setupShadows();
   engine.resize();
   loadedLevelUrl = levelUrl;
@@ -1206,6 +1210,7 @@ function beginDrag() {
     pointerMode = "aim";
     aimWorldPoint = world.clone();
     updateAimArrow();
+    cameraControl.onAimStart();
     sendInput("aimStart", {
       entityId: selectedEntityId,
       trebuchetId: objectState.loadedInto,
@@ -1268,6 +1273,7 @@ function endDrag() {
       entityId: selectedEntityId,
       point: finalPoint,
     });
+    cameraControl.onAimRelease();
 
     selectedEntityId = null;
     pointerMode = "drag";

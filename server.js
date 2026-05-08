@@ -59,6 +59,7 @@ let gameObjects = null;
 let dragState = null;
 let fragmentTemplateData = null;
 let initialBlockObjects = null;
+let kingConvexPositions = new Map();
 let loadTargets = null;
 let physicsAggregates = null;
 let havokInterfacePromise = null;
@@ -1342,6 +1343,31 @@ function releaseLoadedMissileFromTrebuchet(trebuchet, velocity, armAngle = null)
   return true;
 }
 
+function extractConvexPositions(rootTransform) {
+  rootTransform.computeWorldMatrix(true);
+  const invRootWorld = rootTransform.getWorldMatrix().clone().invert();
+
+  const all = [];
+  const colliders = descendantsOf(rootTransform).filter((d) => {
+    const role = childRole(d.name);
+    return (role === "Col" || role === "ColVis") && typeof d.getVerticesData === "function";
+  });
+
+  for (const mesh of colliders) {
+    mesh.computeWorldMatrix(true);
+    const raw = mesh.getVerticesData("position");
+    if (!raw) continue;
+    const meshWorld = mesh.getWorldMatrix();
+    for (let i = 0; i < raw.length; i += 3) {
+      const world = Vector3.TransformCoordinates(new Vector3(raw[i], raw[i + 1], raw[i + 2]), meshWorld);
+      const local = Vector3.TransformCoordinates(world, invRootWorld);
+      all.push(local.x, local.y, local.z);
+    }
+  }
+
+  return all.length > 0 ? new Float32Array(all) : null;
+}
+
 function massForObject(name) {
   if (isBlockName(name))   return BARRAGE_CONFIG.blockMass   ?? SERVER_CONFIG.dynamicMass;
   if (isMissileName(name)) return BARRAGE_CONFIG.missileMass ?? SERVER_CONFIG.dynamicMass;
@@ -1351,6 +1377,7 @@ function massForObject(name) {
 function registerMeshRoots() {
   loadTargets.clear();
   physicsAggregates.clear();
+  kingConvexPositions.clear();
 
   for (const transform of scene.transformNodes) {
     if (transform.name.toLowerCase().includes("missile-load-target")) {
@@ -1440,6 +1467,10 @@ function registerMeshRoots() {
       ...(isKingName(transform.name) ? { hits: 0, maxHits: 3 } : {}),
       ...(isBlockName(transform.name) ? { hits: 0, maxHits: BARRAGE_CONFIG.blockMaxHits ?? 3, pendingFragment: null } : {}),
     });
+
+    if (isKingName(transform.name)) {
+      kingConvexPositions.set(transform.name, extractConvexPositions(transform));
+    }
   }
 
   createPhysicsBodies();
@@ -1452,21 +1483,49 @@ function registerMeshRoots() {
 
 function createPhysicsBodies() {
   for (const object of gameObjects.values()) {
-    const node = new TransformNode(`physics-${object.id}`, scene);
-    node.position.set(object.x, object.y, object.z);
-    node.rotationQuaternion = rotationQuaternionForObject(object);
+    const convexPositions = kingConvexPositions.get(object.id);
 
-    const shapeType = isMissileName(object.id) ? PhysicsShapeType.SPHERE : PhysicsShapeType.BOX;
-    const options = {
-      mass: object.dynamic ? object.mass : 0,
-      friction: object.friction,
-      restitution: object.restitution,
-      center: new Vector3(object.offsetX, object.offsetY, object.offsetZ),
-      extents: new Vector3(object.halfX * 2, object.halfY * 2, object.halfZ * 2),
-      radius: Math.max(object.halfX, object.halfY, object.halfZ),
-    };
+    let physNode;
+    let shapeType;
+    let options;
 
-    const aggregate = new PhysicsAggregate(node, shapeType, options, scene);
+    if (convexPositions?.length > 0) {
+      try {
+        const hullMesh = new Mesh(`hull-${object.id}`, scene);
+        const vd = new VertexData();
+        vd.positions = Array.from(convexPositions);
+        const numVerts = convexPositions.length / 3;
+        const indices = [];
+        for (let j = 1; j < numVerts - 1; j++) indices.push(0, j, j + 1);
+        vd.indices = indices;
+        vd.applyToMesh(hullMesh, false);
+        hullMesh.position.set(object.x, object.y, object.z);
+        hullMesh.rotationQuaternion = rotationQuaternionForObject(object);
+        hullMesh.computeWorldMatrix(true);
+        physNode = hullMesh;
+        shapeType = PhysicsShapeType.CONVEX_HULL;
+        options = { mass: object.dynamic ? object.mass : 0, friction: object.friction, restitution: object.restitution };
+      } catch (err) {
+        console.warn(`Convex hull failed for ${object.id}, falling back to box:`, err.message);
+      }
+    }
+
+    if (!physNode) {
+      physNode = new TransformNode(`physics-${object.id}`, scene);
+      physNode.position.set(object.x, object.y, object.z);
+      physNode.rotationQuaternion = rotationQuaternionForObject(object);
+      shapeType = isMissileName(object.id) ? PhysicsShapeType.SPHERE : PhysicsShapeType.BOX;
+      options = {
+        mass: object.dynamic ? object.mass : 0,
+        friction: object.friction,
+        restitution: object.restitution,
+        center: new Vector3(object.offsetX, object.offsetY, object.offsetZ),
+        extents: new Vector3(object.halfX * 2, object.halfY * 2, object.halfZ * 2),
+        radius: Math.max(object.halfX, object.halfY, object.halfZ),
+      };
+    }
+
+    const aggregate = new PhysicsAggregate(physNode, shapeType, options, scene);
     aggregate.body.disablePreStep = true;
     aggregate.body.setLinearDamping(isTrebuchetName(object.id) ? 2.2 : 0.15);
     aggregate.body.setAngularDamping(isTrebuchetName(object.id) ? 10 : 0.55);
