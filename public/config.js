@@ -5,23 +5,24 @@ export const BARRAGE_CONFIG = {
   musicSamplesUrl: "https://raw.githubusercontent.com/felixroos/dough-samples/main/tidal-drum-machines.json",
 
   // Rendering.
-  importedLightIntensityScale: 0.01,
-  fallbackLightIntensity: 0.1,
+  importedLightIntensityScale: 0.01,      // multiplier
+  fallbackLightIntensity: 0.1,            // multiplier
   shadowsEnabled: true,
-  shadowMapSize: 2048,
+  shadowMapSize: 2048,                    // px
   shadowBias: 0.0005,
   shadowNormalBias: 0.02,
-  exposure: 1.0,
-  contrast: 1.0,
+  exposure: 1.0,                          // multiplier
+  contrast: 1.0,                          // multiplier
 
   // Basic physics tuning.
   physicsEnabled: true,
-  gravity: -9.81,
-  physicsTimeScale: 1.5,
-  blockMass: 20,
-  blockFriction: 0.9,
-  blockRestitution: 0.15,
-  staticFriction: 1.0,
+  gravity: -9.81,                         // m/s²
+  physicsTimeScale: 1.5,                  // multiplier (>1 = faster sim)
+  blockMass: 30,                          // kg
+  missileMass: 10,                         // kg
+  blockFriction: 0.9,                     // 0–1
+  blockRestitution: 0.15,                 // 0–1 (bounciness)
+  staticFriction: 1.0,                    // 0–1
 
   // Pointer/camera controls.
   inputInvertX: true,
@@ -31,53 +32,61 @@ export const BARRAGE_CONFIG = {
   cameraControlsEnabled: false,
 
   // Trebuchet body movement limits.
-  trebuchetLeftMinX: -30,
-  trebuchetLeftMaxX: -5,
-  trebuchetRightMinX: 5,
-  trebuchetRightMaxX: 30,
+  trebuchetLeftMinX: -30,                 // m
+  trebuchetLeftMaxX: -5,                  // m
+  trebuchetRightMinX: 5,                  // m
+  trebuchetRightMaxX: 30,                 // m
 
   // Drag/release behavior for hand-moved objects.
-  dragHeightOffset: 0.2,
-  dragUprightLerp: 0.25,
-  releaseVelocityScale: 1.0,
-  normalReleaseVelocityMax: 8,
-  releaseVelocitySampleHz: 60,
-  releaseVelocityFrameWindow: 5,
-  releaseVelocityMinSampleDistance: 0.05,
+  dragHeightOffset: 0.2,                  // m
+  dragUprightLerp: 0.25,                  // 0–1 per frame
+  releaseVelocityScale: 1.0,              // multiplier
+  normalReleaseVelocityMax: 8,            // m/s
+  releaseVelocitySampleHz: 60,            // Hz
+  releaseVelocityFrameWindow: 5,          // frames
+  releaseVelocityMinSampleDistance: 0.05, // m
 
   // Zone rules.
-  noMansLandX: 5,
-  kingKnockoutAngle: 45,
-  blockMaxHits: 5,
-  blockHitVelocityMin: 3,
-  fragmentShrinkMs: 500,
-  postWinSimulationMs: 5000,
-  roundEndDelayMs: 5000,
+  noMansLandX: 5,                         // m (half-width of centre dead zone)
+  kingKnockoutAngle: 45,                  // deg
+  blockMaxHits: 5,                        // hits before fragmentation
+  blockHitVelocityMin: 10,                 // m/s (min speed to register a hit)
+  blockHitCooldownMs: 83,                // ms — missile can only crack one block per this window
+  blockFragmentVelocityMin: 5,           // m/s (min speed to trigger fragmentation)
+  fragmentHitVelocityMin: 5,             // m/s (min speed to destroy a fragment)
+  fragmentHitSpeedPenalty: 3,            // m/s lost per fragment hit (on top of physics)
+  fragmentFriction: 0.02,                 // 0–1 (lower = slides more)
+  fragmentSpreadX: 4,                    // m/s max random horizontal scatter
+  fragmentSpreadY: 2,                    // m/s max random upward scatter
+  fragmentShrinkMs: 500,                  // ms
+  fragmentImmunityMs: 500,                // ms — newly spawned fragments are immune to hits
+  postWinSimulationMs: 5000,              // ms
+  roundEndDelayMs: 5000,                  // ms
 
   // Missile loading.
-  missileLoadRange: 2,
-  missilePickColliderScale: 2,
+  missileLoadRange: 3,                    // m
+  missilePickColliderScale: 4,            // multiplier on visual collider radius
 
   // Trebuchet firing.
-  trebuchetArmRestRotationZDegrees: 15,
-  aimMaxPullDistance: 4.5,
-  aimPowerScale: 8,
-  trebuchetArmPullbackMaxDegrees: 75,
-  trebuchetFireVelocityMax: 33,
-  fireReleaseAnimationMs: 180,
-  fireReturnAnimationMs: 220,
-  musicKickVoiceFlightVelocityMin: 10,
+  trebuchetArmRestRotationZDegrees: 15,   // deg
+  aimMaxPullDistance: 6,               // m
+  aimPowerScale: 8,                       // multiplier
+  trebuchetArmPullbackMaxDegrees: 75,     // deg
+  trebuchetFireVelocityMax: 40,           // m/s
+  fireReleaseAnimationMs: 150,            // ms
+  fireReturnAnimationMs: 220,             // ms
+  musicKickVoiceFlightVelocityMin: 10,    // m/s
   aimArrowStartColor: "#ffffff",
   aimArrowEndColor: "#39ff14",
-  aimArrowMaxLength: 4.5,
-  aimArrowRadius: 0.06,
-  aimArrowZOffset: 0.05,
-  aimArrowMinLength: 0.12,
-  aimArrowHeadLengthMin: 0.2,
-  aimArrowHeadLengthMax: 0.75,
-  aimArrowHeadLengthScale: 0.18,
-  aimArrowHeadWidth: 0.12,
-  aimArrowHeadWidthScale: 0.45,
+  aimArrowMaxLength: 5,                 // m
+  aimArrowRadius: 0.1,                   // m
+  aimArrowZOffset: 0.05,                  // m
+  aimArrowMinLength: 0.12,                // m
+  aimArrowHeadLengthMin: 0.2,             // m
+  aimArrowHeadLengthMax: 0.75,            // m
+  aimArrowHeadLengthScale: 0.18,          // multiplier of arrow length
+  aimArrowHeadWidth: 0.4,               // m
+  aimArrowHeadWidthScale: 1,           // multiplier of arrow length
 };
 
 if (typeof window !== "undefined") {

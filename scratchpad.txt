@@ -1,4 +1,4 @@
 i want the fragments when they recieve a missile hit to do a small shrinking animation and then disappear.  So over 500ms (tunable) they will scale from current scale to zero and be deleted.  this animation will apply to both the physics collider in simulation and the visual mesh in client.  So once the block fragments, each block perisits until the fragments them selves are hit then they shink to zero scale and are deleted.
 
 
-i want the to be a force threshold for fragemntation and also a cooldown so one shot does not cause multiple blocks to fragment
+i want the to be a force threshold for fragemntation and also a cooldown so one shot does not cause multiple blocks to fragment.  also frgments themselvves should have a cooldown after they have just been created, so the same shot cannot make them disappaer only later shots

@@ -58,6 +58,7 @@ let tick = 0;
 let gameObjects = null;
 let dragState = null;
 let fragmentTemplateData = null;
+let initialBlockObjects = null;
 let loadTargets = null;
 let physicsAggregates = null;
 let havokInterfacePromise = null;
@@ -522,6 +523,8 @@ function maybeLoadMissile(missile) {
     missile.vy = 0;
     missile.vz = 0;
     missile.loadedInto = trebuchet.id;
+    missile.usedToFragment = false;
+    missile.lastBlockHitTick = null;
     setPhysicsBodyTrigger(missile, true);
     trebuchet.loaded = true;
     trebuchet.loadedMissileId = missile.id;
@@ -883,8 +886,8 @@ function fragmentBlock(block, missile) {
     const worldY = block.y + tmpl.localX * sinR + tmpl.localY * cosR;
     const worldZ = block.originZ;
 
-    const spreadX = (Math.random() - 0.5) * 4;
-    const spreadY = Math.random() * 2 + 0.5;
+    const spreadX = (Math.random() - 0.5) * (BARRAGE_CONFIG.fragmentSpreadX ?? 4);
+    const spreadY = Math.random() * (BARRAGE_CONFIG.fragmentSpreadY ?? 2) + 0.5;
     const vx = (missile.vx ?? 0) * 0.5 + spreadX;
     const vy = (missile.vy ?? 0) * 0.3 + spreadY;
 
@@ -907,6 +910,7 @@ function fragmentBlock(block, missile) {
       dynamic: true,
       isFragment: true,
       parentBlockId: block.id,
+      createdTick: tick,
       draggedBy: null,
       offsetX: tmpl.offsetX,
       offsetY: tmpl.offsetY,
@@ -915,8 +919,8 @@ function fragmentBlock(block, missile) {
       halfY: tmpl.halfY,
       halfZ: tmpl.halfZ,
       halfHeight: tmpl.halfY,
-      mass: SERVER_CONFIG.dynamicMass,
-      friction: SERVER_CONFIG.dynamicFriction,
+      mass: (BARRAGE_CONFIG.blockMass ?? SERVER_CONFIG.dynamicMass) / 8,
+      friction: BARRAGE_CONFIG.fragmentFriction ?? SERVER_CONFIG.dynamicFriction,
       restitution: SERVER_CONFIG.dynamicRestitution,
     };
 
@@ -999,7 +1003,12 @@ function maybeRecordBlockHit(object, other) {
 
   missile.hitBlockIds ??= new Set();
   if (missile.hitBlockIds.has(block.id)) return;
+
+  const cooldown = Math.ceil((BARRAGE_CONFIG.blockHitCooldownMs ?? 0) / TICK_MS);
+  if (cooldown > 0 && tick - (missile.lastBlockHitTick ?? -Infinity) < cooldown) return;
+
   missile.hitBlockIds.add(block.id);
+  missile.lastBlockHitTick = tick;
 
   block.hits = (block.hits ?? 0) + 1;
 
@@ -1010,8 +1019,12 @@ function maybeRecordBlockHit(object, other) {
     events: [{ kind: "blockHit", blockId: block.id, hits: block.hits, maxHits: block.maxHits }],
   });
 
-  if (block.hits >= block.maxHits) {
-    block.pendingFragment = missile;
+  if (block.hits >= block.maxHits && !missile.usedToFragment) {
+    const fragSpeed = Math.hypot(missile.vx ?? 0, missile.vy ?? 0, missile.vz ?? 0);
+    if (fragSpeed >= (BARRAGE_CONFIG.blockFragmentVelocityMin ?? BARRAGE_CONFIG.blockHitVelocityMin ?? 3)) {
+      block.pendingFragment = missile;
+      missile.usedToFragment = true;
+    }
   }
 }
 
@@ -1040,10 +1053,12 @@ function checkMissileFragmentHits() {
   for (const missile of gameObjects.values()) {
     if (!isMissileName(missile.id) || missile.loadedInto || missile.draggedBy) continue;
     const speed = Math.hypot(missile.vx ?? 0, missile.vy ?? 0, missile.vz ?? 0);
-    if (speed < (BARRAGE_CONFIG.blockHitVelocityMin ?? 3)) continue;
+    if (speed < (BARRAGE_CONFIG.fragmentHitVelocityMin ?? BARRAGE_CONFIG.blockHitVelocityMin ?? 3)) continue;
     const ma = aabbFor(missile);
     for (const fragment of gameObjects.values()) {
       if (!fragment.isFragment || fragment.pendingRemove) continue;
+      const immunityTicks = Math.ceil((BARRAGE_CONFIG.fragmentImmunityMs ?? 0) / TICK_MS);
+      if (immunityTicks > 0 && tick - (fragment.createdTick ?? 0) < immunityTicks) continue;
       const fa = aabbFor(fragment);
       if (
         ma.maxX > fa.minX - expand && ma.minX < fa.maxX + expand &&
@@ -1053,6 +1068,19 @@ function checkMissileFragmentHits() {
         if (missile.hitFragIds.has(fragment.id)) continue;
         missile.hitFragIds.add(fragment.id);
         fragment.pendingRemove = true;
+
+        const penalty = BARRAGE_CONFIG.fragmentHitSpeedPenalty ?? 0;
+        if (penalty > 0) {
+          const missileSpeed = Math.hypot(missile.vx ?? 0, missile.vy ?? 0);
+          if (missileSpeed > 0) {
+            const newSpeed = Math.max(0, missileSpeed - penalty);
+            const scale = newSpeed / missileSpeed;
+            missile.vx = (missile.vx ?? 0) * scale;
+            missile.vy = (missile.vy ?? 0) * scale;
+            const agg = physicsAggregates.get(missile.id);
+            if (agg) agg.body.setLinearVelocity(new Vector3(missile.vx, missile.vy, 0));
+          }
+        }
       }
     }
   }
@@ -1088,6 +1116,7 @@ function applyInput(client, message) {
     resetGameState();
     broadcast({
       type: "event",
+      roomId: activeRoom?.id,
       tick,
       events: [{ kind: "reset", playerId: client.playerId }],
     });
@@ -1313,6 +1342,12 @@ function releaseLoadedMissileFromTrebuchet(trebuchet, velocity, armAngle = null)
   return true;
 }
 
+function massForObject(name) {
+  if (isBlockName(name))   return BARRAGE_CONFIG.blockMass   ?? SERVER_CONFIG.dynamicMass;
+  if (isMissileName(name)) return BARRAGE_CONFIG.missileMass ?? SERVER_CONFIG.dynamicMass;
+  return SERVER_CONFIG.dynamicMass;
+}
+
 function registerMeshRoots() {
   loadTargets.clear();
   physicsAggregates.clear();
@@ -1386,7 +1421,7 @@ function registerMeshRoots() {
       halfY: bounds.halfY,
       halfZ: bounds.halfZ,
       halfHeight: bounds.halfY,
-      mass: dynamic ? SERVER_CONFIG.dynamicMass : 0,
+      mass: dynamic ? massForObject(transform.name) : 0,
       friction: dynamic ? SERVER_CONFIG.dynamicFriction : 1,
       restitution: dynamic ? SERVER_CONFIG.dynamicRestitution : 0,
       ...(isTrebuchetName(transform.name) ? {
@@ -1408,6 +1443,11 @@ function registerMeshRoots() {
   }
 
   createPhysicsBodies();
+
+  initialBlockObjects = new Map();
+  for (const [id, obj] of gameObjects) {
+    if (isBlockName(id)) initialBlockObjects.set(id, { ...obj });
+  }
 }
 
 function createPhysicsBodies() {
@@ -1494,6 +1534,48 @@ function findTrebuchetArmAncestor(node) {
 function resetGameState() {
   dragState.clear();
 
+  // Remove all fragments from the simulation
+  for (const [id, object] of [...gameObjects.entries()]) {
+    if (!object.isFragment) continue;
+    const agg = physicsAggregates.get(id);
+    if (agg) { agg.dispose(); physicsAggregates.delete(id); }
+    gameObjects.delete(id);
+  }
+
+  // Restore blocks that were fully fragmented (deleted from gameObjects)
+  for (const [id, initial] of (initialBlockObjects ?? [])) {
+    if (gameObjects.has(id)) continue;
+    const restored = {
+      ...initial,
+      x: initial.originX,
+      y: initial.originY,
+      z: initial.originZ,
+      rot: 0,
+      hits: 0,
+      pendingFragment: null,
+      vx: 0, vy: 0, vz: 0,
+      angularVelocity: 0,
+      dragVx: 0, dragVy: 0, dragVz: 0,
+      draggedBy: null,
+    };
+    gameObjects.set(id, restored);
+    const node = new TransformNode(`physics-${id}-restored`, scene);
+    node.position.set(restored.x, restored.y, restored.z);
+    node.rotationQuaternion = rotationQuaternionForObject(restored);
+    const agg = new PhysicsAggregate(node, PhysicsShapeType.BOX, {
+      mass: restored.mass,
+      friction: restored.friction,
+      restitution: restored.restitution,
+      center: new Vector3(restored.offsetX, restored.offsetY, restored.offsetZ),
+      extents: new Vector3(restored.halfX * 2, restored.halfY * 2, restored.halfZ * 2),
+    }, scene);
+    agg.body.disablePreStep = true;
+    agg.body.setLinearDamping(0.15);
+    agg.body.setAngularDamping(0.55);
+    physicsAggregates.set(id, agg);
+    teleportPhysicsBody(agg);
+  }
+
   for (const object of gameObjects.values()) {
     object.x = object.originX;
     object.y = object.originY;
@@ -1525,6 +1607,8 @@ function resetGameState() {
 
     if (object.hits !== undefined) object.hits = 0;
     if (object.pendingFragment !== undefined) object.pendingFragment = null;
+    if (object.usedToFragment !== undefined) object.usedToFragment = false;
+    if (object.lastBlockHitTick !== undefined) object.lastBlockHitTick = null;
 
     syncPhysicsBodyFromObject(object, { x: 0, y: 0, z: 0 });
   }
@@ -2207,18 +2291,26 @@ async function startServer() {
           }
         }
         if (object.pendingRemove && object.isFragment) {
-          const agg = physicsAggregates.get(object.id);
-          if (agg) {
-            agg.dispose();
-            physicsAggregates.delete(object.id);
+          if (object.removeOnTick === undefined) {
+            // Tick 1: tell the client to start the shrink animation, but keep
+            // the physics body alive so Havok gets one step to compute the
+            // collision impulse against the missile.
+            object.removeOnTick = tick + 1;
+            broadcast({
+              type: "event",
+              roomId: activeRoom.id,
+              tick,
+              events: [{ kind: "fragmentHit", fragId: object.id }],
+            });
+          } else if (tick >= object.removeOnTick) {
+            // Tick 2: now safe to remove physics and game object.
+            const agg = physicsAggregates.get(object.id);
+            if (agg) {
+              agg.dispose();
+              physicsAggregates.delete(object.id);
+            }
+            gameObjects.delete(object.id);
           }
-          gameObjects.delete(object.id);
-          broadcast({
-            type: "event",
-            roomId: activeRoom.id,
-            tick,
-            events: [{ kind: "fragmentHit", fragId: object.id }],
-          });
         }
       }
       const knockedKing = checkKingKnockout(gameObjects);

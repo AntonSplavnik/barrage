@@ -41,6 +41,8 @@ scene.imageProcessingConfiguration.contrast = CONFIG.contrast ?? 1.0;
 const visualObjects = new Map();
 const visualBaseRotations = new Map();
 const latestObjectStates = new Map();
+const initialBlockVisuals = new Map();
+const shrinkObservers = new Map();
 const trebuchetArmNodes = new Map();
 const trebuchetLoadTargets = new Map();
 let seq = 0;
@@ -739,6 +741,12 @@ function disposeLevelScene() {
   latestObjectStates.clear();
   trebuchetArmNodes.clear();
   trebuchetLoadTargets.clear();
+  initialBlockVisuals.clear();
+  for (const { observer, mesh } of shrinkObservers.values()) {
+    scene.onBeforeRenderObservable.remove(observer);
+    if (!mesh.isDisposed()) mesh.dispose();
+  }
+  shrinkObservers.clear();
   scene.activeCamera = null;
 }
 
@@ -751,6 +759,12 @@ async function loadLevel(levelUrl = LEVEL_URL, { replace = false } = {}) {
     await SceneLoader.AppendAsync("", levelUrl, scene);
     applyTrebuchetArmRestPose();
     registerVisualRoots();
+    initialBlockVisuals.clear();
+    for (const [id, mesh] of visualObjects) {
+      if (id.toLowerCase().includes("block")) {
+        initialBlockVisuals.set(id, { mesh, baseRotation: { ...visualBaseRotations.get(id) } });
+      }
+    }
     createMissilePickColliders();
     registerTrebuchetArmNodes();
     registerTrebuchetLoadTargets();
@@ -899,14 +913,49 @@ socket.addEventListener("message", (event) => {
 
   if (message.type === "event") {
     for (const ev of message.events ?? []) {
+      if (ev.kind === "reset") {
+        // Cancel any in-progress shrink animations
+        for (const { observer, mesh } of shrinkObservers.values()) {
+          scene.onBeforeRenderObservable.remove(observer);
+          if (!mesh.isDisposed()) mesh.dispose();
+        }
+        shrinkObservers.clear();
+
+        // Restore original block visuals; dispose clones and fragments
+        const toDelete = [];
+        for (const [id, mesh] of visualObjects) {
+          if (!id.toLowerCase().includes("block")) continue;
+          const initial = initialBlockVisuals.get(id);
+          if (initial) {
+            if (mesh !== initial.mesh && !mesh.isDisposed()) mesh.dispose();
+            initial.mesh.setEnabled(true);
+            initial.mesh.scaling.setAll(1);
+            visualObjects.set(id, initial.mesh);
+            visualBaseRotations.set(id, { ...initial.baseRotation });
+          } else {
+            if (!mesh.isDisposed()) mesh.dispose();
+            toDelete.push(id);
+          }
+        }
+        for (const id of toDelete) {
+          visualObjects.delete(id);
+          visualBaseRotations.delete(id);
+          latestObjectStates.delete(id);
+        }
+      }
+
       if (ev.kind === "blockHit") {
         const side = ev.blockId.toLowerCase().includes("blockl") ? "L" : "R";
         const template = hitVisualTemplates[side][ev.hits];
         if (template) {
           const originalBase = visualBaseRotations.get(ev.blockId) ?? { x: 0, y: 0, z: 0 };
           const current = visualObjects.get(ev.blockId);
-          if (current) current.setEnabled(false);
-          const clone = template.clone(`${ev.blockId}-hit${ev.hits}`, null, true);
+          if (current) {
+            const isOriginal = initialBlockVisuals.get(ev.blockId)?.mesh === current;
+            if (isOriginal) current.setEnabled(false);
+            else current.dispose();
+          }
+          const clone = template.clone(ev.blockId, null, true);
           if (clone) {
             clone.setEnabled(true);
             clone.isVisible = true;
@@ -931,9 +980,11 @@ socket.addEventListener("message", (event) => {
             mesh.scaling.set(startScale.x * s, startScale.y * s, startScale.z * s);
             if (t >= 1) {
               scene.onBeforeRenderObservable.remove(observer);
+              shrinkObservers.delete(ev.fragId);
               mesh.dispose();
             }
           });
+          shrinkObservers.set(ev.fragId, { observer, mesh });
         }
       }
 
