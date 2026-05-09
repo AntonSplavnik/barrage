@@ -3,9 +3,9 @@ import { createCameraController } from "./camera_control.js";
 import { BARRAGE_CONFIG } from "./config.js";
 
 const {
-  ArcRotateCamera,
   Color3,
   Engine,
+  FreeCamera,
   HemisphericLight,
   MeshBuilder,
   Scene,
@@ -470,11 +470,20 @@ function createFallbackScene() {
 }
 
 function ensureCameraAndLight() {
-  if (scene.cameras.length > 0) {
-    scene.activeCamera = scene.cameras[0];
-  } else {
-    scene.activeCamera = new ArcRotateCamera("FallbackCamera", Math.PI / 2, Math.PI / 3, 14, Vector3.Zero(), scene);
-  }
+  // Read the GLB camera's world position as a starting point, then replace it
+  // with a code-created FreeCamera to avoid the baked 16:9 aspect ratio in the
+  // GLB camera's projection matrix which breaks the viewport framing math.
+  const glbCamPos = scene.cameras.length > 0
+    ? scene.cameras[0].globalPosition?.clone() ?? scene.cameras[0].position.clone()
+    : new Vector3(0, 0, 100);
+  for (const c of [...scene.cameras]) c.dispose();
+
+  const cam = new FreeCamera("GameCamera", glbCamPos, scene);
+  cam.fov       = CONFIG.cameraVFov ?? 0.4;  // vertical FOV in radians
+  cam.minZ      = 0.1;
+  cam.maxZ      = 500;
+  cam.rotation.y = Math.PI;                  // face along -Z toward the action plane
+  scene.activeCamera = cam;
 
   if (CONFIG.cameraControlsEnabled) {
     scene.activeCamera.attachControl(canvas, true);

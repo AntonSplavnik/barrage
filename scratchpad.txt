@@ -1,4 +1,27 @@
-i want the fragments when they recieve a missile hit to do a small shrinking animation and then disappear.  So over 500ms (tunable) they will scale from current scale to zero and be deleted.  this animation will apply to both the physics collider in simulation and the visual mesh in client.  So once the block fragments, each block perisits until the fragments them selves are hit then they shink to zero scale and are deleted.
 
 
-i want the to be a force threshold for fragemntation and also a cooldown so one shot does not cause multiple blocks to fragment.  also frgments themselvves should have a cooldown after they have just been created, so the same shot cannot make them disappaer only later shots
+
+
+
+i want to make loading and firing trebuche possible with one drag movement.  at the moment when i drag a missile to treb i need to release it then it snaps to the missile load target, then you start another drag to pull back and release, but i want to make it  possible in one drag. so when we are in range the missile snaps to target and then the drag continues and drags out the arrown vector from the load target 
+
+
+
+
+ 
+
+
+i want to add sound effects.  this may be complicated by our strudel music.  is it possible to use babylons sound manager for sound effects and play the strudel simultaneously?  do they need to mmanged by one sound handler, will there be conflicts?
+
+sound effects code can be put into a helper file for client called sound_effects.js
+
+i want the sound play function to have input params for volume, pan and pitch
+
+and of course server has to send the events that will trigger the sounds.
+
+the events are, on a trebuche release play whoosh.mp3
+missile hits block play metallic-thud.mp3
+missle hits block causing fragmentation play crushin-hit.mp3
+missile hits frgament play crunch.mp3
+
+

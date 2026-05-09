@@ -88,14 +88,25 @@ export const BARRAGE_CONFIG = {
   aimArrowHeadWidth: 0.4,               // m
   aimArrowHeadWidthScale: 1,           // multiplier of arrow length
 
-  // Camera behaviour.
-  playerCamOffsetX: 15,                  // m  — target shift toward player's side
-  playerCamOffsetY: -4,                  // m  — vertical shift (negative = lower/closer)
-  playerCamOffsetZ: -30,                 // m  — zoom in (negative = closer to scene)
+  // Camera.
+  cameraVFov: 0.4,                      // rad — vertical field of view (22.9°)
+
+  // Camera viewport boundaries (world-space, action plane at Z=0).
+  // Camera Z is computed so this width exactly fills the canvas horizontally.
+  // Camera Y is computed so viewportBottomY sits at the bottom screen edge.
+  viewportBfXMin: -45,                  // m
+  viewportBfXMax: 45,                   // m
+  viewportP1XMin: -45,                  // m
+  viewportP1XMax: 5,                    // m
+  viewportP2XMin: -5,                   // m
+  viewportP2XMax: 45,                   // m
+  viewportBottomY: -5,                  // m
+
+  // Camera animation timing.
   cameraInitialPanMs: 4000,             // ms — battlefield → player on level load
   cameraAimZoomOutMs: 700,              // ms — player → battlefield when aiming
   cameraReturnDelayMs: 4000,            // ms — wait after shot fires before panning back
-  cameraReturnMs: 2000,                  // ms — battlefield → player after shot
+  cameraReturnMs: 2000,                 // ms — battlefield → player after shot
 };
 
 if (typeof window !== "undefined") {
