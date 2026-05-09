@@ -3,6 +3,7 @@ import { BARRAGE_CONFIG } from "../public/config.js";
 import {
   isTrebuchetName,
   isMissileName,
+  isKingName,
   clampVector,
   constrainWorldBounds,
   constrainedPointForObject,
@@ -102,6 +103,7 @@ export function applyInput(client, message) {
     if (!object || !message.point) return;
     if (!object.dynamic) return;
     if (object.loadedInto) return;
+    if (isKingName(object.id)) return;
 
     if (!isTrebuchetName(object.id)) {
       if (client.id === 1 && object.x > 2) return;

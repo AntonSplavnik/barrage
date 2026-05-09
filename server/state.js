@@ -23,4 +23,7 @@ export const physicsAggregates = new Map();
 export const gameState = {
   tick: 0,
   nextClientId: 1,
+  roundNumber: 1,
+  scores: {},
+  paused: false,
 };

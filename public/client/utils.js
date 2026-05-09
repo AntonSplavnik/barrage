@@ -50,8 +50,7 @@ export function isDraggableRoot(root) {
   const name = root.name.toLowerCase();
   return name.includes("block")
     || name.includes("trebuche")
-    || name.includes("missile")
-    || name.includes("king");
+    || name.includes("missile");
 }
 
 export function isTrebuchetArmName(name) {

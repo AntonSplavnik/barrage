@@ -11,6 +11,7 @@ import { loadLevelIfPresent } from "./level.js";
 import { simulatePhysics } from "./simulation.js";
 import { sendState } from "./network.js";
 import { applyInput } from "./input.js";
+import { tryRecordRoundWin } from "./gameManager.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -148,7 +149,9 @@ await enableHavokPhysics();
 await loadLevelIfPresent();
 
 simulationInterval = setInterval(() => {
+  if (gameState.paused) return;
   gameState.tick += 1;
   simulatePhysics();
+  tryRecordRoundWin();
   sendState();
 }, TICK_MS);

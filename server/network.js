@@ -15,6 +15,8 @@ export function sendState() {
     type: "state",
     tick: gameState.tick,
     serverTime: Date.now(),
+    roundNumber: gameState.roundNumber,
+    scores: gameState.scores,
     objects: [...gameObjects.values()].map(toWireObject),
   });
 }
