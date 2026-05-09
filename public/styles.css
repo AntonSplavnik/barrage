@@ -14,6 +14,48 @@ body {
   touch-action: none;
 }
 
+#score-left,
+#score-right {
+  position: fixed;
+  top: 12px;
+  display: flex;
+  gap: 4px;
+  pointer-events: none;
+}
+
+#score-left {
+  left: 12px;
+}
+
+#score-right {
+  right: 12px;
+}
+
+.score-star {
+  font-size: 28px;
+  line-height: 1;
+}
+
+#score-left .score-star {
+  color: #ff6b6b;
+}
+
+#score-right .score-star {
+  color: #6ba3ff;
+}
+
+.score-star-flying {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 120px;
+  line-height: 1;
+  pointer-events: none;
+  z-index: 100;
+  opacity: 0;
+}
+
 #hud {
   position: fixed;
   top: 12px;
