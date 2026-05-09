@@ -104,8 +104,8 @@ export function applyInput(client, message) {
     if (object.loadedInto) return;
 
     if (!isTrebuchetName(object.id)) {
-      if (client.id === 1 && object.x > 0) return;
-      if (client.id === 2 && object.x < 0) return;
+      if (client.id === 1 && object.x > 2) return;
+      if (client.id === 2 && object.x < -2) return;
     }
 
     object.draggedBy = client.id;
