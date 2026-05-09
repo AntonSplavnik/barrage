@@ -21,7 +21,7 @@ export function playerIdForKing(king) {
 }
 
 export function tryRecordRoundWin() {
-  if (roundEndInProgress) return;
+  if (roundEndInProgress || gameState.matchOver) return;
 
   const knockedKing = checkKingKnockout();
   if (!knockedKing) return;
@@ -32,6 +32,9 @@ export function tryRecordRoundWin() {
 
   gameState.scores[winnerId] = (gameState.scores[winnerId] ?? 0) + 1;
 
+  const roundsToWin = BARRAGE_CONFIG.roundsToWin ?? 3;
+  const isMatchWon = gameState.scores[winnerId] >= roundsToWin;
+
   broadcast({
     type: "roundEnded",
     winner: winnerId,
@@ -41,6 +44,21 @@ export function tryRecordRoundWin() {
   });
 
   const postSimMs = BARRAGE_CONFIG.postWinSimulationMs ?? 5000;
+
+  if (isMatchWon) {
+    setTimeout(() => {
+      gameState.paused = true;
+      gameState.matchOver = true;
+      roundEndInProgress = false;
+      broadcast({
+        type: "matchEnded",
+        winner: winnerId,
+        scores: gameState.scores,
+      });
+    }, postSimMs);
+    return;
+  }
+
   const resetDelayMs = BARRAGE_CONFIG.roundEndDelayMs ?? 5000;
 
   setTimeout(() => {
@@ -58,4 +76,18 @@ export function tryRecordRoundWin() {
       scores: gameState.scores,
     });
   }, resetDelayMs);
+}
+
+export function resetMatch() {
+  gameState.roundNumber = 1;
+  gameState.scores = {};
+  gameState.paused = false;
+  gameState.matchOver = false;
+  roundEndInProgress = false;
+  resetGameState();
+  broadcast({
+    type: "matchReset",
+    roundNumber: gameState.roundNumber,
+    scores: gameState.scores,
+  });
 }

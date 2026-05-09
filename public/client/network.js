@@ -1,4 +1,4 @@
-import { connectionEl, playerEl, scoreLeftEl, scoreRightEl } from "./engine.js";
+import { connectionEl, playerEl, scoreLeftEl, scoreRightEl, matchEndEl, matchEndTextEl, rematchEl } from "./engine.js";
 import { applyState } from "./state.js";
 
 let seq = 0;
@@ -101,6 +101,21 @@ socket.addEventListener("message", (event) => {
     updateScores(message.scores, true);
   }
 
+  if (message.type === "matchEnded") {
+    updateScores(message.scores, false);
+    const color = message.winner === "P1" ? "#ff6b6b" : "#6ba3ff";
+    matchEndTextEl.textContent = "👑";
+    matchEndTextEl.style.color = color;
+    matchEndEl.classList.remove("hidden");
+  }
+
+  if (message.type === "matchReset") {
+    matchEndEl.classList.add("hidden");
+    scoreLeftEl.innerHTML = "";
+    scoreRightEl.innerHTML = "";
+    displayedScores = { P1: 0, P2: 0 };
+  }
+
   if (message.type === "state") {
     updateScores(message.scores, false);
     applyState(message);
@@ -109,6 +124,10 @@ socket.addEventListener("message", (event) => {
 
 socket.addEventListener("close", () => {
   connectionEl.textContent = "Disconnected";
+});
+
+rematchEl.addEventListener("click", () => {
+  sendInput("reset");
 });
 
 export function sendInput(action, payload) {

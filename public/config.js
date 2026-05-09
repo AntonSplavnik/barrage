@@ -45,8 +45,9 @@ export const BARRAGE_CONFIG = {
 
   // Zone rules.
   kingKnockoutAngle: 45,
-  postWinSimulationMs: 5000,
-  roundEndDelayMs: 5000,
+  roundsToWin: 3,
+  postWinSimulationMs: 2000,
+  roundEndDelayMs: 2000,
 
   // Missile loading.
   missileLoadRange: 2,

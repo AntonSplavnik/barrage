@@ -1,5 +1,6 @@
-import { gameObjects, dragState } from "./state.js";
+import { gameObjects, dragState, gameState } from "./state.js";
 import { BARRAGE_CONFIG } from "../public/config.js";
+import { resetMatch } from "./gameManager.js";
 import {
   isTrebuchetName,
   isMissileName,
@@ -89,14 +90,20 @@ export function applyInput(client, message) {
   if (message.type !== "input") return;
 
   if (message.action === "reset") {
-    resetGameState();
-    broadcast({
-      type: "event",
-      tick: 0,
-      events: [{ kind: "reset", playerId: client.playerId }],
-    });
+    if (gameState.matchOver) {
+      resetMatch();
+    } else {
+      resetGameState();
+      broadcast({
+        type: "event",
+        tick: 0,
+        events: [{ kind: "reset", playerId: client.playerId }],
+      });
+    }
     return;
   }
+
+  if (gameState.matchOver) return;
 
   if (message.action === "dragStart") {
     const object = gameObjects.get(message.entityId);

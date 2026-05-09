@@ -26,4 +26,5 @@ export const gameState = {
   roundNumber: 1,
   scores: {},
   paused: false,
+  matchOver: false,
 };
