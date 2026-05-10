@@ -3,6 +3,15 @@ export const BARRAGE_CONFIG = {
   levelUrl: "/assets/level1.glb",
   musicTuneUrl: "/strudel.js",
   musicSamplesUrl: "https://raw.githubusercontent.com/felixroos/dough-samples/main/tidal-drum-machines.json",
+  soundEffectTrackVolume: 1.0,
+  soundEffectPanDistance: 12,
+  soundEffects: {
+    trebuchet_release: { file: "/sounds/whoosh.mp3", volume: 0.75, pan: 0, pitch: 1.0 },
+    missile_hit_block: { file: "/sounds/metallic-thud.mp3", volume: 0.85, pan: 0, pitch: 1.0 },
+    missile_break_block: { file: "/sounds/crushing-hit.wav", volume: 0.95, pan: 0, pitch: 0.96 },
+    missile_hit_fragment: { file: "/sounds/crunch.mp3", volume: 0.7, pan: 0, pitch: 1.04 },
+    king_hit: { file: "/sounds/king-hit.mp3", volume: 1.0, pan: 0, pitch: 1.0 },
+  },
 
   // Rendering.
   importedLightIntensityScale: 0.01,      // multiplier

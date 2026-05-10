@@ -1,4 +1,5 @@
 import { createMusicController } from "./music.js";
+import { createSoundEffectsController } from "./sound_manager.js";
 import { createCameraController } from "./camera_control.js";
 import { BARRAGE_CONFIG } from "./config.js";
 
@@ -22,6 +23,7 @@ const hudEl = document.getElementById("hud");
 const connectionEl = document.getElementById("connection");
 const playerEl = document.getElementById("player");
 const musicToggleEl = document.getElementById("music-toggle");
+const sfxToggleEl = document.getElementById("sfx-toggle");
 const resetEl = document.getElementById("reset");
 const restartServerEl = document.getElementById("restart-server");
 const lobbyEl = document.getElementById("lobby");
@@ -33,7 +35,7 @@ const crownsRightEl = document.getElementById("crowns-right");
 const hudOpponentEl = document.getElementById("hud-opponent");
 const opponentPlayerEl = document.getElementById("opponent-player");
 
-const engine = new Engine(canvas, true);
+const engine = new Engine(canvas, true, { audioEngine: true });
 const scene = new Scene(engine);
 scene.clearColor.set(0.62, 0.72, 0.78, 1);
 scene.imageProcessingConfiguration.exposure = CONFIG.exposure ?? 1.0;
@@ -71,6 +73,9 @@ const hitVisualTemplates = { L: {}, R: {} };
 let displayedRound = 0;
 let displayedScores = {};
 const musicController = createMusicController(musicToggleEl, {
+  onStatus: setStatus,
+});
+const soundEffectsController = createSoundEffectsController(sfxToggleEl, scene, {
   onStatus: setStatus,
 });
 const cameraControl = createCameraController(scene, () => myPlayerId);
@@ -173,6 +178,24 @@ function isMissileInFlight(object) {
 function updateMusicFromState(message) {
   const kickVoiceGain = (message.objects || []).some(isMissileInFlight) ? 1 : 0;
   musicController.setKickVoiceGain(kickVoiceGain);
+}
+
+function worldXToPan(x) {
+  const maxAbsX = Math.max(
+    Math.abs(CONFIG.viewportBfXMin ?? -45),
+    Math.abs(CONFIG.viewportBfXMax ?? 45),
+    1,
+  );
+  return Math.max(-1, Math.min(1, Number(x ?? 0) / maxAbsX));
+}
+
+function playSoundEffectEvent(ev) {
+  if (ev.kind !== "soundEffect") return;
+  soundEffectsController.playEffect(ev.effect, {
+    volume: ev.volume,
+    pitch: ev.pitch,
+    pan: worldXToPan(ev.x),
+  });
 }
 
 function protocolToBabylonRotation(rotDegrees) {
@@ -926,6 +949,8 @@ socket.addEventListener("message", (event) => {
 
   if (message.type === "event") {
     for (const ev of message.events ?? []) {
+      playSoundEffectEvent(ev);
+
       if (ev.kind === "reset") {
         // Cancel any in-progress shrink animations
         for (const { observer, mesh } of shrinkObservers.values()) {
@@ -1060,6 +1085,15 @@ musicToggleEl.addEventListener("click", async () => {
   } catch (error) {
     console.error("Failed to toggle music.", error);
     setStatus("Music failed");
+  }
+});
+
+sfxToggleEl.addEventListener("click", async () => {
+  try {
+    await soundEffectsController.toggle();
+  } catch (error) {
+    console.error("Failed to toggle sound effects.", error);
+    setStatus("SFX failed");
   }
 });
 

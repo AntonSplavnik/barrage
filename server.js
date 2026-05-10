@@ -685,6 +685,24 @@ function broadcast(message) {
   }
 }
 
+function broadcastSoundEffect(effect, position = {}, overrides = {}) {
+  if (!activeRoom) return;
+
+  broadcast({
+    type: "event",
+    roomId: activeRoom.id,
+    tick,
+    events: [{
+      kind: "soundEffect",
+      effect,
+      x: Number(position.x ?? 0),
+      y: Number(position.y ?? 0),
+      z: Number(position.z ?? 0),
+      ...overrides,
+    }],
+  });
+}
+
 function sendState() {
   const message = {
     type: "state",
@@ -770,6 +788,7 @@ function maybeRecordKingHit(object, other) {
 
   king.hits = Math.min((king.hits ?? 0) + 1, king.maxHits ?? 3);
   const loser = playerIdForKing(king);
+  broadcastSoundEffect("king_hit", king);
 
   broadcast({
     type: "event",
@@ -986,6 +1005,8 @@ function fragmentBlock(block, missile) {
   }
   gameObjects.delete(block.id);
 
+  broadcastSoundEffect("missile_break_block", block);
+
   broadcast({
     type: "event",
     roomId: activeRoom.id,
@@ -1012,6 +1033,14 @@ function maybeRecordBlockHit(object, other) {
   missile.lastBlockHitTick = tick;
 
   block.hits = (block.hits ?? 0) + 1;
+  const fragSpeed = Math.hypot(missile.vx ?? 0, missile.vy ?? 0, missile.vz ?? 0);
+  const willFragment = block.hits >= block.maxHits
+    && !missile.usedToFragment
+    && fragSpeed >= (BARRAGE_CONFIG.blockFragmentVelocityMin ?? BARRAGE_CONFIG.blockHitVelocityMin ?? 3);
+
+  if (!willFragment) {
+    broadcastSoundEffect("missile_hit_block", block);
+  }
 
   broadcast({
     type: "event",
@@ -1020,12 +1049,9 @@ function maybeRecordBlockHit(object, other) {
     events: [{ kind: "blockHit", blockId: block.id, hits: block.hits, maxHits: block.maxHits }],
   });
 
-  if (block.hits >= block.maxHits && !missile.usedToFragment) {
-    const fragSpeed = Math.hypot(missile.vx ?? 0, missile.vy ?? 0, missile.vz ?? 0);
-    if (fragSpeed >= (BARRAGE_CONFIG.blockFragmentVelocityMin ?? BARRAGE_CONFIG.blockHitVelocityMin ?? 3)) {
-      block.pendingFragment = missile;
-      missile.usedToFragment = true;
-    }
+  if (willFragment) {
+    block.pendingFragment = missile;
+    missile.usedToFragment = true;
   }
 }
 
@@ -1302,6 +1328,8 @@ function beginTrebuchetRelease(trebuchet) {
     startArmAngle: trebuchet.armAngle ?? (BARRAGE_CONFIG.trebuchetArmRestRotationZDegrees ?? 15),
   };
   trebuchet.releaseElapsedMs = 0;
+
+  broadcastSoundEffect("trebuchet_release", trebuchet);
 }
 
 function targetPointForTrebuchetAtArmAngle(trebuchet, armAngle) {
@@ -1378,6 +1406,7 @@ function registerMeshRoots() {
   loadTargets.clear();
   physicsAggregates.clear();
   kingConvexPositions.clear();
+  gameObjects.clear();
 
   for (const transform of scene.transformNodes) {
     if (transform.name.toLowerCase().includes("missile-load-target")) {
@@ -2355,6 +2384,7 @@ async function startServer() {
             // the physics body alive so Havok gets one step to compute the
             // collision impulse against the missile.
             object.removeOnTick = tick + 1;
+            broadcastSoundEffect("missile_hit_fragment", object);
             broadcast({
               type: "event",
               roomId: activeRoom.id,

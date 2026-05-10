@@ -13,15 +13,21 @@ i want to make loading and firing trebuche possible with one drag movement.  at 
 
 i want to add sound effects.  this may be complicated by our strudel music.  is it possible to use babylons sound manager for sound effects and play the strudel simultaneously?  do they need to mmanged by one sound handler, will there be conflicts?
 
+
+sound_manager can be sued as a thin conroller as you suggest.
 sound effects code can be put into a helper file for client called sound_effects.js
 
-i want the sound play function to have input params for volume, pan and pitch
+i want the sound play function to have input params for volume, pan and pitch that i can edit to tune it,  maybe we have some stuff in onfig for that.
 
 and of course server has to send the events that will trigger the sounds.
 
 the events are, on a trebuche release play whoosh.mp3
 missile hits block play metallic-thud.mp3
-missle hits block causing fragmentation play crushin-hit.mp3
+missle hits block causing fragmentation play crushing-hit.mp3
 missile hits frgament play crunch.mp3
 
+you can also wwire up king-hit.mp3 for king hits and i will add a file for it soon.  the files are in public/sounds
+
+
+when we destrpy blocks and fragments, and when we load a new level,,  are we clearing all necessary leftovers from memory
 

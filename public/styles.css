@@ -97,6 +97,7 @@ body {
 }
 
 #music-toggle,
+#sfx-toggle,
 #reset,
 #restart-server {
   appearance: none;
@@ -109,14 +110,16 @@ body {
   cursor: pointer;
 }
 
-#music-toggle {
+#music-toggle,
+#sfx-toggle {
   position: relative;
   width: 34px;
   min-width: 34px;
   padding: 5px 0;
 }
 
-#music-toggle::after {
+#music-toggle::after,
+#sfx-toggle::after {
   content: "";
   position: absolute;
   inset: 6px 15px 6px 15px;
@@ -125,28 +128,33 @@ body {
   transform: rotate(-34deg);
 }
 
-#music-toggle.is-enabled::after {
+#music-toggle.is-enabled::after,
+#sfx-toggle.is-enabled::after {
   display: none;
 }
 
-.music-note {
+.music-note,
+.sfx-speaker {
   display: inline-block;
   font-size: 16px;
   line-height: 1;
 }
 
-#music-toggle.is-enabled {
+#music-toggle.is-enabled,
+#sfx-toggle.is-enabled {
   color: #f4d35e;
   background: rgb(244 211 94 / 18%);
   border-color: rgb(244 211 94 / 32%);
 }
 
-#music-toggle:disabled {
+#music-toggle:disabled,
+#sfx-toggle:disabled {
   opacity: 0.7;
   cursor: wait;
 }
 
 #music-toggle:hover,
+#sfx-toggle:hover,
 #reset:hover,
 #restart-server:hover {
   background: rgb(255 255 255 / 16%);
