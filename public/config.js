@@ -3,14 +3,29 @@ export const BARRAGE_CONFIG = {
   levelUrl: "/assets/level1.glb",
   musicTuneUrl: "/strudel.js",
   musicSamplesUrl: "https://raw.githubusercontent.com/felixroos/dough-samples/main/tidal-drum-machines.json",
+  musicVolume: 1.0,
   soundEffectTrackVolume: 1.0,
-  soundEffectPanDistance: 12,
+  soundEffectPitchRandomization: 0.2,     // +/- fraction applied to every SFX pitch
+  soundPanWorldMinX: -45,                 // world x mapped to full left
+  soundPanWorldMaxX: 45,                  // world x mapped to full right
+  impactSoundVelocityMin: 1.5,            // m/s (quietest dynamic impact sound)
+  impactSoundVelocityMax: 24,             // m/s (loudest dynamic impact sound)
+  impactSoundVolumeMinScale: 0.2,         // multiplier of effect volume at min speed
+  impactSoundVolumeMaxScale: 1.0,         // multiplier of effect volume at max speed
+  impactSoundCooldownMs: 120,             // ms between repeat impact sounds per pair/object
   soundEffects: {
-    trebuchet_release: { file: "/sounds/whoosh.mp3", volume: 0.75, pan: 0, pitch: 1.0 },
-    missile_hit_block: { file: "/sounds/metallic-thud.mp3", volume: 0.85, pan: 0, pitch: 1.0 },
-    missile_break_block: { file: "/sounds/crushing-hit.wav", volume: 0.95, pan: 0, pitch: 0.96 },
-    missile_hit_fragment: { file: "/sounds/crunch.mp3", volume: 0.7, pan: 0, pitch: 1.04 },
-    king_hit: { file: "/sounds/king-hit.mp3", volume: 1.0, pan: 0, pitch: 1.0 },
+    trebuchet_release: { file: "/sounds/trebuchet_release.mp3", volume: 0.75, pan: 0, pitch: 1.0 },
+    trebuchet_stretch: { file: "/sounds/trebuche-stretch.mp3", volume: 0.7, pan: 0, pitch: 1.0 },
+    block_hit_ground: { file: "/sounds/block_hit_ground.mp3", volume: 0.55, pan: 0, pitch: 0.9 },
+    block_hit_block: { file: "/sounds/block-hit-block.mp3", volume: 0.65, pan: 0, pitch: 0.95, cooldownMs: 220 },
+    missile_hit_ground: { file: "/sounds/missile-hit-ground.mp3", volume: 0.55, pan: 0, pitch: 1.0, cooldownMs: 180 },
+    missile_hit_block: { file: "/sounds/missile_hit_block.mp3", volume: 0.65, pan: 0, pitch: 0.98, cooldownMs: 220 },
+    missile_hit_missile: { file: "/sounds/missile-hit-missile.mp3", volume: 0.65, pan: 0, pitch: 1.0 },
+    missile_crack_block: { file: "/sounds/missile_crack_block.mp3", volume: 0.85, pan: 0, pitch: 1.0 },
+    missile_hit_trebuchet: { file: "/sounds/missile_hit_trebuchet.mp3", volume: 0.8, pan: 0, pitch: 0.92 },
+    missile_fragments_block: { file: "/sounds/missile_fragments_block.mp3", volume: 0.95, pan: 0, pitch: 0.96 },
+    missile_hits_fragment: { file: "/sounds/missile_hits_fragment.mp3", volume: 0.7, pan: 0, pitch: 1.04 },
+    king_hit: { file: "/sounds/king_hit.mp3", volume: 1.0, pan: 0, pitch: 1.0 },
   },
 
   // Rendering.
@@ -59,6 +74,7 @@ export const BARRAGE_CONFIG = {
   noMansLandX: 5,                         // m (half-width of centre dead zone)
   kingKnockoutAngle: 45,                  // deg
   blockMaxHits: 5,                        // hits before fragmentation
+  kingHitVelocityMin: 3,                  // m/s (min speed to register a king hit)
   blockHitVelocityMin: 10,                 // m/s (min speed to register a hit)
   blockHitCooldownMs: 83,                // ms — missile can only crack one block per this window
   blockFragmentVelocityMin: 5,           // m/s (min speed to trigger fragmentation)

@@ -181,21 +181,35 @@ function updateMusicFromState(message) {
 }
 
 function worldXToPan(x) {
-  const maxAbsX = Math.max(
-    Math.abs(CONFIG.viewportBfXMin ?? -45),
-    Math.abs(CONFIG.viewportBfXMax ?? 45),
-    1,
-  );
-  return Math.max(-1, Math.min(1, Number(x ?? 0) / maxAbsX));
+  const minX = CONFIG.soundPanWorldMinX ?? -45;
+  const maxX = CONFIG.soundPanWorldMaxX ?? 45;
+  if (maxX === minX) return 0;
+
+  const t = Math.max(0, Math.min(1, (Number(x ?? 0) - minX) / (maxX - minX)));
+  return t * 2 - 1;
 }
 
 function playSoundEffectEvent(ev) {
-  if (ev.kind !== "soundEffect") return;
-  soundEffectsController.playEffect(ev.effect, {
+  if (ev.kind === "soundEffectStop") {
+    soundEffectsController.stopEffect(ev.effect, ev.instanceId);
+    return;
+  }
+
+  const options = {
     volume: ev.volume,
     pitch: ev.pitch,
     pan: worldXToPan(ev.x),
-  });
+    loop: ev.loop,
+  };
+
+  if (ev.kind === "soundEffectStart") {
+    soundEffectsController.startEffect(ev.effect, ev.instanceId, options);
+    return;
+  }
+
+  if (ev.kind === "soundEffect") {
+    soundEffectsController.playEffect(ev.effect, options);
+  }
 }
 
 function protocolToBabylonRotation(rotDegrees) {

@@ -6,12 +6,14 @@ const STRUDEL_RUNTIME_TIMEOUT_MS = 4000;
 function stripInjectedControls(source) {
   return source
     .replace(/^\s*(const|let|var)\s+kickVoiceGain\s*=.*$/gm, "")
+    .replace(/^\s*(const|let|var)\s+musicVolume\s*=.*$/gm, "")
     .replace(/\._pianoroll\(\)/g, "");
 }
 
-function buildEvaluatedSource(source, { kickVoiceGain = 0 } = {}) {
+function buildEvaluatedSource(source, { kickVoiceGain = 0, musicVolume = 1 } = {}) {
   return [
     `const kickVoiceGain = ${kickVoiceGain};`,
+    `const musicVolume = ${musicVolume};`,
     stripInjectedControls(source).trim(),
   ].filter(Boolean).join("\n\n");
 }
@@ -88,7 +90,7 @@ export function createMusicController(button, { onStatus } = {}) {
   async function loadTuneSource() {
     const tuneUrl = CONFIG.musicTuneUrl?.trim();
     if (!tuneUrl) {
-      tuneSource = `stack(s("[bd]*2").gain(kickVoiceGain))`;
+      tuneSource = `stack(s("[bd]*2").gain(kickVoiceGain * musicVolume))`;
       return;
     }
 
@@ -104,7 +106,10 @@ export function createMusicController(button, { onStatus } = {}) {
     if (!enabled || !runtime || !tuneSource.trim()) return;
 
     const token = ++renderToken;
-    const source = buildEvaluatedSource(tuneSource, { kickVoiceGain });
+    const source = buildEvaluatedSource(tuneSource, {
+      kickVoiceGain,
+      musicVolume: CONFIG.musicVolume ?? 1,
+    });
     if (restart) {
       getHush()?.();
     }

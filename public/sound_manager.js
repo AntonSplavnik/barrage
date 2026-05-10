@@ -1,11 +1,18 @@
 import { BARRAGE_CONFIG } from "./config.js";
-import { getSoundEffectDefinition, getSoundEffectDefinitions } from "./sound_effects.js";
+import { getCanonicalSoundEffectId, getSoundEffectDefinition, getSoundEffectDefinitions } from "./sound_effects.js";
 
 const CONFIG = BARRAGE_CONFIG;
-const { Engine, Sound, SoundTrack, Vector3 } = BABYLON;
+const { Engine } = BABYLON;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+function randomizedPitch(pitch) {
+  const amount = Math.max(0, CONFIG.soundEffectPitchRandomization ?? 0);
+  if (amount === 0) return pitch;
+
+  return pitch * (1 + (Math.random() * 2 - 1) * amount);
 }
 
 export function createSoundEffectsController(button, scene, { onStatus } = {}) {
@@ -14,9 +21,10 @@ export function createSoundEffectsController(button, scene, { onStatus } = {}) {
   let enabled = false;
   let enabling = false;
   let initialized = false;
-  let soundTrack = null;
   let decodeAudioContext = null;
+  let outputGain = null;
   const baseAudioBuffers = new Map();
+  const activeEffects = new Map();
 
   function setEnabledUi(isEnabled) {
     button.classList.toggle("is-enabled", isEnabled);
@@ -29,6 +37,7 @@ export function createSoundEffectsController(button, scene, { onStatus } = {}) {
     if (!audioEngine) return;
     audioEngine.unlock();
     await audioEngine.audioContext?.resume?.();
+    await decodeAudioContext?.resume?.();
   }
 
   function getAudioContext() {
@@ -45,12 +54,16 @@ export function createSoundEffectsController(button, scene, { onStatus } = {}) {
     return decodeAudioContext;
   }
 
-  function ensureSoundTrack() {
-    if (!soundTrack) {
-      soundTrack = new SoundTrack(scene, {
-        volume: CONFIG.soundEffectTrackVolume ?? 1.0,
-      });
-    }
+  function ensureOutputGain() {
+    if (outputGain) return outputGain;
+
+    const audioContext = getAudioContext() ?? ensureDecodeAudioContext();
+    if (!audioContext) return null;
+
+    outputGain = audioContext.createGain();
+    outputGain.gain.value = CONFIG.soundEffectTrackVolume ?? 1.0;
+    outputGain.connect(audioContext.destination);
+    return outputGain;
   }
 
   async function loadBaseSound(effectId, definition) {
@@ -68,10 +81,20 @@ export function createSoundEffectsController(button, scene, { onStatus } = {}) {
     baseAudioBuffers.set(effectId, audioBuffer);
   }
 
+  async function tryLoadBaseSound(effectId, definition) {
+    if (baseAudioBuffers.has(effectId)) return;
+
+    try {
+      await loadBaseSound(effectId, definition);
+    } catch (error) {
+      console.warn(`Skipping sound effect "${effectId}".`, error);
+    }
+  }
+
   async function loadSounds() {
-    ensureSoundTrack();
+    ensureOutputGain();
     const definitions = getSoundEffectDefinitions();
-    await Promise.all(Object.entries(definitions).map(([effectId, definition]) => loadBaseSound(effectId, definition)));
+    await Promise.all(Object.entries(definitions).map(([effectId, definition]) => tryLoadBaseSound(effectId, definition)));
   }
 
   async function enable() {
@@ -83,10 +106,8 @@ export function createSoundEffectsController(button, scene, { onStatus } = {}) {
 
     try {
       await unlockAudio();
-      if (!initialized) {
-        await loadSounds();
-        initialized = true;
-      }
+      await loadSounds();
+      initialized = true;
       enabled = true;
       setEnabledUi(true);
       status("Sound effects enabled");
@@ -102,51 +123,112 @@ export function createSoundEffectsController(button, scene, { onStatus } = {}) {
 
   function disable() {
     enabled = false;
+    stopAllEffects();
     setEnabledUi(false);
     status("Sound effects disabled");
   }
 
-  function playEffect(effectId, overrides = {}) {
+  function effectInstanceKey(effectId, instanceId) {
+    return `${effectId}:${instanceId}`;
+  }
+
+  function stopPlayback(playback) {
+    if (!playback) return;
+
+    try {
+      playback.source.stop();
+    } catch {
+      // Source may already have ended.
+    }
+    playback.cleanup();
+  }
+
+  function stopAllEffects() {
+    for (const key of [...activeEffects.keys()]) {
+      stopEffectByKey(key);
+    }
+  }
+
+  function stopEffectByKey(key) {
+    const playback = activeEffects.get(key);
+    activeEffects.delete(key);
+    stopPlayback(playback);
+  }
+
+  function createPlayback(effectId, overrides = {}) {
     if (!enabled) return;
 
+    const canonicalEffectId = getCanonicalSoundEffectId(effectId);
     const definition = getSoundEffectDefinition(effectId);
-    const audioBuffer = baseAudioBuffers.get(effectId);
+    const audioBuffer = baseAudioBuffers.get(canonicalEffectId);
     if (!definition || !audioBuffer) return;
 
     const volume = overrides.volume ?? definition.volume ?? 1;
-    const pitch = overrides.pitch ?? definition.pitch ?? 1;
+    const pitch = randomizedPitch(overrides.pitch ?? definition.pitch ?? 1);
     const pan = clamp(overrides.pan ?? definition.pan ?? 0, -1, 1);
-    const panDistance = CONFIG.soundEffectPanDistance ?? 12;
-    const soundName = `${effectId}_${performance.now()}`;
+    const audioContext = getAudioContext();
+    const destination = outputGain ?? ensureOutputGain();
+    if (!audioContext || !destination) return;
 
-    const instance = new Sound(soundName, audioBuffer, scene, () => {
-      instance.useCustomAttenuation = true;
-      instance.setAttenuationFunction((currentVolume) => currentVolume);
-      instance.spatialSound = true;
-      instance.maxDistance = Number.MAX_SAFE_INTEGER;
-      instance.rolloffFactor = 0;
-      instance.refDistance = 1;
-      instance.setVolume(volume);
-      instance.setPlaybackRate(pitch);
-      instance.setPosition(new Vector3(pan * panDistance, 0, 1));
-      soundTrack?.addSound(instance);
-      instance.onEndedObservable.addOnce(() => {
-        soundTrack?.removeSound(instance);
-        instance.dispose();
-      });
-      instance.play();
-    }, {
-      autoplay: false,
-      loop: false,
-      volume: 1,
-      spatialSound: true,
-      maxDistance: Number.MAX_SAFE_INTEGER,
-      rolloffFactor: 0,
-      refDistance: 1,
-      panningModel: "equalpower",
-    });
+    const source = audioContext.createBufferSource();
+    const leftGain = audioContext.createGain();
+    const rightGain = audioContext.createGain();
+    const merger = audioContext.createChannelMerger(2);
 
-    instance.metadata = { effectId };
+    source.buffer = audioBuffer;
+    source.playbackRate.value = pitch;
+    leftGain.gain.value = volume * (pan <= 0 ? 1 : 1 - pan);
+    rightGain.gain.value = volume * (pan >= 0 ? 1 : 1 + pan);
+    source.loop = overrides.loop ?? definition.loop ?? false;
+
+    source.connect(leftGain);
+    source.connect(rightGain);
+    leftGain.connect(merger, 0, 0);
+    rightGain.connect(merger, 0, 1);
+    merger.connect(destination);
+
+    const playback = {
+      source,
+      cleanup: () => {
+        source.onended = null;
+        try { source.disconnect(); } catch {}
+        try { leftGain.disconnect(); } catch {}
+        try { rightGain.disconnect(); } catch {}
+        try { merger.disconnect(); } catch {}
+      },
+    };
+
+    return playback;
+  }
+
+  function playEffect(effectId, overrides = {}) {
+    const playback = createPlayback(effectId, overrides);
+    if (!playback) return;
+
+    playback.source.onended = playback.cleanup;
+    playback.source.start();
+  }
+
+  function startEffect(effectId, instanceId, overrides = {}) {
+    if (!instanceId) return;
+
+    const key = effectInstanceKey(effectId, instanceId);
+    stopEffectByKey(key);
+
+    const playback = createPlayback(effectId, overrides);
+    if (!playback) return;
+
+    activeEffects.set(key, playback);
+    playback.source.onended = () => {
+      activeEffects.delete(key);
+      playback.cleanup();
+    };
+    playback.source.start();
+  }
+
+  function stopEffect(effectId, instanceId) {
+    if (!instanceId) return;
+    stopEffectByKey(effectInstanceKey(effectId, instanceId));
   }
 
   setEnabledUi(false);
@@ -156,6 +238,8 @@ export function createSoundEffectsController(button, scene, { onStatus } = {}) {
     enable,
     isEnabled: () => enabled,
     playEffect,
+    startEffect,
+    stopEffect,
     toggle: async () => {
       if (enabled) {
         disable();

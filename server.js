@@ -25,6 +25,17 @@ import { BARRAGE_CONFIG } from "./public/config.js";
 import { firstLevel, nextLevel } from "./server/levelCatalog.js";
 import { RoomManager } from "./server/roomManager.js";
 import { playerSide, canGrab, isInPlayerZone, zoneLimitX, checkKingKnockout } from "./server/gameManager.js";
+import {
+  captureImpactVelocities,
+  impactPositionFor,
+  impactSoundKey,
+  impactSpeedFor,
+  impactVolumeFor,
+  shouldEmitImpactSound,
+  soundEffectEvent,
+  soundEffectStartEvent,
+  soundEffectStopEvent,
+} from "./server/server-events.js";
 
 const { XMLHttpRequest } = xhr2;
 globalThis.XMLHttpRequest = XMLHttpRequest;
@@ -62,6 +73,7 @@ let initialBlockObjects = null;
 let kingConvexPositions = new Map();
 let loadTargets = null;
 let physicsAggregates = null;
+let impactSoundTicks = null;
 let havokInterfacePromise = null;
 
 const ARM_STATE_IDLE = "idle";
@@ -89,6 +101,7 @@ function createRoomRuntime(room) {
   room.dragState = new Map();
   room.loadTargets = new Map();
   room.physicsAggregates = new Map();
+  room.impactSoundTicks = new Map();
 }
 
 function createRoomState({ id, index, playerIds }) {
@@ -124,6 +137,7 @@ function bindRoom(room) {
   dragState = room.dragState;
   loadTargets = room.loadTargets;
   physicsAggregates = room.physicsAggregates;
+  impactSoundTicks = room.impactSoundTicks;
 }
 
 function saveActiveRoomTick() {
@@ -692,15 +706,45 @@ function broadcastSoundEffect(effect, position = {}, overrides = {}) {
     type: "event",
     roomId: activeRoom.id,
     tick,
-    events: [{
-      kind: "soundEffect",
-      effect,
-      x: Number(position.x ?? 0),
-      y: Number(position.y ?? 0),
-      z: Number(position.z ?? 0),
-      ...overrides,
-    }],
+    events: [soundEffectEvent(effect, position, overrides)],
   });
+}
+
+function broadcastSoundEffectStart(effect, instanceId, position = {}, overrides = {}) {
+  if (!activeRoom) return;
+
+  broadcast({
+    type: "event",
+    roomId: activeRoom.id,
+    tick,
+    events: [soundEffectStartEvent(effect, instanceId, position, overrides)],
+  });
+}
+
+function broadcastSoundEffectStop(effect, instanceId) {
+  if (!activeRoom) return;
+
+  broadcast({
+    type: "event",
+    roomId: activeRoom.id,
+    tick,
+    events: [soundEffectStopEvent(effect, instanceId)],
+  });
+}
+
+function broadcastImpactSoundEffect(effect, position, impactSpeed, overrides = {}) {
+  broadcastSoundEffect(effect, position, {
+    volume: impactVolumeFor(BARRAGE_CONFIG, effect, impactSpeed),
+    impactSpeed,
+    ...overrides,
+  });
+}
+
+function stopTrebuchetStretchSound(trebuchet) {
+  if (!trebuchet?.stretchSoundActive) return;
+
+  trebuchet.stretchSoundActive = false;
+  broadcastSoundEffectStop("trebuchet_stretch", trebuchet.id);
 }
 
 function sendState() {
@@ -788,7 +832,7 @@ function maybeRecordKingHit(object, other) {
 
   king.hits = Math.min((king.hits ?? 0) + 1, king.maxHits ?? 3);
   const loser = playerIdForKing(king);
-  broadcastSoundEffect("king_hit", king);
+  broadcastImpactSoundEffect("king_hit", impactPositionFor(missile, king), impactSpeedFor(missile, king));
 
   broadcast({
     type: "event",
@@ -1005,7 +1049,7 @@ function fragmentBlock(block, missile) {
   }
   gameObjects.delete(block.id);
 
-  broadcastSoundEffect("missile_break_block", block);
+  broadcastImpactSoundEffect("missile_fragments_block", impactPositionFor(missile, block), impactSpeedFor(missile, block));
 
   broadcast({
     type: "event",
@@ -1039,7 +1083,7 @@ function maybeRecordBlockHit(object, other) {
     && fragSpeed >= (BARRAGE_CONFIG.blockFragmentVelocityMin ?? BARRAGE_CONFIG.blockHitVelocityMin ?? 3);
 
   if (!willFragment) {
-    broadcastSoundEffect("missile_hit_block", block);
+    broadcastImpactSoundEffect("missile_crack_block", impactPositionFor(missile, block), impactSpeedFor(missile, block));
   }
 
   broadcast({
@@ -1075,6 +1119,160 @@ function checkMissileBlockHits() {
   }
 }
 
+function checkMissileKingHits() {
+  const expand = 0.2;
+  for (const missile of gameObjects.values()) {
+    if (!isMissileName(missile.id) || missile.loadedInto || missile.draggedBy) continue;
+    const speed = Math.hypot(missile.vx ?? 0, missile.vy ?? 0, missile.vz ?? 0);
+    if (speed < (BARRAGE_CONFIG.kingHitVelocityMin ?? 3)) continue;
+    const ma = aabbFor(missile);
+    for (const king of gameObjects.values()) {
+      if (!isKingName(king.id)) continue;
+      const ka = aabbFor(king);
+      if (
+        ma.maxX > ka.minX - expand && ma.minX < ka.maxX + expand &&
+        ma.maxY > ka.minY - expand && ma.minY < ka.maxY + expand
+      ) {
+        maybeRecordKingHit(missile, king);
+      }
+    }
+  }
+}
+
+function maybeBroadcastObjectImpactSound(effect, object, other, impactSpeed) {
+  if (!impactSoundTicks) return;
+
+  const minSpeed = BARRAGE_CONFIG.impactSoundVelocityMin ?? 1.5;
+  if (impactSpeed < minSpeed) return;
+
+  const effectCooldownMs = BARRAGE_CONFIG.soundEffects?.[effect]?.cooldownMs;
+  const cooldownTicks = Math.ceil((effectCooldownMs ?? BARRAGE_CONFIG.impactSoundCooldownMs ?? 0) / TICK_MS);
+  const key = impactSoundKey(effect, object.id, other?.id);
+  if (!shouldEmitImpactSound(impactSoundTicks, key, tick, cooldownTicks)) return;
+
+  broadcastImpactSoundEffect(effect, impactPositionFor(object, other), impactSpeed);
+}
+
+function checkBlockGroundImpactSounds() {
+  const expand = 0.05;
+  for (const block of gameObjects.values()) {
+    if (!isBlockName(block.id) || block.pendingFragment || block.draggedBy) continue;
+    const aabb = aabbFor(block);
+    const groundY = SERVER_CONFIG.groundY;
+    const wasAboveGround = (block.impactMinY ?? Infinity) > groundY + expand;
+    const isAtGround = aabb.minY <= groundY + expand;
+    if (!wasAboveGround || !isAtGround) continue;
+
+    maybeBroadcastObjectImpactSound("block_hit_ground", block, null, Math.abs(block.impactVy ?? block.vy ?? 0));
+  }
+}
+
+function checkMissileGroundImpactSounds() {
+  const expand = 0.05;
+  for (const missile of gameObjects.values()) {
+    if (!isMissileName(missile.id) || missile.loadedInto || missile.draggedBy) continue;
+    const aabb = aabbFor(missile);
+    const groundY = SERVER_CONFIG.groundY;
+    const wasAboveGround = (missile.impactMinY ?? Infinity) > groundY + expand;
+    const isAtGround = aabb.minY <= groundY + expand;
+    if (!wasAboveGround || !isAtGround) continue;
+
+    maybeBroadcastObjectImpactSound("missile_hit_ground", missile, null, Math.abs(missile.impactVy ?? missile.vy ?? 0));
+  }
+}
+
+function checkBlockBlockImpactSounds() {
+  const expand = 0.05;
+  const blocks = [...gameObjects.values()].filter((object) => isBlockName(object.id) && !object.pendingFragment);
+
+  for (let i = 0; i < blocks.length; i += 1) {
+    const block = blocks[i];
+    const ba = aabbFor(block);
+    for (let j = i + 1; j < blocks.length; j += 1) {
+      const other = blocks[j];
+      const oa = aabbFor(other);
+      if (
+        ba.maxX > oa.minX - expand && ba.minX < oa.maxX + expand &&
+        ba.maxY > oa.minY - expand && ba.minY < oa.maxY + expand
+      ) {
+        maybeBroadcastObjectImpactSound("block_hit_block", block, other, impactSpeedFor(block, other));
+      }
+    }
+  }
+}
+
+function checkMissileTrebuchetImpactSounds() {
+  const expand = 0.2;
+  for (const missile of gameObjects.values()) {
+    if (!isMissileName(missile.id) || missile.loadedInto || missile.draggedBy) continue;
+    const ma = aabbFor(missile);
+    for (const trebuchet of gameObjects.values()) {
+      if (!isTrebuchetName(trebuchet.id)) continue;
+      const ta = aabbFor(trebuchet);
+      if (
+        ma.maxX > ta.minX - expand && ma.minX < ta.maxX + expand &&
+        ma.maxY > ta.minY - expand && ma.minY < ta.maxY + expand
+      ) {
+        maybeBroadcastObjectImpactSound("missile_hit_trebuchet", missile, trebuchet, impactSpeedFor(missile, trebuchet));
+      }
+    }
+  }
+}
+
+function checkMissileBlockImpactSounds() {
+  const expand = 0.2;
+  const blockHitVelocityMin = BARRAGE_CONFIG.blockHitVelocityMin ?? 3;
+
+  for (const missile of gameObjects.values()) {
+    if (!isMissileName(missile.id) || missile.loadedInto || missile.draggedBy) continue;
+    const speed = Math.hypot(missile.vx ?? 0, missile.vy ?? 0, missile.vz ?? 0);
+    if (speed >= blockHitVelocityMin) continue;
+
+    const ma = aabbFor(missile);
+    for (const block of gameObjects.values()) {
+      if (!isBlockName(block.id) || block.pendingFragment) continue;
+      const ba = aabbFor(block);
+      if (
+        ma.maxX > ba.minX - expand && ma.minX < ba.maxX + expand &&
+        ma.maxY > ba.minY - expand && ma.minY < ba.maxY + expand
+      ) {
+        maybeBroadcastObjectImpactSound("missile_hit_block", missile, block, impactSpeedFor(missile, block));
+      }
+    }
+  }
+}
+
+function checkMissileMissileImpactSounds() {
+  const expand = 0.2;
+  const missiles = [...gameObjects.values()].filter((object) => (
+    isMissileName(object.id) && !object.loadedInto && !object.draggedBy
+  ));
+
+  for (let i = 0; i < missiles.length; i += 1) {
+    const missile = missiles[i];
+    const ma = aabbFor(missile);
+    for (let j = i + 1; j < missiles.length; j += 1) {
+      const other = missiles[j];
+      const oa = aabbFor(other);
+      if (
+        ma.maxX > oa.minX - expand && ma.minX < oa.maxX + expand &&
+        ma.maxY > oa.minY - expand && ma.minY < oa.maxY + expand
+      ) {
+        maybeBroadcastObjectImpactSound("missile_hit_missile", missile, other, impactSpeedFor(missile, other));
+      }
+    }
+  }
+}
+
+function checkObjectImpactSounds() {
+  checkBlockGroundImpactSounds();
+  checkMissileGroundImpactSounds();
+  checkBlockBlockImpactSounds();
+  checkMissileBlockImpactSounds();
+  checkMissileMissileImpactSounds();
+  checkMissileTrebuchetImpactSounds();
+}
+
 function checkMissileFragmentHits() {
   const expand = 0.2;
   for (const missile of gameObjects.values()) {
@@ -1094,6 +1292,11 @@ function checkMissileFragmentHits() {
         missile.hitFragIds ??= new Set();
         if (missile.hitFragIds.has(fragment.id)) continue;
         missile.hitFragIds.add(fragment.id);
+        const hitPosition = impactPositionFor(missile, fragment);
+        fragment.hitImpactSpeed = impactSpeedFor(missile, fragment);
+        fragment.hitImpactX = hitPosition.x;
+        fragment.hitImpactY = hitPosition.y;
+        fragment.hitImpactZ = hitPosition.z;
         fragment.pendingRemove = true;
 
         const penalty = BARRAGE_CONFIG.fragmentHitSpeedPenalty ?? 0;
@@ -1187,6 +1390,8 @@ function applyInput(client, message) {
     trebuchet.pendingShot = null;
     trebuchet.releaseElapsedMs = 0;
     trebuchet.armAngle = restArmAngleForTrebuchet(trebuchet);
+    trebuchet.stretchSoundActive = true;
+    broadcastSoundEffectStart("trebuchet_stretch", trebuchet.id, trebuchet);
   }
 
   if (message.action === "aimMove") {
@@ -1207,6 +1412,7 @@ function applyInput(client, message) {
     if (!trebuchet || trebuchet.aimedBy !== client.id || trebuchet.fireState !== ARM_STATE_AIMING) return;
 
     updateTrebuchetAim(trebuchet, message.point);
+    stopTrebuchetStretchSound(trebuchet);
     beginTrebuchetRelease(trebuchet);
   }
 
@@ -1621,6 +1827,7 @@ function findTrebuchetArmAncestor(node) {
 
 function resetGameState() {
   dragState.clear();
+  impactSoundTicks?.clear();
 
   // Remove all fragments from the simulation
   for (const [id, object] of [...gameObjects.entries()]) {
@@ -1692,6 +1899,7 @@ function resetGameState() {
     if (object.pendingShot !== undefined) object.pendingShot = null;
     if (object.returnStartArmAngle !== undefined) object.returnStartArmAngle = null;
     if (object.releaseElapsedMs !== undefined) object.releaseElapsedMs = 0;
+    if (object.stretchSoundActive !== undefined) stopTrebuchetStretchSound(object);
 
     if (object.hits !== undefined) object.hits = 0;
     if (object.pendingFragment !== undefined) object.pendingFragment = null;
@@ -1905,6 +2113,10 @@ function syncPhysicsBodyFromObject(object, velocity = null) {
   if (velocity) {
     aggregate.body.setLinearVelocity(new Vector3(velocity.x, velocity.y, velocity.z));
   }
+}
+
+function physicsVelocityForObject(object) {
+  return physicsAggregates.get(object.id)?.body.getLinearVelocity?.() ?? object;
 }
 
 function teleportPhysicsBody(aggregate) {
@@ -2366,9 +2578,15 @@ async function startServer() {
     for (const room of roomManager.activeRooms()) {
       bindRoom(room);
       tick += 1;
+      captureImpactVelocities(gameObjects.values(), {
+        boundsFor: aabbFor,
+        velocityFor: physicsVelocityForObject,
+      });
       simulatePhysics(TICK_MS / 1000);
+      checkMissileKingHits();
       checkMissileBlockHits();
       checkMissileFragmentHits();
+      checkObjectImpactSounds();
       for (const object of [...gameObjects.values()]) {
         if (object.pendingFragment) {
           try {
@@ -2384,7 +2602,11 @@ async function startServer() {
             // the physics body alive so Havok gets one step to compute the
             // collision impulse against the missile.
             object.removeOnTick = tick + 1;
-            broadcastSoundEffect("missile_hit_fragment", object);
+            broadcastImpactSoundEffect("missile_hits_fragment", {
+              x: object.hitImpactX ?? object.x,
+              y: object.hitImpactY ?? object.y,
+              z: object.hitImpactZ ?? object.z,
+            }, object.hitImpactSpeed ?? impactSpeedFor(object));
             broadcast({
               type: "event",
               roomId: activeRoom.id,
