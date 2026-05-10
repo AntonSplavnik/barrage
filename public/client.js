@@ -1,6 +1,7 @@
 import { createMusicController } from "./music.js";
 import { createSoundEffectsController } from "./sound_manager.js";
 import { createCameraController } from "./camera_control.js";
+import { createVfxManager } from "./vfx-manager.js";
 import { BARRAGE_CONFIG } from "./config.js";
 
 const {
@@ -78,6 +79,7 @@ const musicController = createMusicController(musicToggleEl, {
 const soundEffectsController = createSoundEffectsController(sfxToggleEl, scene, {
   onStatus: setStatus,
 });
+const vfxManager = createVfxManager(scene);
 const cameraControl = createCameraController(scene, () => myPlayerId);
 
 function setStatus(text) {
@@ -759,6 +761,7 @@ function updateAimArrow() {
 }
 
 function disposeLevelScene() {
+  vfxManager.dispose();
   hideAimArrow();
   aimArrowShaft?.dispose();
   aimArrowHeadLeft?.dispose();
@@ -964,8 +967,10 @@ socket.addEventListener("message", (event) => {
   if (message.type === "event") {
     for (const ev of message.events ?? []) {
       playSoundEffectEvent(ev);
+      vfxManager.handleEvent(ev);
 
       if (ev.kind === "reset") {
+        vfxManager.dispose();
         // Cancel any in-progress shrink animations
         for (const { observer, mesh } of shrinkObservers.values()) {
           scene.onBeforeRenderObservable.remove(observer);

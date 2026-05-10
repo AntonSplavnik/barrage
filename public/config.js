@@ -13,6 +13,11 @@ export const BARRAGE_CONFIG = {
   impactSoundVolumeMinScale: 0.2,         // multiplier of effect volume at min speed
   impactSoundVolumeMaxScale: 1.0,         // multiplier of effect volume at max speed
   impactSoundCooldownMs: 120,             // ms between repeat impact sounds per pair/object
+  vfxMissileCrackBlockCount: 16,
+  vfxMissileCrackBlockDurationMs: 650,
+  vfxMissileCrackBlockSpeed: 4.2,
+  vfxMissileCrackBlockGravity: -7.5,
+  vfxMissileCrackBlockSize: 0.16,
   soundEffects: {
     trebuchet_release: { file: "/sounds/trebuchet_release.mp3", volume: 0.75, pan: 0, pitch: 1.0 },
     trebuchet_stretch: { file: "/sounds/trebuche-stretch.mp3", volume: 0.7, pan: 0, pitch: 1.0 },

@@ -8,8 +8,6 @@ export const SERVER_CONFIG = {
   dynamicMass: 6,
   dynamicFriction: 0.9,
   dynamicRestitution: 0.15,
-  collisionIterations: 3,
   releaseVelocityMax: 80,
-  pushedTrebuchetVelocityScale: 0.25,
   trebuchetReleaseFriction: 1.8,
 };

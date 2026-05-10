@@ -15,7 +15,7 @@ import { Mesh } from "@babylonjs/core/Meshes/mesh.js";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData.js";
 import { HavokPlugin } from "@babylonjs/core/Physics/v2/Plugins/havokPlugin.js";
 import { PhysicsAggregate } from "@babylonjs/core/Physics/v2/physicsAggregate.js";
-import { PhysicsPrestepType, PhysicsShapeType } from "@babylonjs/core/Physics/v2/IPhysicsEnginePlugin.js";
+import { PhysicsEventType, PhysicsPrestepType, PhysicsShapeType } from "@babylonjs/core/Physics/v2/IPhysicsEnginePlugin.js";
 import "@babylonjs/core/Physics/v2/physicsEngineComponent.js";
 import { Scene } from "@babylonjs/core/scene.js";
 import { SceneLoader } from "@babylonjs/core/Loading/sceneLoader.js";
@@ -25,8 +25,8 @@ import { BARRAGE_CONFIG } from "./public/config.js";
 import { firstLevel, nextLevel } from "./server/levelCatalog.js";
 import { RoomManager } from "./server/roomManager.js";
 import { playerSide, canGrab, isInPlayerZone, zoneLimitX, checkKingKnockout } from "./server/gameManager.js";
+import { runPhysicsSimulationTick } from "./server/physics-sim.js";
 import {
-  captureImpactVelocities,
   impactPositionFor,
   impactSoundKey,
   impactSpeedFor,
@@ -73,6 +73,8 @@ let initialBlockObjects = null;
 let kingConvexPositions = new Map();
 let loadTargets = null;
 let physicsAggregates = null;
+let physicsCollisionObservers = null;
+let physicsContactEvents = null;
 let impactSoundTicks = null;
 let havokInterfacePromise = null;
 
@@ -101,6 +103,8 @@ function createRoomRuntime(room) {
   room.dragState = new Map();
   room.loadTargets = new Map();
   room.physicsAggregates = new Map();
+  room.physicsCollisionObservers = new Map();
+  room.physicsContactEvents = [];
   room.impactSoundTicks = new Map();
 }
 
@@ -137,6 +141,8 @@ function bindRoom(room) {
   dragState = room.dragState;
   loadTargets = room.loadTargets;
   physicsAggregates = room.physicsAggregates;
+  physicsCollisionObservers = room.physicsCollisionObservers;
+  physicsContactEvents = room.physicsContactEvents;
   impactSoundTicks = room.impactSoundTicks;
 }
 
@@ -355,18 +361,6 @@ function babylonToProtocolRotationZ(radians) {
 
 function rotationQuaternionForObject(object) {
   return Quaternion.FromEulerAngles(0, 0, protocolToBabylonRotation(object.rot ?? 0));
-}
-
-function velocityComponent(object, axis) {
-  if (axis === "x") return object.vx;
-  if (axis === "y") return object.vy;
-  return object.vz;
-}
-
-function setVelocityComponent(object, axis, value) {
-  if (axis === "x") object.vx = value;
-  if (axis === "y") object.vy = value;
-  if (axis === "z") object.vz = value;
 }
 
 function clampAngularVelocity(value) {
@@ -649,25 +643,6 @@ function boundsForNodes(nodes) {
   };
 }
 
-function aabbFor(object) {
-  const centerX = object.x + object.offsetX;
-  const centerY = object.y + object.offsetY;
-  const centerZ = object.z + object.offsetZ;
-
-  return {
-    minX: centerX - object.halfX,
-    maxX: centerX + object.halfX,
-    minY: centerY - object.halfY,
-    maxY: centerY + object.halfY,
-    minZ: centerZ - object.halfZ,
-    maxZ: centerZ + object.halfZ,
-  };
-}
-
-function overlapOnAxis(aMin, aMax, bMin, bMax) {
-  return Math.min(aMax, bMax) - Math.max(aMin, bMin);
-}
-
 function isGroundName(name) {
   return name.toLowerCase().includes("ground");
 }
@@ -738,6 +713,14 @@ function broadcastImpactSoundEffect(effect, position, impactSpeed, overrides = {
     impactSpeed,
     ...overrides,
   });
+}
+
+function collisionPointFor(object, other) {
+  return {
+    x: ((object.x ?? 0) + (other.x ?? 0)) / 2,
+    y: ((object.y ?? 0) + (other.y ?? 0)) / 2,
+    z: ((object.z ?? 0) + (other.z ?? 0)) / 2,
+  };
 }
 
 function stopTrebuchetStretchSound(trebuchet) {
@@ -818,7 +801,7 @@ async function advanceRoomAfterRound(room) {
   sendState();
 }
 
-function maybeRecordKingHit(object, other) {
+function maybeRecordKingHit(object, other, hitPosition = null) {
   const missile = isMissileName(object.id) ? object : isMissileName(other.id) ? other : null;
   const king = isKingName(object.id) ? object : isKingName(other.id) ? other : null;
   if (!missile || !king || missile.loadedInto || activeRoom.roundWinner) return;
@@ -832,7 +815,7 @@ function maybeRecordKingHit(object, other) {
 
   king.hits = Math.min((king.hits ?? 0) + 1, king.maxHits ?? 3);
   const loser = playerIdForKing(king);
-  broadcastImpactSoundEffect("king_hit", impactPositionFor(missile, king), impactSpeedFor(missile, king));
+  broadcastImpactSoundEffect("king_hit", hitPosition ?? impactPositionFor(missile, king), impactSpeedFor(missile, king));
 
   broadcast({
     type: "event",
@@ -1034,7 +1017,7 @@ function fragmentBlock(block, missile) {
     aggregate.body.disablePreStep = true;
     aggregate.body.setLinearDamping(0.15);
     aggregate.body.setAngularDamping(0.55);
-    physicsAggregates.set(fragId, aggregate);
+    registerPhysicsAggregate(fragObj, aggregate);
     teleportPhysicsBody(aggregate);
     aggregate.body.setLinearVelocity(new Vector3(vx, vy, 0));
     aggregate.body.setAngularVelocity(new Vector3(0, 0, (Math.random() - 0.5) * 12));
@@ -1042,14 +1025,14 @@ function fragmentBlock(block, missile) {
     fragIds.push(fragId);
   }
 
-  const blockAgg = physicsAggregates.get(block.id);
-  if (blockAgg) {
-    blockAgg.dispose();
-    physicsAggregates.delete(block.id);
-  }
+  disposePhysicsAggregate(block.id);
   gameObjects.delete(block.id);
 
-  broadcastImpactSoundEffect("missile_fragments_block", impactPositionFor(missile, block), impactSpeedFor(missile, block));
+  broadcastImpactSoundEffect(
+    "missile_fragments_block",
+    block.pendingFragmentHitPosition ?? collisionPointFor(missile, block),
+    impactSpeedFor(missile, block),
+  );
 
   broadcast({
     type: "event",
@@ -1059,7 +1042,7 @@ function fragmentBlock(block, missile) {
   });
 }
 
-function maybeRecordBlockHit(object, other) {
+function maybeRecordBlockHit(object, other, hitPosition = null) {
   const missile = isMissileName(object.id) ? object : isMissileName(other.id) ? other : null;
   const block = isBlockName(object.id) ? object : isBlockName(other.id) ? other : null;
   if (!missile || !block || missile.loadedInto || block.pendingFragment || activeRoom?.roundWinner) return;
@@ -1083,7 +1066,7 @@ function maybeRecordBlockHit(object, other) {
     && fragSpeed >= (BARRAGE_CONFIG.blockFragmentVelocityMin ?? BARRAGE_CONFIG.blockHitVelocityMin ?? 3);
 
   if (!willFragment) {
-    broadcastImpactSoundEffect("missile_crack_block", impactPositionFor(missile, block), impactSpeedFor(missile, block));
+    broadcastImpactSoundEffect("missile_crack_block", hitPosition ?? collisionPointFor(missile, block), impactSpeedFor(missile, block));
   }
 
   broadcast({
@@ -1095,51 +1078,12 @@ function maybeRecordBlockHit(object, other) {
 
   if (willFragment) {
     block.pendingFragment = missile;
+    block.pendingFragmentHitPosition = hitPosition ?? collisionPointFor(missile, block);
     missile.usedToFragment = true;
   }
 }
 
-function checkMissileBlockHits() {
-  const expand = 0.2;
-  for (const missile of gameObjects.values()) {
-    if (!isMissileName(missile.id) || missile.loadedInto || missile.draggedBy) continue;
-    const speed = Math.hypot(missile.vx ?? 0, missile.vy ?? 0, missile.vz ?? 0);
-    if (speed < (BARRAGE_CONFIG.blockHitVelocityMin ?? 3)) continue;
-    const ma = aabbFor(missile);
-    for (const block of gameObjects.values()) {
-      if (!isBlockName(block.id) || block.pendingFragment) continue;
-      const ba = aabbFor(block);
-      if (
-        ma.maxX > ba.minX - expand && ma.minX < ba.maxX + expand &&
-        ma.maxY > ba.minY - expand && ma.minY < ba.maxY + expand
-      ) {
-        maybeRecordBlockHit(missile, block);
-      }
-    }
-  }
-}
-
-function checkMissileKingHits() {
-  const expand = 0.2;
-  for (const missile of gameObjects.values()) {
-    if (!isMissileName(missile.id) || missile.loadedInto || missile.draggedBy) continue;
-    const speed = Math.hypot(missile.vx ?? 0, missile.vy ?? 0, missile.vz ?? 0);
-    if (speed < (BARRAGE_CONFIG.kingHitVelocityMin ?? 3)) continue;
-    const ma = aabbFor(missile);
-    for (const king of gameObjects.values()) {
-      if (!isKingName(king.id)) continue;
-      const ka = aabbFor(king);
-      if (
-        ma.maxX > ka.minX - expand && ma.minX < ka.maxX + expand &&
-        ma.maxY > ka.minY - expand && ma.minY < ka.maxY + expand
-      ) {
-        maybeRecordKingHit(missile, king);
-      }
-    }
-  }
-}
-
-function maybeBroadcastObjectImpactSound(effect, object, other, impactSpeed) {
+function maybeBroadcastObjectImpactSound(effect, object, other, impactSpeed, hitPosition = null) {
   if (!impactSoundTicks) return;
 
   const minSpeed = BARRAGE_CONFIG.impactSoundVelocityMin ?? 1.5;
@@ -1150,170 +1094,144 @@ function maybeBroadcastObjectImpactSound(effect, object, other, impactSpeed) {
   const key = impactSoundKey(effect, object.id, other?.id);
   if (!shouldEmitImpactSound(impactSoundTicks, key, tick, cooldownTicks)) return;
 
-  broadcastImpactSoundEffect(effect, impactPositionFor(object, other), impactSpeed);
+  broadcastImpactSoundEffect(effect, hitPosition ?? impactPositionFor(object, other), impactSpeed);
 }
 
-function checkBlockGroundImpactSounds() {
-  const expand = 0.05;
-  for (const block of gameObjects.values()) {
-    if (!isBlockName(block.id) || block.pendingFragment || block.draggedBy) continue;
-    const aabb = aabbFor(block);
-    const groundY = SERVER_CONFIG.groundY;
-    const wasAboveGround = (block.impactMinY ?? Infinity) > groundY + expand;
-    const isAtGround = aabb.minY <= groundY + expand;
-    if (!wasAboveGround || !isAtGround) continue;
+function maybeBroadcastGroundImpactSound(effect, object, ground, hitPosition = null) {
+  const impactSpeed = Math.abs(object.impactVy ?? object.vy ?? 0);
+  maybeBroadcastObjectImpactSound(effect, object, ground, impactSpeed, hitPosition ?? object);
+}
 
-    maybeBroadcastObjectImpactSound("block_hit_ground", block, null, Math.abs(block.impactVy ?? block.vy ?? 0));
+function contactPositionFor(contact, object, other) {
+  return contact.point ?? collisionPointFor(object, other);
+}
+
+function objectPairFromContact(contact) {
+  const object = gameObjects.get(contact.objectId);
+  const other = gameObjects.get(contact.otherId);
+  return object && other ? [object, other] : null;
+}
+
+function handlePhysicsContact(contact) {
+  const pair = objectPairFromContact(contact);
+  if (!pair) return;
+
+  const [object, other] = pair;
+  const missile = isMissileName(object.id) ? object : isMissileName(other.id) ? other : null;
+  const block = isBlockName(object.id) ? object : isBlockName(other.id) ? other : null;
+  const king = isKingName(object.id) ? object : isKingName(other.id) ? other : null;
+  const fragment = object.isFragment ? object : other.isFragment ? other : null;
+  const trebuchet = isTrebuchetName(object.id) ? object : isTrebuchetName(other.id) ? other : null;
+  const ground = isGroundName(object.id) ? object : isGroundName(other.id) ? other : null;
+
+  if (ground && block) {
+    maybeBroadcastGroundImpactSound("block_hit_ground", block, ground, contactPositionFor(contact, block, ground));
+    return;
   }
-}
 
-function checkMissileGroundImpactSounds() {
-  const expand = 0.05;
-  for (const missile of gameObjects.values()) {
-    if (!isMissileName(missile.id) || missile.loadedInto || missile.draggedBy) continue;
-    const aabb = aabbFor(missile);
-    const groundY = SERVER_CONFIG.groundY;
-    const wasAboveGround = (missile.impactMinY ?? Infinity) > groundY + expand;
-    const isAtGround = aabb.minY <= groundY + expand;
-    if (!wasAboveGround || !isAtGround) continue;
-
-    maybeBroadcastObjectImpactSound("missile_hit_ground", missile, null, Math.abs(missile.impactVy ?? missile.vy ?? 0));
+  if (ground && missile) {
+    maybeBroadcastGroundImpactSound("missile_hit_ground", missile, ground, contactPositionFor(contact, missile, ground));
+    return;
   }
-}
 
-function checkBlockBlockImpactSounds() {
-  const expand = 0.05;
-  const blocks = [...gameObjects.values()].filter((object) => isBlockName(object.id) && !object.pendingFragment);
-
-  for (let i = 0; i < blocks.length; i += 1) {
-    const block = blocks[i];
-    const ba = aabbFor(block);
-    for (let j = i + 1; j < blocks.length; j += 1) {
-      const other = blocks[j];
-      const oa = aabbFor(other);
-      if (
-        ba.maxX > oa.minX - expand && ba.minX < oa.maxX + expand &&
-        ba.maxY > oa.minY - expand && ba.minY < oa.maxY + expand
-      ) {
-        maybeBroadcastObjectImpactSound("block_hit_block", block, other, impactSpeedFor(block, other));
-      }
-    }
+  if (missile && king) {
+    maybeRecordKingHit(missile, king, contactPositionFor(contact, missile, king));
+    return;
   }
-}
 
-function checkMissileTrebuchetImpactSounds() {
-  const expand = 0.2;
-  for (const missile of gameObjects.values()) {
-    if (!isMissileName(missile.id) || missile.loadedInto || missile.draggedBy) continue;
-    const ma = aabbFor(missile);
-    for (const trebuchet of gameObjects.values()) {
-      if (!isTrebuchetName(trebuchet.id)) continue;
-      const ta = aabbFor(trebuchet);
-      if (
-        ma.maxX > ta.minX - expand && ma.minX < ta.maxX + expand &&
-        ma.maxY > ta.minY - expand && ma.minY < ta.maxY + expand
-      ) {
-        maybeBroadcastObjectImpactSound("missile_hit_trebuchet", missile, trebuchet, impactSpeedFor(missile, trebuchet));
-      }
-    }
-  }
-}
-
-function checkMissileBlockImpactSounds() {
-  const expand = 0.2;
-  const blockHitVelocityMin = BARRAGE_CONFIG.blockHitVelocityMin ?? 3;
-
-  for (const missile of gameObjects.values()) {
-    if (!isMissileName(missile.id) || missile.loadedInto || missile.draggedBy) continue;
+  if (missile && block) {
+    const position = contactPositionFor(contact, missile, block);
     const speed = Math.hypot(missile.vx ?? 0, missile.vy ?? 0, missile.vz ?? 0);
-    if (speed >= blockHitVelocityMin) continue;
-
-    const ma = aabbFor(missile);
-    for (const block of gameObjects.values()) {
-      if (!isBlockName(block.id) || block.pendingFragment) continue;
-      const ba = aabbFor(block);
-      if (
-        ma.maxX > ba.minX - expand && ma.minX < ba.maxX + expand &&
-        ma.maxY > ba.minY - expand && ma.minY < ba.maxY + expand
-      ) {
-        maybeBroadcastObjectImpactSound("missile_hit_block", missile, block, impactSpeedFor(missile, block));
-      }
+    if (speed >= (BARRAGE_CONFIG.blockHitVelocityMin ?? 3)) {
+      maybeRecordBlockHit(missile, block, position);
+    } else {
+      maybeBroadcastObjectImpactSound("missile_hit_block", missile, block, impactSpeedFor(missile, block), position);
     }
+    return;
+  }
+
+  if (missile && fragment) {
+    maybeRecordFragmentHit(missile, fragment, contactPositionFor(contact, missile, fragment));
+    return;
+  }
+
+  if (missile && trebuchet) {
+    maybeBroadcastObjectImpactSound(
+      "missile_hit_trebuchet",
+      missile,
+      trebuchet,
+      impactSpeedFor(missile, trebuchet),
+      contactPositionFor(contact, missile, trebuchet),
+    );
+    return;
+  }
+
+  if (isMissileName(object.id) && isMissileName(other.id)) {
+    maybeBroadcastObjectImpactSound(
+      "missile_hit_missile",
+      object,
+      other,
+      impactSpeedFor(object, other),
+      contactPositionFor(contact, object, other),
+    );
+    return;
+  }
+
+  if (block && isBlockName(object.id) && isBlockName(other.id)) {
+    maybeBroadcastObjectImpactSound(
+      "block_hit_block",
+      object,
+      other,
+      impactSpeedFor(object, other),
+      contactPositionFor(contact, object, other),
+    );
   }
 }
 
-function checkMissileMissileImpactSounds() {
-  const expand = 0.2;
-  const missiles = [...gameObjects.values()].filter((object) => (
-    isMissileName(object.id) && !object.loadedInto && !object.draggedBy
-  ));
+function handlePhysicsContacts(contacts) {
+  const handledPairs = new Set();
 
-  for (let i = 0; i < missiles.length; i += 1) {
-    const missile = missiles[i];
-    const ma = aabbFor(missile);
-    for (let j = i + 1; j < missiles.length; j += 1) {
-      const other = missiles[j];
-      const oa = aabbFor(other);
-      if (
-        ma.maxX > oa.minX - expand && ma.minX < oa.maxX + expand &&
-        ma.maxY > oa.minY - expand && ma.minY < oa.maxY + expand
-      ) {
-        maybeBroadcastObjectImpactSound("missile_hit_missile", missile, other, impactSpeedFor(missile, other));
-      }
-    }
+  for (const contact of contacts ?? []) {
+    const key = [contact.type, contact.objectId, contact.otherId].sort().join(":");
+    if (handledPairs.has(key)) continue;
+    handledPairs.add(key);
+    handlePhysicsContact(contact);
   }
 }
 
-function checkObjectImpactSounds() {
-  checkBlockGroundImpactSounds();
-  checkMissileGroundImpactSounds();
-  checkBlockBlockImpactSounds();
-  checkMissileBlockImpactSounds();
-  checkMissileMissileImpactSounds();
-  checkMissileTrebuchetImpactSounds();
-}
+function maybeRecordFragmentHit(missile, fragment, hitPosition = null) {
+  if (!isMissileName(missile.id) || missile.loadedInto || missile.draggedBy) return;
+  if (!fragment.isFragment || fragment.pendingRemove) return;
 
-function checkMissileFragmentHits() {
-  const expand = 0.2;
-  for (const missile of gameObjects.values()) {
-    if (!isMissileName(missile.id) || missile.loadedInto || missile.draggedBy) continue;
-    const speed = Math.hypot(missile.vx ?? 0, missile.vy ?? 0, missile.vz ?? 0);
-    if (speed < (BARRAGE_CONFIG.fragmentHitVelocityMin ?? BARRAGE_CONFIG.blockHitVelocityMin ?? 3)) continue;
-    const ma = aabbFor(missile);
-    for (const fragment of gameObjects.values()) {
-      if (!fragment.isFragment || fragment.pendingRemove) continue;
-      const immunityTicks = Math.ceil((BARRAGE_CONFIG.fragmentImmunityMs ?? 0) / TICK_MS);
-      if (immunityTicks > 0 && tick - (fragment.createdTick ?? 0) < immunityTicks) continue;
-      const fa = aabbFor(fragment);
-      if (
-        ma.maxX > fa.minX - expand && ma.minX < fa.maxX + expand &&
-        ma.maxY > fa.minY - expand && ma.minY < fa.maxY + expand
-      ) {
-        missile.hitFragIds ??= new Set();
-        if (missile.hitFragIds.has(fragment.id)) continue;
-        missile.hitFragIds.add(fragment.id);
-        const hitPosition = impactPositionFor(missile, fragment);
-        fragment.hitImpactSpeed = impactSpeedFor(missile, fragment);
-        fragment.hitImpactX = hitPosition.x;
-        fragment.hitImpactY = hitPosition.y;
-        fragment.hitImpactZ = hitPosition.z;
-        fragment.pendingRemove = true;
+  const speed = Math.hypot(missile.vx ?? 0, missile.vy ?? 0, missile.vz ?? 0);
+  if (speed < (BARRAGE_CONFIG.fragmentHitVelocityMin ?? BARRAGE_CONFIG.blockHitVelocityMin ?? 3)) return;
 
-        const penalty = BARRAGE_CONFIG.fragmentHitSpeedPenalty ?? 0;
-        if (penalty > 0) {
-          const missileSpeed = Math.hypot(missile.vx ?? 0, missile.vy ?? 0);
-          if (missileSpeed > 0) {
-            const newSpeed = Math.max(0, missileSpeed - penalty);
-            const scale = newSpeed / missileSpeed;
-            missile.vx = (missile.vx ?? 0) * scale;
-            missile.vy = (missile.vy ?? 0) * scale;
-            const agg = physicsAggregates.get(missile.id);
-            if (agg) agg.body.setLinearVelocity(new Vector3(missile.vx, missile.vy, 0));
-          }
-        }
-      }
-    }
-  }
+  const immunityTicks = Math.ceil((BARRAGE_CONFIG.fragmentImmunityMs ?? 0) / TICK_MS);
+  if (immunityTicks > 0 && tick - (fragment.createdTick ?? 0) < immunityTicks) return;
+
+  missile.hitFragIds ??= new Set();
+  if (missile.hitFragIds.has(fragment.id)) return;
+  missile.hitFragIds.add(fragment.id);
+
+  const position = hitPosition ?? impactPositionFor(missile, fragment);
+  fragment.hitImpactSpeed = impactSpeedFor(missile, fragment);
+  fragment.hitImpactX = position.x;
+  fragment.hitImpactY = position.y;
+  fragment.hitImpactZ = position.z;
+  fragment.pendingRemove = true;
+
+  const penalty = BARRAGE_CONFIG.fragmentHitSpeedPenalty ?? 0;
+  if (penalty <= 0) return;
+
+  const missileSpeed = Math.hypot(missile.vx ?? 0, missile.vy ?? 0);
+  if (missileSpeed <= 0) return;
+
+  const newSpeed = Math.max(0, missileSpeed - penalty);
+  const scale = newSpeed / missileSpeed;
+  missile.vx = (missile.vx ?? 0) * scale;
+  missile.vy = (missile.vy ?? 0) * scale;
+  const agg = physicsAggregates.get(missile.id);
+  if (agg) agg.body.setLinearVelocity(new Vector3(missile.vx, missile.vy, 0));
 }
 
 function releaseDrag(object, releaseVelocity) {
@@ -1321,7 +1239,6 @@ function releaseDrag(object, releaseVelocity) {
   returnDraggedObjectUpright(object);
   if (!maybeLoadMissile(object)) {
     setPhysicsBodyTrigger(object, false);
-    resolveCollisionsForObject(object, { includeDragged: true });
     object.vx = releaseVelocity.x;
     object.vy = releaseVelocity.y;
     object.vz = releaseVelocity.z;
@@ -1446,7 +1363,6 @@ function applyInput(client, message) {
     object.y = nextY;
     object.z = nextZ;
     constrainWorldBounds(object);
-    resolveCollisionsForObject(object, { includeDragged: true });
     returnDraggedObjectUpright(object);
     syncPhysicsBodyFromObject(object, { x: 0, y: 0, z: 0 });
     object.vx = 0;
@@ -1608,9 +1524,91 @@ function massForObject(name) {
   return SERVER_CONFIG.dynamicMass;
 }
 
+function bodyObjectId(body) {
+  return body?.transformNode?.metadata?.gameObjectId ?? null;
+}
+
+function vectorToPlain(vector) {
+  if (!vector) return null;
+  return {
+    x: Number(vector.x ?? 0),
+    y: Number(vector.y ?? 0),
+    z: Number(vector.z ?? 0),
+  };
+}
+
+function recordPhysicsContactEvent(event) {
+  if (!physicsContactEvents) return;
+  if (event.type !== PhysicsEventType.COLLISION_STARTED) return;
+
+  const objectId = bodyObjectId(event.collider);
+  const otherId = bodyObjectId(event.collidedAgainst);
+  if (!objectId || !otherId || objectId === otherId) return;
+
+  physicsContactEvents.push({
+    tick,
+    type: event.type,
+    objectId,
+    otherId,
+    point: vectorToPlain(event.point),
+    normal: vectorToPlain(event.normal),
+    impulse: Number(event.impulse ?? 0),
+    distance: Number(event.distance ?? 0),
+  });
+}
+
+function unregisterPhysicsAggregate(id) {
+  const aggregate = physicsAggregates?.get(id);
+  const observer = physicsCollisionObservers?.get(id);
+
+  if (observer && aggregate?.body?.getCollisionObservable) {
+    aggregate.body.getCollisionObservable().remove(observer);
+  }
+  physicsCollisionObservers?.delete(id);
+  aggregate?.body?.setCollisionCallbackEnabled?.(false);
+}
+
+function disposePhysicsAggregate(id) {
+  const aggregate = physicsAggregates?.get(id);
+  if (!aggregate) return;
+
+  unregisterPhysicsAggregate(id);
+  aggregate.dispose();
+  physicsAggregates.delete(id);
+}
+
+function disposeAllPhysicsAggregates() {
+  for (const id of [...(physicsAggregates?.keys() ?? [])]) {
+    disposePhysicsAggregate(id);
+  }
+  physicsAggregates?.clear();
+  physicsCollisionObservers?.clear();
+}
+
+function registerPhysicsAggregate(object, aggregate) {
+  unregisterPhysicsAggregate(object.id);
+
+  aggregate.transformNode.metadata = {
+    ...(aggregate.transformNode.metadata ?? {}),
+    gameObjectId: object.id,
+  };
+  aggregate.body.transformNode.metadata = {
+    ...(aggregate.body.transformNode.metadata ?? {}),
+    gameObjectId: object.id,
+  };
+
+  if (object.dynamic && aggregate.body?.getCollisionObservable && aggregate.body?.setCollisionCallbackEnabled) {
+    const observer = aggregate.body.getCollisionObservable().add(recordPhysicsContactEvent);
+    physicsCollisionObservers.set(object.id, observer);
+    aggregate.body.setCollisionCallbackEnabled(true);
+  }
+
+  physicsAggregates.set(object.id, aggregate);
+}
+
 function registerMeshRoots() {
   loadTargets.clear();
-  physicsAggregates.clear();
+  disposeAllPhysicsAggregates();
   kingConvexPositions.clear();
   gameObjects.clear();
 
@@ -1764,7 +1762,7 @@ function createPhysicsBodies() {
     aggregate.body.disablePreStep = true;
     aggregate.body.setLinearDamping(isTrebuchetName(object.id) ? 2.2 : 0.15);
     aggregate.body.setAngularDamping(isTrebuchetName(object.id) ? 10 : 0.55);
-    physicsAggregates.set(object.id, aggregate);
+    registerPhysicsAggregate(object, aggregate);
   }
 }
 
@@ -1832,8 +1830,7 @@ function resetGameState() {
   // Remove all fragments from the simulation
   for (const [id, object] of [...gameObjects.entries()]) {
     if (!object.isFragment) continue;
-    const agg = physicsAggregates.get(id);
-    if (agg) { agg.dispose(); physicsAggregates.delete(id); }
+    disposePhysicsAggregate(id);
     gameObjects.delete(id);
   }
 
@@ -1848,6 +1845,7 @@ function resetGameState() {
       rot: 0,
       hits: 0,
       pendingFragment: null,
+      pendingFragmentHitPosition: null,
       vx: 0, vy: 0, vz: 0,
       angularVelocity: 0,
       dragVx: 0, dragVy: 0, dragVz: 0,
@@ -1867,7 +1865,7 @@ function resetGameState() {
     agg.body.disablePreStep = true;
     agg.body.setLinearDamping(0.15);
     agg.body.setAngularDamping(0.55);
-    physicsAggregates.set(id, agg);
+    registerPhysicsAggregate(restored, agg);
     teleportPhysicsBody(agg);
   }
 
@@ -1903,200 +1901,11 @@ function resetGameState() {
 
     if (object.hits !== undefined) object.hits = 0;
     if (object.pendingFragment !== undefined) object.pendingFragment = null;
+    if (object.pendingFragmentHitPosition !== undefined) object.pendingFragmentHitPosition = null;
     if (object.usedToFragment !== undefined) object.usedToFragment = false;
     if (object.lastBlockHitTick !== undefined) object.lastBlockHitTick = null;
 
     syncPhysicsBodyFromObject(object, { x: 0, y: 0, z: 0 });
-  }
-}
-
-function resolveObjectCollision(object, other, { preferHorizontal = false } = {}) {
-  if (object.id === other.id || isGroundName(other.id)) return;
-
-  const a = aabbFor(object);
-  const b = aabbFor(other);
-  const overlapX = overlapOnAxis(a.minX, a.maxX, b.minX, b.maxX);
-  const overlapY = overlapOnAxis(a.minY, a.maxY, b.minY, b.maxY);
-  const overlapZ = overlapOnAxis(a.minZ, a.maxZ, b.minZ, b.maxZ);
-
-  if (overlapX <= 0 || overlapY <= 0 || overlapZ <= 0) return;
-
-  maybeRecordKingHit(object, other);
-  maybeRecordBlockHit(object, other);
-
-  const centerAX = object.x + object.offsetX;
-  const centerAY = object.y + object.offsetY;
-  const centerAZ = object.z + object.offsetZ;
-  const centerBX = other.x + other.offsetX;
-  const centerBY = other.y + other.offsetY;
-  const centerBZ = other.z + other.offsetZ;
-
-  function resolveDynamicImpact(axis, direction, overlap) {
-    if (object.draggedBy || other.draggedBy || !other.dynamic) return false;
-    if (axis === "y" && (isTrebuchetName(object.id) || isTrebuchetName(other.id))) return false;
-    if (isTrebuchetName(other.id) && axis !== "x") return false;
-
-    const objectBefore = object[axis];
-    const otherBefore = other[axis];
-    const objectShare = isTrebuchetName(object.id) ? 0 : 0.5;
-    const otherShare = isTrebuchetName(other.id) ? 0 : 1 - objectShare;
-
-    object[axis] += overlap * direction * objectShare;
-    other[axis] -= overlap * direction * otherShare;
-
-    if (isTrebuchetName(object.id)) {
-      const constrained = constrainedPointForObject(object, { x: object.x, y: object.y, z: object.z });
-      object.x = constrained.x;
-      object.y = constrained.y;
-      object.z = constrained.z;
-    }
-
-    if (isTrebuchetName(other.id)) {
-      const constrained = constrainedPointForObject(other, { x: other.x, y: other.y, z: other.z });
-      other.x = constrained.x;
-      other.y = constrained.y;
-      other.z = constrained.z;
-    }
-
-    const objectMoved = Math.abs(object[axis] - objectBefore) > 0.0001;
-    const otherMoved = Math.abs(other[axis] - otherBefore) > 0.0001;
-    if (!objectMoved && !otherMoved) return false;
-
-    const objectVelocity = velocityComponent(object, axis);
-    const otherVelocity = velocityComponent(other, axis);
-    const relativeNormalVelocity = (objectVelocity - otherVelocity) * direction;
-    if (relativeNormalVelocity >= 0) return true;
-
-    const transfer = BARRAGE_CONFIG.impactVelocityTransfer ?? 0.75;
-    const restitution = Math.max(object.restitution ?? 0, other.restitution ?? 0);
-    const invMassA = object.mass > 0 ? 1 / object.mass : 0;
-    const invMassB = other.mass > 0 ? 1 / other.mass : 0;
-    const invMassSum = invMassA + invMassB;
-    if (invMassSum <= 0) return true;
-
-    const impulse = (-(1 + restitution) * relativeNormalVelocity * transfer) / invMassSum;
-    setVelocityComponent(object, axis, objectVelocity + impulse * direction * invMassA);
-    setVelocityComponent(other, axis, otherVelocity - impulse * direction * invMassB);
-
-    return true;
-  }
-
-  function moveOtherOrBlock(axis, delta) {
-    if (object.draggedBy && isMissileName(object.id) && isTrebuchetName(other.id)) {
-      object[axis] -= delta;
-      if (axis === "x") object.vx = 0;
-      if (axis === "y") object.vy = 0;
-      if (axis === "z") object.vz = 0;
-      return;
-    }
-
-    if (other.dynamic && !other.draggedBy) {
-      const before = { x: other.x, y: other.y, z: other.z };
-
-      if (axis === "x") {
-        other.x += delta;
-      } else if (axis === "y" && !isTrebuchetName(other.id)) {
-        other.y += delta;
-      } else if (axis === "z" && !isTrebuchetName(other.id)) {
-        other.z += delta;
-      }
-
-      if (isTrebuchetName(other.id)) {
-        const constrained = constrainedPointForObject(other, { x: other.x, y: other.y, z: other.z });
-        other.x = constrained.x;
-        other.y = constrained.y;
-        other.z = constrained.z;
-      }
-
-      const moved = other[axis] - before[axis];
-      if (Math.abs(moved) > 0.0001) {
-        const pushedScale = isTrebuchetName(other.id) ? SERVER_CONFIG.pushedTrebuchetVelocityScale : 1;
-        const inheritedVelocity = clampVector({
-          x: (object.dragVx || object.vx) * pushedScale,
-          y: (object.dragVy || object.vy) * pushedScale,
-          z: (object.dragVz || object.vz) * pushedScale,
-        }, normalReleaseVelocityMax());
-
-        if (axis === "x") other.vx = inheritedVelocity.x;
-        if (axis === "y") other.vy = inheritedVelocity.y;
-        if (axis === "z") other.vz = inheritedVelocity.z;
-        return;
-      }
-    }
-
-    object[axis] -= delta;
-    if (axis === "x") object.vx = 0;
-    if (axis === "y") object.vy = 0;
-    if (axis === "z") object.vz = 0;
-  }
-
-  if (!preferHorizontal && overlapY <= overlapX && overlapY <= overlapZ) {
-    const direction = centerAY >= centerBY ? 1 : -1;
-    const delta = overlapY * direction;
-    if (object.draggedBy) {
-      moveOtherOrBlock("y", -delta);
-    } else if (resolveDynamicImpact("y", direction, overlapY)) {
-      return;
-    } else {
-      object.y += delta;
-    }
-    if ((direction > 0 && object.vy < 0) || (direction < 0 && object.vy > 0)) {
-      object.vy = 0;
-    }
-    object.vx *= Math.max(0, 1 - object.friction * 0.08);
-    object.vz *= Math.max(0, 1 - object.friction * 0.08);
-    return;
-  }
-
-  if (overlapX <= overlapZ) {
-    const direction = centerAX >= centerBX ? 1 : -1;
-    const delta = overlapX * direction;
-    if (object.draggedBy) {
-      moveOtherOrBlock("x", -delta);
-    } else if (resolveDynamicImpact("x", direction, overlapX)) {
-      return;
-    } else {
-      object.x += delta;
-    }
-    if ((direction > 0 && object.vx < 0) || (direction < 0 && object.vx > 0)) {
-      object.vx = 0;
-    }
-    return;
-  }
-
-  const direction = centerAZ >= centerBZ ? 1 : -1;
-  const delta = overlapZ * direction;
-  if (object.draggedBy) {
-    moveOtherOrBlock("z", -delta);
-  } else if (resolveDynamicImpact("z", direction, overlapZ)) {
-    return;
-  } else {
-    object.z += delta;
-  }
-  if ((direction > 0 && object.vz < 0) || (direction < 0 && object.vz > 0)) {
-    object.vz = 0;
-  }
-}
-
-function resolveCollisionsForObject(object, { includeDragged = false } = {}) {
-  if (object.loadedInto) return;
-  if (!object.dynamic || (!includeDragged && object.draggedBy) || isTrebuchetName(object.id)) return;
-
-  for (const other of gameObjects.values()) {
-    if (other.id === object.id) continue;
-    if (other.loadedInto) continue;
-    if (!includeDragged && other.draggedBy) continue;
-    resolveObjectCollision(object, other, { preferHorizontal: Boolean(object.draggedBy) });
-  }
-}
-
-function resolveCollisions() {
-  const objects = [...gameObjects.values()];
-
-  for (let i = 0; i < SERVER_CONFIG.collisionIterations; i += 1) {
-    for (const object of objects) {
-      resolveCollisionsForObject(object);
-    }
   }
 }
 
@@ -2290,7 +2099,6 @@ function simulatePhysics(dt) {
     }
   }
 
-  resolveCollisions();
 }
 
 function updateTrebuchetFireState(dt) {
@@ -2522,6 +2330,26 @@ async function handlePlayerVacancy({ room, playerId }) {
   }
 }
 
+function handlePhysicsSimulationResults(results) {
+  for (const { object, error } of results.fragmentationErrors) {
+    console.error(`fragmentBlock failed for ${object.id}:`, error);
+  }
+
+  for (const object of results.fragmentHits) {
+    broadcastImpactSoundEffect("missile_hits_fragment", {
+      x: object.hitImpactX ?? object.x,
+      y: object.hitImpactY ?? object.y,
+      z: object.hitImpactZ ?? object.z,
+    }, object.hitImpactSpeed ?? impactSpeedFor(object));
+    broadcast({
+      type: "event",
+      roomId: activeRoom.id,
+      tick,
+      events: [{ kind: "fragmentHit", fragId: object.id }],
+    });
+  }
+}
+
 wss.on("connection", (socket) => {
   const clientId = nextClientId++;
   const client = { id: clientId, playerId: null, room: null, socket };
@@ -2578,52 +2406,18 @@ async function startServer() {
     for (const room of roomManager.activeRooms()) {
       bindRoom(room);
       tick += 1;
-      captureImpactVelocities(gameObjects.values(), {
-        boundsFor: aabbFor,
+      const physicsResults = runPhysicsSimulationTick({
+        disposePhysicsAggregate,
+        dt: TICK_MS / 1000,
+        fragmentBlock,
+        gameObjects,
+        handlePhysicsContacts,
+        physicsContactEvents,
+        simulatePhysics,
+        tick,
         velocityFor: physicsVelocityForObject,
       });
-      simulatePhysics(TICK_MS / 1000);
-      checkMissileKingHits();
-      checkMissileBlockHits();
-      checkMissileFragmentHits();
-      checkObjectImpactSounds();
-      for (const object of [...gameObjects.values()]) {
-        if (object.pendingFragment) {
-          try {
-            fragmentBlock(object, object.pendingFragment);
-          } catch (err) {
-            console.error(`fragmentBlock failed for ${object.id}:`, err);
-            object.pendingFragment = null;
-          }
-        }
-        if (object.pendingRemove && object.isFragment) {
-          if (object.removeOnTick === undefined) {
-            // Tick 1: tell the client to start the shrink animation, but keep
-            // the physics body alive so Havok gets one step to compute the
-            // collision impulse against the missile.
-            object.removeOnTick = tick + 1;
-            broadcastImpactSoundEffect("missile_hits_fragment", {
-              x: object.hitImpactX ?? object.x,
-              y: object.hitImpactY ?? object.y,
-              z: object.hitImpactZ ?? object.z,
-            }, object.hitImpactSpeed ?? impactSpeedFor(object));
-            broadcast({
-              type: "event",
-              roomId: activeRoom.id,
-              tick,
-              events: [{ kind: "fragmentHit", fragId: object.id }],
-            });
-          } else if (tick >= object.removeOnTick) {
-            // Tick 2: now safe to remove physics and game object.
-            const agg = physicsAggregates.get(object.id);
-            if (agg) {
-              agg.dispose();
-              physicsAggregates.delete(object.id);
-            }
-            gameObjects.delete(object.id);
-          }
-        }
-      }
+      handlePhysicsSimulationResults(physicsResults);
       const knockedKing = checkKingKnockout(gameObjects);
       if (knockedKing) recordRoundWin(playerIdForKing(knockedKing));
       sendState();

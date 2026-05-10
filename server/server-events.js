@@ -51,14 +51,12 @@ export function relativeSpeedFor(object, other = null) {
   );
 }
 
-export function captureImpactVelocities(objects, { velocityFor, boundsFor } = {}) {
+export function captureImpactVelocities(objects, { velocityFor } = {}) {
   for (const object of objects) {
     const velocity = velocityFor?.(object) ?? object;
-    const bounds = boundsFor?.(object);
     object.impactVx = velocity.x ?? velocity.vx ?? 0;
     object.impactVy = velocity.y ?? velocity.vy ?? 0;
     object.impactVz = velocity.z ?? velocity.vz ?? 0;
-    object.impactMinY = bounds?.minY;
   }
 }
 
