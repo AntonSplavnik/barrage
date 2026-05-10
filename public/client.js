@@ -63,6 +63,9 @@ let aimArrowShaft = null;
 let aimArrowHeadLeft = null;
 let aimArrowHeadRight = null;
 let aimArrowMaterial = null;
+let dragPivotMarker = null;
+let dragPivotMarkerMaterial = null;
+let dragPivotLocalPoint = null;
 let currentRoomId = null;
 let currentLevelUrl = LEVEL_URL;
 let loadedLevelUrl = null;
@@ -320,6 +323,11 @@ function isMissileName(name) {
   return name.toLowerCase().includes("missile");
 }
 
+function isBlockName(name) {
+  const lowerName = name.toLowerCase();
+  return lowerName.includes("block") && !lowerName.includes("frag");
+}
+
 function isDraggableRoot(root) {
   const name = root.name.toLowerCase();
   return name.includes("block")
@@ -335,6 +343,10 @@ function isTrebuchetArmName(name) {
 
 function isTrebuchetName(name) {
   return name.toLowerCase().includes("trebuche");
+}
+
+function usesMagneticDragVisual(root) {
+  return isBlockName(root.name) || isTrebuchetName(root.name);
 }
 
 function colliderNodesFor(root) {
@@ -652,6 +664,62 @@ function hideAimArrow() {
   aimArrowHeadRight?.setEnabled(false);
 }
 
+function ensureDragPivotMarker() {
+  if (dragPivotMarker && !dragPivotMarker.isDisposed()) return dragPivotMarker;
+
+  const texture = new BABYLON.DynamicTexture("DragPivotHandTexture", { width: 160, height: 160 }, scene, true);
+  texture.hasAlpha = true;
+  texture.drawText("🖐", null, 112, "104px sans-serif", "white", "transparent", true, true);
+
+  dragPivotMarkerMaterial = new StandardMaterial("DragPivotHandMaterial", scene);
+  dragPivotMarkerMaterial.diffuseTexture = texture;
+  dragPivotMarkerMaterial.opacityTexture = texture;
+  dragPivotMarkerMaterial.emissiveColor = new Color3(1, 1, 1);
+  dragPivotMarkerMaterial.disableLighting = true;
+  dragPivotMarkerMaterial.backFaceCulling = false;
+
+  dragPivotMarker = MeshBuilder.CreatePlane("DragPivotHand", { size: CONFIG.dragPivotMarkerSize ?? 0.9 }, scene);
+  dragPivotMarker.material = dragPivotMarkerMaterial;
+  dragPivotMarker.billboardMode = BABYLON.Mesh.BILLBOARDMODE_ALL;
+  dragPivotMarker.renderingGroupId = 2;
+  dragPivotMarker.isPickable = false;
+  dragPivotMarker.setEnabled(false);
+  return dragPivotMarker;
+}
+
+function hideDragPivotMarker() {
+  dragPivotLocalPoint = null;
+  if (dragPivotMarker && !dragPivotMarker.isDisposed()) {
+    dragPivotMarker.setEnabled(false);
+  }
+}
+
+function showDragPivotMarker(root, worldPoint) {
+  if (!usesMagneticDragVisual(root)) {
+    hideDragPivotMarker();
+    return;
+  }
+
+  root.computeWorldMatrix(true);
+  dragPivotLocalPoint = Vector3.TransformCoordinates(worldPoint, root.getWorldMatrix().clone().invert());
+  updateDragPivotMarker();
+}
+
+function updateDragPivotMarker() {
+  if (!selectedEntityId || !dragPivotLocalPoint || pointerMode !== "drag") return;
+
+  const root = visualObjects.get(selectedEntityId);
+  if (!root) {
+    hideDragPivotMarker();
+    return;
+  }
+
+  root.computeWorldMatrix(true);
+  const marker = ensureDragPivotMarker();
+  marker.position.copyFrom(Vector3.TransformCoordinates(dragPivotLocalPoint, root.getWorldMatrix()));
+  marker.setEnabled(true);
+}
+
 function updateAimArrowColor(extensionRatio) {
   if (!aimArrowMaterial) return;
 
@@ -888,6 +956,8 @@ function applyState(message) {
   if (pointerMode === "aim" && selectedEntityId) {
     updateAimArrow();
   }
+
+  updateDragPivotMarker();
 }
 
 const socketProtocol = window.location.protocol === "https:" ? "wss" : "ws";
@@ -971,6 +1041,7 @@ socket.addEventListener("message", (event) => {
 
       if (ev.kind === "reset") {
         vfxManager.dispose();
+        hideDragPivotMarker();
         // Cancel any in-progress shrink animations
         for (const { observer, mesh } of shrinkObservers.values()) {
           scene.onBeforeRenderObservable.remove(observer);
@@ -1266,9 +1337,11 @@ function beginDrag() {
 
   const world = pointerWorldAtDragDepth() ?? root.getAbsolutePosition();
   const point = protocolPointFromWorld(world, selectedEntityId);
+  showDragPivotMarker(root, world);
 
   const objectState = latestObjectStates.get(selectedEntityId);
   if (objectState?.loadedInto) {
+    hideDragPivotMarker();
     pointerMode = "aim";
     aimWorldPoint = world.clone();
     updateAimArrow();
@@ -1340,6 +1413,7 @@ function endDrag() {
     selectedEntityId = null;
     pointerMode = "drag";
     aimWorldPoint = null;
+    hideDragPivotMarker();
     hideAimArrow();
     return;
   }
@@ -1366,6 +1440,7 @@ function endDrag() {
   releaseSamples = [];
   releaseVelocity = { x: 0, y: 0, z: 0 };
   aimWorldPoint = null;
+  hideDragPivotMarker();
   hideAimArrow();
 
   if (CONFIG.cameraControlsEnabled) {

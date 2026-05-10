@@ -68,7 +68,11 @@ export const BARRAGE_CONFIG = {
 
   // Drag/release behavior for hand-moved objects.
   dragHeightOffset: 0.2,                  // m
-  dragUprightLerp: 0.25,                  // 0–1 per frame
+  dragRadiusLimit: 10,                     // m, magnetic grip reaches zero force at this distance
+  dragForceMax: 1200,                      // N, magnetic grip force at zero distance
+  dragDampingMax: 400,                     // N per m/s, strongest near the magnetic grip point
+  blockAngularDamping: 0.6,              // rotational damping for block physics bodies
+  dragPivotMarkerSize: 1.1,               // m, visual hand marker at magnetic drag pivot
   releaseVelocityScale: 1.0,              // multiplier
   normalReleaseVelocityMax: 8,            // m/s
   releaseVelocitySampleHz: 60,            // Hz
