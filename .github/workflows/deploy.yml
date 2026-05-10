@@ -14,8 +14,10 @@ jobs:
           host: game-show.cloud-ip.cc
           username: antonsplavnik
           key: ${{ secrets.VM_SSH_KEY }}
+          script_stop: true
           script: |
             cd ~/barrage
-            git pull origin main
+            git fetch origin
+            git reset --hard origin/main
             npm install
             sudo pm2 restart barrage
