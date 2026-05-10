@@ -22,7 +22,7 @@ export const BARRAGE_CONFIG = {
     missile_hit_block: { file: "/sounds/missile_hit_block.mp3", volume: 0.65, pan: 0, pitch: 0.98, cooldownMs: 220 },
     missile_hit_missile: { file: "/sounds/missile-hit-missile.mp3", volume: 0.65, pan: 0, pitch: 1.0 },
     missile_crack_block: { file: "/sounds/missile_crack_block.mp3", volume: 0.85, pan: 0, pitch: 1.0 },
-    missile_hit_trebuchet: { file: "/sounds/missile_hit_trebuchet.mp3", volume: 0.8, pan: 0, pitch: 0.92 },
+    missile_hit_trebuchet: { file: "/sounds/missile_hit_trebuchet.mp3", volume: 0.8, pan: 0, pitch: 0.92, cooldownMs: 220 },
     missile_fragments_block: { file: "/sounds/missile_fragments_block.mp3", volume: 0.95, pan: 0, pitch: 0.96 },
     missile_hits_fragment: { file: "/sounds/missile_hits_fragment.mp3", volume: 0.7, pan: 0, pitch: 1.04 },
     king_hit: { file: "/sounds/king_hit.mp3", volume: 1.0, pan: 0, pitch: 1.0 },
