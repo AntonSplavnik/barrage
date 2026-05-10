@@ -2,6 +2,7 @@ import { createMusicController } from "./music.js";
 import { createSoundEffectsController } from "./sound_manager.js";
 import { createCameraController } from "./camera_control.js";
 import { createVfxManager } from "./vfx-manager.js";
+import { createTrebuchetShotArcPrediction } from "./trebuche-shot-arc-prediction.js";
 import { BARRAGE_CONFIG } from "./config.js";
 
 const {
@@ -82,6 +83,7 @@ const musicController = createMusicController(musicToggleEl, {
 const soundEffectsController = createSoundEffectsController(sfxToggleEl, scene, {
   onStatus: setStatus,
 });
+let shotArcPrediction = createTrebuchetShotArcPrediction(scene, CONFIG);
 const vfxManager = createVfxManager(scene);
 const cameraControl = createCameraController(scene, () => myPlayerId);
 
@@ -470,11 +472,8 @@ function findTrebuchetArmAncestor(node) {
 }
 
 function isForwardPullPoint(trebuchetId, point, releasePoint) {
-  if (isLeftSideTrebuchetName(trebuchetId)) {
-    return point.x > releasePoint.x;
-  }
-
-  return point.x < releasePoint.x;
+  if (Math.sign(point.x || 0) !== Math.sign(releasePoint.x || 0)) return false;
+  return Math.abs(point.x) > Math.abs(releasePoint.x);
 }
 
 function clampAimTailPoint(headPoint, tailPoint) {
@@ -763,6 +762,7 @@ function releasePointForTrebuchet(trebuchetId) {
 function updateAimArrow() {
   if (pointerMode !== "aim" || !selectedEntityId || !aimWorldPoint) {
     hideAimArrow();
+    shotArcPrediction.hide();
     return;
   }
 
@@ -770,21 +770,34 @@ function updateAimArrow() {
   const trebuchetId = missileState?.loadedInto;
   if (!trebuchetId) {
     hideAimArrow();
+    shotArcPrediction.hide();
     return;
   }
 
   const headPoint = releasePointForTrebuchet(trebuchetId);
   if (!headPoint) {
     hideAimArrow();
+    shotArcPrediction.hide();
     return;
   }
 
   if (!isForwardPullPoint(trebuchetId, aimWorldPoint, headPoint)) {
     hideAimArrow();
+    shotArcPrediction.hide();
     return;
   }
 
+  const shotStartPoint = headPoint.clone();
   const tailPoint = clampAimTailPoint(headPoint, aimWorldPoint.clone());
+  const requestedPoint = protocolPointFromWorld(aimWorldPoint, selectedEntityId);
+  const aimStart = protocolPointFromWorld(headPoint, selectedEntityId);
+  const currentPoint = clampedAimCurrentPoint(aimStart, requestedPoint);
+  const shotVelocity = shotVelocityForAim(trebuchetId, aimStart, currentPoint);
+  shotArcPrediction.update({
+    startPoint: shotStartPoint,
+    velocity: shotVelocity,
+  });
+
   tailPoint.z = headPoint.z + (CONFIG.aimArrowZOffset ?? 0.05);
   headPoint.z += CONFIG.aimArrowZOffset ?? 0.05;
 
@@ -830,6 +843,11 @@ function updateAimArrow() {
 
 function disposeLevelScene() {
   vfxManager.dispose();
+  shotArcPrediction?.dispose();
+  shotArcPrediction = null;
+  hideDragPivotMarker();
+  dragPivotMarker = null;
+  dragPivotMarkerMaterial = null;
   hideAimArrow();
   aimArrowShaft?.dispose();
   aimArrowHeadLeft?.dispose();
@@ -873,6 +891,7 @@ function disposeLevelScene() {
 async function loadLevel(levelUrl = LEVEL_URL, { replace = false } = {}) {
   if (replace) {
     disposeLevelScene();
+    shotArcPrediction = createTrebuchetShotArcPrediction(scene, CONFIG);
   }
 
   try {
@@ -1042,6 +1061,7 @@ socket.addEventListener("message", (event) => {
       if (ev.kind === "reset") {
         vfxManager.dispose();
         hideDragPivotMarker();
+        shotArcPrediction.hide();
         // Cancel any in-progress shrink animations
         for (const { observer, mesh } of shrinkObservers.values()) {
           scene.onBeforeRenderObservable.remove(observer);
@@ -1245,6 +1265,31 @@ function clampMagnitude(vector, maxMagnitude) {
   };
 }
 
+function shotVelocityForAim(trebuchetId, startPoint, currentPoint) {
+  const powerScale = CONFIG.aimPowerScale ?? 8;
+  const shotDirectionX = isLeftSideTrebuchetName(trebuchetId) ? -1 : 1;
+  return clampMagnitude({
+    x: Math.abs(startPoint.x - currentPoint.x) * powerScale * shotDirectionX,
+    y: (startPoint.y - currentPoint.y) * powerScale,
+    z: (startPoint.z - currentPoint.z) * powerScale,
+  }, CONFIG.trebuchetFireVelocityMax ?? 40);
+}
+
+function clampedAimCurrentPoint(startPoint, requestedPoint) {
+  const pullX = requestedPoint.x - startPoint.x;
+  const pullY = requestedPoint.y - startPoint.y;
+  const pullDistance = Math.hypot(pullX, pullY);
+  const maxPullDistance = CONFIG.aimMaxPullDistance ?? 6;
+  const clampedDistance = Math.min(pullDistance, maxPullDistance);
+  const pullScale = pullDistance > 0.0001 ? clampedDistance / pullDistance : 0;
+
+  return {
+    x: startPoint.x + pullX * pullScale,
+    y: startPoint.y + pullY * pullScale,
+    z: requestedPoint.z,
+  };
+}
+
 function sampleReleasePoint() {
   if (!latestDragPoint) return;
 
@@ -1414,6 +1459,7 @@ function endDrag() {
     pointerMode = "drag";
     aimWorldPoint = null;
     hideDragPivotMarker();
+    shotArcPrediction.fadeOut();
     hideAimArrow();
     return;
   }
@@ -1441,6 +1487,7 @@ function endDrag() {
   releaseVelocity = { x: 0, y: 0, z: 0 };
   aimWorldPoint = null;
   hideDragPivotMarker();
+  shotArcPrediction.hide();
   hideAimArrow();
 
   if (CONFIG.cameraControlsEnabled) {

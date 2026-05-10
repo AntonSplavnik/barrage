@@ -8,7 +8,7 @@ function randomBetween(min, max) {
 }
 
 export function createVfxManager(scene) {
-  const activeBursts = new Set();
+  const activeBursts = new Map();
   const fragmentMaterial = new StandardMaterial("VfxGreyFragmentMaterial", scene);
   fragmentMaterial.diffuseColor = new Color3(0.35, 0.35, 0.34);
   fragmentMaterial.emissiveColor = new Color3(0.18, 0.18, 0.17);
@@ -68,7 +68,7 @@ export function createVfxManager(scene) {
       }
     });
 
-    activeBursts.add(observer);
+    activeBursts.set(observer, fragments);
   }
 
   function handleEvent(ev) {
@@ -77,8 +77,11 @@ export function createVfxManager(scene) {
   }
 
   function dispose() {
-    for (const observer of activeBursts) {
+    for (const [observer, fragments] of activeBursts) {
       scene.onBeforeRenderObservable.remove(observer);
+      for (const fragment of fragments) {
+        if (!fragment.mesh.isDisposed()) fragment.mesh.dispose();
+      }
     }
     activeBursts.clear();
   }

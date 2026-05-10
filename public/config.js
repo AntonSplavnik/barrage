@@ -49,6 +49,7 @@ export const BARRAGE_CONFIG = {
   physicsTimeScale: 1.5,                  // multiplier (>1 = faster sim)
   blockMass: 30,                          // kg
   missileMass: 10,                         // kg
+  missileLinearDamping: 0.15,             // Havok linear damping for missiles
   blockFriction: 0.9,                     // 0–1
   blockRestitution: 0.15,                 // 0–1 (bounciness)
   staticFriction: 1.0,                    // 0–1
@@ -69,9 +70,9 @@ export const BARRAGE_CONFIG = {
   // Drag/release behavior for hand-moved objects.
   dragHeightOffset: 0.2,                  // m
   dragRadiusLimit: 10,                     // m, magnetic grip reaches zero force at this distance
-  dragForceMax: 1200,                      // N, magnetic grip force at zero distance
+  dragForceMax: 1500,                      // N, magnetic grip force at zero distance
   dragDampingMax: 400,                     // N per m/s, strongest near the magnetic grip point
-  blockAngularDamping: 0.6,              // rotational damping for block physics bodies
+  blockAngularDamping: 0.8,              // rotational damping for block physics bodies
   dragPivotMarkerSize: 1.1,               // m, visual hand marker at magnetic drag pivot
   releaseVelocityScale: 1.0,              // multiplier
   normalReleaseVelocityMax: 8,            // m/s
@@ -121,6 +122,14 @@ export const BARRAGE_CONFIG = {
   aimArrowHeadLengthScale: 0.18,          // multiplier of arrow length
   aimArrowHeadWidth: 0.4,               // m
   aimArrowHeadWidthScale: 1,           // multiplier of arrow length
+  shotArcFraction: 0.67,                  // fraction of predicted flight path to draw
+  shotArcDotCount: 34,                    // number of dotted trajectory points
+  shotArcDotSize: 0.14,                   // m
+  shotArcMaxDuration: 4,                  // s
+  shotArcFadeMs: 1500,                    // ms fade after firing
+  shotArcVelocityMin: 0.5,                // m/s
+  shotArcGroundY: 0,                      // m
+  shotArcZOffset: 0.08,                   // m, renders dots in front of action plane
 
   // Camera.
   cameraVFov: 0.4,                      // rad — vertical field of view (22.9°)

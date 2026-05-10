@@ -323,6 +323,11 @@ function restArmAngleForTrebuchet(trebuchet) {
   return BARRAGE_CONFIG.trebuchetArmRestRotationZDegrees ?? 15;
 }
 
+function isPullAwayFromCenter(point, origin) {
+  if (Math.sign(point.x || 0) !== Math.sign(origin.x || 0)) return false;
+  return Math.abs(point.x) > Math.abs(origin.x);
+}
+
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
@@ -1315,12 +1320,13 @@ function applyInput(client, message) {
     const trebuchet = gameObjects.get(missile.loadedInto);
     if (!trebuchet || !trebuchet.loaded || trebuchet.fireState === ARM_STATE_RELEASING) return;
 
+    const aimStart = loadTargetForTrebuchet(trebuchet) ?? missile;
     trebuchet.fireState = ARM_STATE_AIMING;
     trebuchet.aimedBy = client.id;
     trebuchet.aimStart = {
-      x: Number(message.point.x),
-      y: Number(message.point.y ?? missile.y),
-      z: Number(message.point.z),
+      x: aimStart.x,
+      y: aimStart.y,
+      z: aimStart.z,
     };
     trebuchet.aimCurrent = trebuchet.aimStart;
     trebuchet.pendingShot = null;
@@ -1443,6 +1449,12 @@ function updateTrebuchetAim(trebuchet, point) {
     y: Number(point.y ?? start.y),
     z: Number(point.z ?? start.z),
   };
+  if (!isPullAwayFromCenter(requested, start)) {
+    trebuchet.aimCurrent = start;
+    trebuchet.armAngle = restArmAngleForTrebuchet(trebuchet);
+    return;
+  }
+
   const pullX = requested.x - start.x;
   const pullY = requested.y - start.y;
   const pullDistance = Math.hypot(pullX, pullY);
@@ -1469,6 +1481,17 @@ function beginTrebuchetRelease(trebuchet) {
   const start = trebuchet.aimStart;
   const current = trebuchet.aimCurrent ?? start;
   if (!start || !current) return;
+
+  if (!isPullAwayFromCenter(current, start)) {
+    trebuchet.fireState = ARM_STATE_IDLE;
+    trebuchet.aimedBy = null;
+    trebuchet.aimStart = null;
+    trebuchet.aimCurrent = null;
+    trebuchet.pendingShot = null;
+    trebuchet.releaseElapsedMs = 0;
+    trebuchet.armAngle = restArmAngleForTrebuchet(trebuchet);
+    return;
+  }
 
   const powerScale = BARRAGE_CONFIG.aimPowerScale ?? 8;
   const shotDirectionX = sideSignForTrebuchet(trebuchet.id);
@@ -1563,6 +1586,12 @@ function angularDampingForObject(object) {
   if (isTrebuchetName(object.id)) return 10;
   if (isBlockName(object.id)) return BARRAGE_CONFIG.blockAngularDamping ?? 0.25;
   return 0.55;
+}
+
+function linearDampingForObject(object) {
+  if (isTrebuchetName(object.id)) return 2.2;
+  if (isMissileName(object.id)) return BARRAGE_CONFIG.missileLinearDamping ?? 0.15;
+  return 0.15;
 }
 
 function bodyObjectId(body) {
@@ -1801,7 +1830,7 @@ function createPhysicsBodies() {
 
     const aggregate = new PhysicsAggregate(physNode, shapeType, options, scene);
     aggregate.body.disablePreStep = true;
-    aggregate.body.setLinearDamping(isTrebuchetName(object.id) ? 2.2 : 0.15);
+    aggregate.body.setLinearDamping(linearDampingForObject(object));
     aggregate.body.setAngularDamping(angularDampingForObject(object));
     registerPhysicsAggregate(object, aggregate);
   }
