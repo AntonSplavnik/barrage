@@ -23,7 +23,10 @@ import { BARRAGE_CONFIG } from "./public/config.js";
 import { firstLevel, nextLevel } from "./server/levelCatalog.js";
 import { RoomManager } from "./server/roomManager.js";
 import { playerSide, canGrab, isInPlayerZone, zoneLimitX, checkKingKnockout } from "./server/gameManager.js";
-import { loadTargetForTrebuchet as resolveLoadTargetForTrebuchet } from "./server/trebuchet.js";
+import {
+  loadTargetForTrebuchet as resolveLoadTargetForTrebuchet,
+  maybeLoadMissile as resolveMaybeLoadMissile,
+} from "./server/trebuchet.js";
 import {
   babylonToProtocolRotationZ,
   childRole,
@@ -386,37 +389,13 @@ function loadTargetForTrebuchet(trebuchet) {
 }
 
 function maybeLoadMissile(missile) {
-  if (!isMissileName(missile.id)) return false;
-
-  for (const trebuchet of gameObjects.values()) {
-    if (!isTrebuchetName(trebuchet.id) || trebuchet.loaded) continue;
-
-    const range = BARRAGE_CONFIG.missileLoadRange ?? 6;
-    const target = loadTargetForTrebuchet(trebuchet);
-    if (!target) continue;
-
-    const rootDistance = Math.hypot(missile.x - trebuchet.x, missile.z - trebuchet.z);
-    const targetDistance = Math.hypot(missile.x - target.x, missile.z - target.z);
-    if (Math.min(rootDistance, targetDistance) > range) continue;
-
-    missile.x = target.x;
-    missile.y = target.y;
-    missile.z = target.z;
-    missile.vx = 0;
-    missile.vy = 0;
-    missile.vz = 0;
-    missile.loadedInto = trebuchet.id;
-    missile.usedToFragment = false;
-    missile.lastBlockHitTick = null;
-    setPhysicsBodyTrigger(missile, true);
-    trebuchet.loaded = true;
-    trebuchet.loadedMissileId = missile.id;
-    trebuchet.fireState = ARM_STATE_IDLE;
-    trebuchet.armAngle = restArmAngleForTrebuchet(trebuchet);
-    return true;
-  }
-
-  return false;
+  return resolveMaybeLoadMissile(missile, {
+    armStateIdle: ARM_STATE_IDLE,
+    config: BARRAGE_CONFIG,
+    gameObjects,
+    loadTargetForTrebuchet,
+    setPhysicsBodyTrigger,
+  });
 }
 
 function playerIdForKing(king) {

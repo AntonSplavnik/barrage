@@ -1,4 +1,9 @@
-import { sideSignForTrebuchet } from "./utils.js";
+import {
+  isMissileName,
+  isTrebuchetName,
+  restArmAngleForTrebuchet,
+  sideSignForTrebuchet,
+} from "./utils.js";
 
 export function loadTargetForTrebuchet(trebuchet, { loadTargets }) {
   const target = loadTargets.get(trebuchet.id) ?? loadTargets.get("default") ?? null;
@@ -33,4 +38,44 @@ export function loadTargetForTrebuchet(trebuchet, { loadTargets }) {
     y: trebuchet.y + target.offsetY,
     z: trebuchet.z + target.offsetZ,
   };
+}
+
+export function maybeLoadMissile(missile, {
+  armStateIdle,
+  config,
+  gameObjects,
+  loadTargetForTrebuchet,
+  setPhysicsBodyTrigger,
+}) {
+  if (!isMissileName(missile.id)) return false;
+
+  for (const trebuchet of gameObjects.values()) {
+    if (!isTrebuchetName(trebuchet.id) || trebuchet.loaded) continue;
+
+    const range = config.missileLoadRange ?? 6;
+    const target = loadTargetForTrebuchet(trebuchet);
+    if (!target) continue;
+
+    const rootDistance = Math.hypot(missile.x - trebuchet.x, missile.z - trebuchet.z);
+    const targetDistance = Math.hypot(missile.x - target.x, missile.z - target.z);
+    if (Math.min(rootDistance, targetDistance) > range) continue;
+
+    missile.x = target.x;
+    missile.y = target.y;
+    missile.z = target.z;
+    missile.vx = 0;
+    missile.vy = 0;
+    missile.vz = 0;
+    missile.loadedInto = trebuchet.id;
+    missile.usedToFragment = false;
+    missile.lastBlockHitTick = null;
+    setPhysicsBodyTrigger(missile, true);
+    trebuchet.loaded = true;
+    trebuchet.loadedMissileId = missile.id;
+    trebuchet.fireState = armStateIdle;
+    trebuchet.armAngle = restArmAngleForTrebuchet(trebuchet);
+    return true;
+  }
+
+  return false;
 }
