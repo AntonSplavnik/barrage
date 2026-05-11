@@ -23,6 +23,7 @@ import { RoomManager } from "./server/roomManager.js";
 import { playerSide, canGrab, isInPlayerZone, zoneLimitX, checkKingKnockout } from "./server/gameManager.js";
 import { createFragmentSystem } from "./server/fragments.js";
 import { createInputHandler } from "./server/input.js";
+import { createNetworkMessenger } from "./server/network-messages.js";
 import { createPhysicsBodySystem } from "./server/physics-bodies.js";
 import {
   applyMagneticDragForce as resolveApplyMagneticDragForce,
@@ -371,6 +372,21 @@ const {
   getImpactSoundTicks: () => impactSoundTicks,
   getTick: () => tick,
   tickMs: TICK_MS,
+});
+
+const {
+  broadcastRoomOneToSpectators,
+  notifySpectatorRenames,
+  sendLobby,
+  sendMatched,
+  sendToClient,
+  sendWelcome,
+} = createNetworkMessenger({
+  firstLevel,
+  getActiveRoom: () => activeRoom,
+  getPrimaryRoom: () => roomManager.rooms[0] ?? null,
+  getSpectators: () => roomManager.spectators,
+  tickRate: TICK_RATE,
 });
 
 const {
@@ -1087,69 +1103,6 @@ async function enableHavokPhysics() {
   scene.enablePhysics(new Vector3(0, SERVER_CONFIG.gravity, 0), havokPlugin);
 }
 
-function sendToClient(client, message) {
-  if (client.socket.readyState === client.socket.OPEN) {
-    client.socket.send(JSON.stringify(message));
-  }
-}
-
-function roomOpponentFor(client) {
-  for (const other of client.room.clients.values()) {
-    if (other.id !== client.id) return other;
-  }
-
-  return null;
-}
-
-function sendWelcome(client) {
-  sendToClient(client, {
-    type: "welcome",
-    clientId: client.id,
-    playerId: client.playerId,
-    tickRate: TICK_RATE,
-  });
-}
-
-function sendLobby(client) {
-  if (!client.room) {
-    const room = roomManager.rooms[0] ?? null;
-    sendToClient(client, {
-      type: "lobby",
-      roomId: room?.id ?? null,
-      playerId: client.playerId,
-      status: "spectating",
-      level: room?.level.url ?? firstLevel().url,
-    });
-    return;
-  }
-
-  sendToClient(client, {
-    type: "lobby",
-    roomId: client.room.id,
-    playerId: client.playerId,
-    status: "waiting",
-    level: client.room.level.url,
-  });
-}
-
-function notifySpectatorRenames(clientsToNotify) {
-  for (const client of clientsToNotify) {
-    sendWelcome(client);
-    sendLobby(client);
-  }
-}
-
-function broadcastRoomOneToSpectators(message) {
-  if (activeRoom !== roomManager.rooms[0]) return;
-
-  const payload = JSON.stringify(message);
-  for (const client of roomManager.spectators.values()) {
-    if (client.socket.readyState === client.socket.OPEN) {
-      client.socket.send(payload);
-    }
-  }
-}
-
 async function resetRoomToFirstLevel(room) {
   resetRoomProgress(room);
   createRoomRuntime(room);
@@ -1157,21 +1110,6 @@ async function resetRoomToFirstLevel(room) {
   await enableHavokPhysics();
   await loadLevelIfPresent();
   saveActiveRoomTick();
-}
-
-function sendMatched(room) {
-  for (const client of room.clients.values()) {
-    const opponent = roomOpponentFor(client);
-    sendToClient(client, {
-      type: "matched",
-      roomId: room.id,
-      playerId: client.playerId,
-      opponentId: opponent?.playerId ?? null,
-      level: room.level.url,
-      roundNumber: room.roundNumber,
-      scores: room.scores,
-    });
-  }
 }
 
 function notifyRoomStatus(room) {
