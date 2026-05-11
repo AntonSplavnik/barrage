@@ -37,7 +37,6 @@ import {
   isLeftSideTrebuchetName,
   isMissileName,
   isPullAwayFromCenter,
-  isTrebuchetArmName,
   isTrebuchetName,
   lerp,
   lerpAngleDegrees,
@@ -55,7 +54,13 @@ import {
 } from "./server/collision-events.js";
 import {
   appendServerLevelGlb,
+  colliderBoundsFor,
+  descendantsOf,
+  estimateHalfHeight,
   extractConvexPositions as extractConvexPositionsFromGlb,
+  findGameplayRootAncestor,
+  findTrebuchetArmAncestor,
+  isTrebuchetArmRoot,
   parseFragmentGlb as parseFragmentGlbData,
 } from "./server/glb-parser.js";
 import { runPhysicsSimulationTick } from "./server/physics-sim.js";
@@ -299,17 +304,6 @@ function toWireObject(object) {
   };
 }
 
-function isTrebuchetArmRoot(transform) {
-  const lowerName = transform.name.toLowerCase();
-  return isTrebuchetArmName(transform.name)
-    && transform.parent
-    && isTrebuchetName(transform.parent.name)
-    && !lowerName.includes("visual")
-    && !lowerName.includes("collider")
-    && !lowerName.includes("col")
-    && descendantsOf(transform).some((child) => child.name.toLowerCase().includes("missile-load-target"));
-}
-
 function usesMagneticDrag(object) {
   return isBlockName(object.id) || isTrebuchetName(object.id);
 }
@@ -458,104 +452,6 @@ function maybeLoadMissile(missile) {
   }
 
   return false;
-}
-
-function estimateHalfHeight(transform) {
-  return colliderBoundsFor(transform).halfY;
-}
-
-function descendantsOf(transform) {
-  const descendants = [];
-  const stack = [...transform.getChildren()];
-
-  while (stack.length > 0) {
-    const child = stack.pop();
-    descendants.push(child);
-
-    if (typeof child.getChildren === "function") {
-      stack.push(...child.getChildren());
-    }
-  }
-
-  return descendants;
-}
-
-function isNestedTrebuchetArmDescendant(root, node) {
-  let current = node.parent;
-
-  while (current && current !== root) {
-    if (isTrebuchetArmRoot(current)) return true;
-    current = current.parent;
-  }
-
-  return false;
-}
-
-function colliderBoundsFor(transform) {
-  try {
-    const colliderNodes = descendantsOf(transform).filter((child) => {
-      const role = childRole(child.name);
-      return (role === "Col" || role === "ColVis")
-        && !isNestedTrebuchetArmDescendant(transform, child);
-    });
-    const bounds = boundsForNodes(colliderNodes.length > 0 ? colliderNodes : [transform]);
-    const absolutePosition = transform.getAbsolutePosition();
-    const centerX = (bounds.min.x + bounds.max.x) / 2;
-    const centerY = (bounds.min.y + bounds.max.y) / 2;
-    const centerZ = (bounds.min.z + bounds.max.z) / 2;
-    return {
-      offsetX: centerX - absolutePosition.x,
-      offsetY: centerY - absolutePosition.y,
-      offsetZ: centerZ - absolutePosition.z,
-      halfX: Math.max(0.05, (bounds.max.x - bounds.min.x) / 2),
-      halfY: Math.max(0.05, (bounds.max.y - bounds.min.y) / 2),
-      halfZ: Math.max(0.05, (bounds.max.z - bounds.min.z) / 2),
-    };
-  } catch {
-    return {
-      offsetX: 0,
-      offsetY: 0,
-      offsetZ: 0,
-      halfX: 0.5,
-      halfY: 0.5,
-      halfZ: 0.5,
-    };
-  }
-}
-
-function boundsForNodes(nodes) {
-  let minX = Infinity;
-  let minY = Infinity;
-  let minZ = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  let maxZ = -Infinity;
-
-  for (const node of nodes) {
-    const bounds = typeof node.getHierarchyBoundingVectors === "function"
-      ? node.getHierarchyBoundingVectors(true)
-      : node.getBoundingInfo?.().boundingBox;
-
-    if (!bounds) continue;
-
-    const min = bounds.min ?? bounds.minimumWorld;
-    const max = bounds.max ?? bounds.maximumWorld;
-    minX = Math.min(minX, min.x);
-    minY = Math.min(minY, min.y);
-    minZ = Math.min(minZ, min.z);
-    maxX = Math.max(maxX, max.x);
-    maxY = Math.max(maxY, max.y);
-    maxZ = Math.max(maxZ, max.z);
-  }
-
-  if (!Number.isFinite(minX)) {
-    throw new Error("No bounds");
-  }
-
-  return {
-    min: new Vector3(minX, minY, minZ),
-    max: new Vector3(maxX, maxY, maxZ),
-  };
 }
 
 function playerIdForKing(king) {
@@ -1544,50 +1440,6 @@ function applyTrebuchetArmRestPose() {
     transform.rotation.z = radians;
     transform.computeWorldMatrix(true);
   }
-}
-
-function findAncestor(node, predicate) {
-  let current = node.parent;
-
-  while (current) {
-    if (predicate(current.name)) return current;
-    current = current.parent;
-  }
-
-  return null;
-}
-
-function findGameplayRootAncestor(node) {
-  let current = node.parent;
-  let candidate = null;
-
-  while (current) {
-    if (isTrebuchetName(current.name)) {
-      candidate = current;
-    }
-
-    if (current.parent?.name === "__root__") {
-      return isTrebuchetName(current.name) ? current : candidate;
-    }
-
-    current = current.parent;
-  }
-
-  return candidate;
-}
-
-function findTrebuchetArmAncestor(node) {
-  let current = node.parent;
-
-  while (current) {
-    if (isTrebuchetArmRoot(current)) {
-      return current;
-    }
-
-    current = current.parent;
-  }
-
-  return null;
 }
 
 function resetGameState() {
