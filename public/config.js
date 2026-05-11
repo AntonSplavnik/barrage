@@ -1,9 +1,15 @@
 export const BARRAGE_CONFIG = {
-  // Level asset.
+  // Assets.
   levelUrl: "/assets/level1.glb",
+
+  // Music.
   musicTuneUrl: "/strudel.js",
   musicSamplesUrl: "https://raw.githubusercontent.com/felixroos/dough-samples/main/tidal-drum-machines.json",
   musicVolume: 1.0,
+  musicKickVoiceFlightVelocityMin: 10,    // m/s
+
+  // Sound.
+  soundEffectsEnabledByDefault: true,
   soundEffectTrackVolume: 1.0,
   soundEffectPitchRandomization: 0.2,     // +/- fraction applied to every SFX pitch
   soundPanWorldMinX: -45,                 // world x mapped to full left
@@ -13,11 +19,6 @@ export const BARRAGE_CONFIG = {
   impactSoundVolumeMinScale: 0.2,         // multiplier of effect volume at min speed
   impactSoundVolumeMaxScale: 1.0,         // multiplier of effect volume at max speed
   impactSoundCooldownMs: 120,             // ms between repeat impact sounds per pair/object
-  vfxMissileCrackBlockCount: 16,
-  vfxMissileCrackBlockDurationMs: 650,
-  vfxMissileCrackBlockSpeed: 4.2,
-  vfxMissileCrackBlockGravity: -7.5,
-  vfxMissileCrackBlockSize: 0.16,
   soundEffects: {
     trebuchet_release: { file: "/sounds/trebuchet_release.mp3", volume: 0.75, pan: 0, pitch: 1.0 },
     trebuchet_stretch: { file: "/sounds/trebuche-stretch.mp3", volume: 0.7, pan: 0, pitch: 1.0 },
@@ -26,12 +27,20 @@ export const BARRAGE_CONFIG = {
     missile_hit_ground: { file: "/sounds/missile-hit-ground.mp3", volume: 0.55, pan: 0, pitch: 1.0, cooldownMs: 180 },
     missile_hit_block: { file: "/sounds/missile_hit_block.mp3", volume: 0.65, pan: 0, pitch: 0.98, cooldownMs: 220 },
     missile_hit_missile: { file: "/sounds/missile-hit-missile.mp3", volume: 0.65, pan: 0, pitch: 1.0 },
-    missile_crack_block: { file: "/sounds/missile_crack_block.mp3", volume: 0.85, pan: 0, pitch: 1.0 },
     missile_hit_trebuchet: { file: "/sounds/missile_hit_trebuchet.mp3", volume: 0.8, pan: 0, pitch: 0.92, cooldownMs: 220 },
     missile_fragments_block: { file: "/sounds/missile_fragments_block.mp3", volume: 0.95, pan: 0, pitch: 0.96 },
     missile_hits_fragment: { file: "/sounds/missile_hits_fragment.mp3", volume: 0.7, pan: 0, pitch: 1.04 },
     king_hit: { file: "/sounds/king_hit.mp3", volume: 1.0, pan: 0, pitch: 1.0 },
   },
+
+  // VFX.
+  vfxInvertX: true,
+  vfxMissileHitBlockCount: 3,
+  vfxMissileHitBlockDurationMs: 1200,
+  vfxMissileHitBlockParticleSpeed: 15.0,
+  vfxMissileHitBlockGravity: -7.5,
+  vfxMissileHitBlockSize: 0.5,
+  vfxMissileHitBlockMinScale: 0.1,
 
   // Rendering.
   importedLightIntensityScale: 0.01,      // multiplier
@@ -43,7 +52,7 @@ export const BARRAGE_CONFIG = {
   exposure: 1.0,                          // multiplier
   contrast: 1.0,                          // multiplier
 
-  // Basic physics tuning.
+  // Physics.
   physicsEnabled: true,
   gravity: -9.81,                         // m/s²
   physicsTimeScale: 1.5,                  // multiplier (>1 = faster sim)
@@ -54,20 +63,20 @@ export const BARRAGE_CONFIG = {
   blockRestitution: 0.15,                 // 0–1 (bounciness)
   staticFriction: 1.0,                    // 0–1
 
-  // Pointer/camera controls.
+  // Input.
   inputInvertX: true,
   trebuchetInputInvertX: true,
   inputInvertY: false,
   inputInvertZ: false,
   cameraControlsEnabled: false,
 
-  // Trebuchet body movement limits.
+  // Trebuchet Movement.
   trebuchetLeftMinX: -30,                 // m
   trebuchetLeftMaxX: -5,                  // m
   trebuchetRightMinX: 5,                  // m
   trebuchetRightMaxX: 30,                 // m
 
-  // Drag/release behavior for hand-moved objects.
+  // Drag And Release.
   dragHeightOffset: 0.2,                  // m
   dragRadiusLimit: 10,                     // m, magnetic grip reaches zero force at this distance
   dragForceMax: 1500,                      // N, magnetic grip force at zero distance
@@ -80,7 +89,7 @@ export const BARRAGE_CONFIG = {
   releaseVelocityFrameWindow: 5,          // frames
   releaseVelocityMinSampleDistance: 0.05, // m
 
-  // Zone rules.
+  // Gameplay Rules.
   noMansLandX: 5,                         // m (half-width of centre dead zone)
   kingKnockoutAngle: 45,                  // deg
   blockMaxHits: 5,                        // hits before fragmentation
@@ -98,11 +107,11 @@ export const BARRAGE_CONFIG = {
   postWinSimulationMs: 5000,              // ms
   roundEndDelayMs: 5000,                  // ms
 
-  // Missile loading.
+  // Missile Loading.
   missileLoadRange: 3,                    // m
   missilePickColliderScale: 4,            // multiplier on visual collider radius
 
-  // Trebuchet firing.
+  // Trebuchet Firing.
   trebuchetArmRestRotationZDegrees: 15,   // deg
   aimMaxPullDistance: 8,               // m
   aimPowerScale: 8,                       // multiplier
@@ -110,7 +119,8 @@ export const BARRAGE_CONFIG = {
   trebuchetFireVelocityMax: 40,           // m/s
   fireReleaseAnimationMs: 150,            // ms
   fireReturnAnimationMs: 220,             // ms
-  musicKickVoiceFlightVelocityMin: 10,    // m/s
+
+  // Aim Arrow.
   aimArrowStartColor: "#ffffff",
   aimArrowEndColor: "#1ecb00",
   aimArrowMaxLength: 8,                 // m
@@ -122,6 +132,8 @@ export const BARRAGE_CONFIG = {
   aimArrowHeadLengthScale: 0.18,          // multiplier of arrow length
   aimArrowHeadWidth: 0.4,               // m
   aimArrowHeadWidthScale: 1,           // multiplier of arrow length
+
+  // Shot Arc Prediction.
   shotArcFraction: 0.67,                  // fraction of predicted flight path to draw
   shotArcDotCount: 34,                    // number of dotted trajectory points
   shotArcDotSize: 0.14,                   // m
@@ -134,7 +146,8 @@ export const BARRAGE_CONFIG = {
   // Camera.
   cameraVFov: 0.4,                      // rad — vertical field of view (22.9°)
 
-  // Camera viewport boundaries (world-space, action plane at Z=0).
+  // Camera Viewport.
+  // World-space, action plane at Z=0.
   // Camera Z is computed so this width exactly fills the canvas horizontally.
   // Camera Y is computed so viewportBottomY sits at the bottom screen edge.
   viewportBfXMin: -45,                  // m
@@ -145,7 +158,7 @@ export const BARRAGE_CONFIG = {
   viewportP2XMax: 45,                   // m
   viewportBottomY: -5,                  // m
 
-  // Camera animation timing.
+  // Camera Animation.
   cameraInitialPanMs: 4000,             // ms — battlefield → player on level load
   cameraAimZoomOutMs: 700,              // ms — player → battlefield when aiming
   cameraReturnDelayMs: 4000,            // ms — wait after shot fires before panning back

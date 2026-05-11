@@ -1073,7 +1073,7 @@ function maybeRecordBlockHit(object, other, hitPosition = null) {
     && fragSpeed >= (BARRAGE_CONFIG.blockFragmentVelocityMin ?? BARRAGE_CONFIG.blockHitVelocityMin ?? 3);
 
   if (!willFragment) {
-    broadcastImpactSoundEffect("missile_crack_block", hitPosition ?? collisionPointFor(missile, block), impactSpeedFor(missile, block));
+    broadcastImpactSoundEffect("missile_hit_block", hitPosition ?? collisionPointFor(missile, block), impactSpeedFor(missile, block));
   }
 
   broadcast({

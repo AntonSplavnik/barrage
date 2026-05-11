@@ -1,10 +1,50 @@
 import { BARRAGE_CONFIG } from "./config.js";
 
 const CONFIG = BARRAGE_CONFIG;
-const { Color3, MeshBuilder, StandardMaterial, Vector3 } = BABYLON;
+const { Color3, Mesh, StandardMaterial, Vector3, VertexData } = BABYLON;
+const MISSILE_BLOCK_VFX_EVENTS = new Set(["missile_hit_block", "missile_fragments_block"]);
 
 function randomBetween(min, max) {
   return min + Math.random() * (max - min);
+}
+
+function vfxPositionFromEvent(ev) {
+  return {
+    x: (CONFIG.vfxInvertX ? -1 : 1) * Number(ev.x ?? 0),
+    y: Number(ev.y ?? 0),
+    z: Number(ev.z ?? 0),
+  };
+}
+
+function impactFactorForEvent(ev) {
+  const minSpeed = CONFIG.impactSoundVelocityMin ?? 1.5;
+  const maxSpeed = Math.max(minSpeed, CONFIG.impactSoundVelocityMax ?? 24);
+  if (maxSpeed === minSpeed) return 1;
+
+  return Math.max(0, Math.min(1, (Number(ev.impactSpeed ?? 0) - minSpeed) / (maxSpeed - minSpeed)));
+}
+
+function createTetrahedron(name, size, scene) {
+  const radius = size / 2;
+  const positions = [
+    radius, radius, radius,
+    -radius, -radius, radius,
+    -radius, radius, -radius,
+    radius, -radius, -radius,
+  ];
+  const indices = [
+    0, 1, 2,
+    0, 3, 1,
+    0, 2, 3,
+    1, 3, 2,
+  ];
+  const mesh = new Mesh(name, scene);
+  const vertexData = new VertexData();
+  vertexData.positions = positions;
+  vertexData.indices = indices;
+  VertexData.ComputeNormals(positions, indices, vertexData.normals = []);
+  vertexData.applyToMesh(mesh);
+  return mesh;
 }
 
 export function createVfxManager(scene) {
@@ -14,18 +54,20 @@ export function createVfxManager(scene) {
   fragmentMaterial.emissiveColor = new Color3(0.18, 0.18, 0.17);
   fragmentMaterial.specularColor = Color3.Black();
 
-  function spawnMissileCrackBlock(position) {
-    const count = CONFIG.vfxMissileCrackBlockCount ?? 10;
-    const durationMs = CONFIG.vfxMissileCrackBlockDurationMs ?? 450;
-    const speed = CONFIG.vfxMissileCrackBlockSpeed ?? 3.2;
-    const gravity = CONFIG.vfxMissileCrackBlockGravity ?? -7.5;
-    const size = CONFIG.vfxMissileCrackBlockSize ?? 0.08;
+  function spawnMissileHitBlock(position, impactFactor = 1) {
+    const scale = Math.max(CONFIG.vfxMissileHitBlockMinScale ?? 0.25, impactFactor);
+    const maxCount = CONFIG.vfxMissileHitBlockCount ?? 10;
+    const count = Math.max(1, Math.round(maxCount * scale));
+    const durationMs = CONFIG.vfxMissileHitBlockDurationMs ?? 450;
+    const speed = (CONFIG.vfxMissileHitBlockParticleSpeed ?? CONFIG.vfxMissileHitBlockSpeed ?? 3.2) * scale;
+    const gravity = CONFIG.vfxMissileHitBlockGravity ?? -7.5;
+    const size = (CONFIG.vfxMissileHitBlockSize ?? 0.08) * scale;
     const startTime = performance.now();
-    const origin = new Vector3(position.x ?? 0, position.y ?? 0, position.z ?? 0);
+    const origin = new Vector3(position.x ?? 0, position.y ?? 0, 0);
     const fragments = [];
 
     for (let i = 0; i < count; i += 1) {
-      const mesh = MeshBuilder.CreateBox("vfx-missile-crack-block-fragment", { size: randomBetween(size * 0.6, size * 1.3) }, scene);
+      const mesh = createTetrahedron("vfx-missile-hit-block-fragment", randomBetween(size * 0.6, size * 1.3), scene);
       const angle = randomBetween(0, Math.PI * 2);
       const burstSpeed = randomBetween(speed * 0.35, speed);
       mesh.position.copyFrom(origin);
@@ -39,7 +81,7 @@ export function createVfxManager(scene) {
         velocity: new Vector3(
           Math.cos(angle) * burstSpeed,
           randomBetween(speed * 0.25, speed * 0.9),
-          randomBetween(0.4, 1.2),
+          0,
         ),
         spin: new Vector3(randomBetween(-8, 8), randomBetween(-8, 8), randomBetween(-8, 8)),
       });
@@ -72,8 +114,8 @@ export function createVfxManager(scene) {
   }
 
   function handleEvent(ev) {
-    if (ev.kind !== "soundEffect" || ev.effect !== "missile_crack_block") return;
-    spawnMissileCrackBlock({ x: ev.x, y: ev.y, z: ev.z });
+    if (ev.kind !== "soundEffect" || !MISSILE_BLOCK_VFX_EVENTS.has(ev.effect)) return;
+    spawnMissileHitBlock(vfxPositionFromEvent(ev), impactFactorForEvent(ev));
   }
 
   function dispose() {

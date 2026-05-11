@@ -103,6 +103,7 @@ export function createSoundEffectsController(button, scene, { onStatus } = {}) {
     enabling = true;
     button.disabled = true;
     status("Starting sound effects...");
+    setEnabledUi(true);
 
     try {
       await unlockAudio();
@@ -112,6 +113,7 @@ export function createSoundEffectsController(button, scene, { onStatus } = {}) {
       setEnabledUi(true);
       status("Sound effects enabled");
     } catch (error) {
+      setEnabledUi(false);
       console.error("Failed to enable sound effects.", error);
       status("Sound effects failed");
       throw error;
@@ -232,6 +234,11 @@ export function createSoundEffectsController(button, scene, { onStatus } = {}) {
   }
 
   setEnabledUi(false);
+  if (CONFIG.soundEffectsEnabledByDefault ?? true) {
+    enable().catch((error) => {
+      console.warn("Sound effects could not be enabled by default.", error);
+    });
+  }
 
   return {
     disable,
