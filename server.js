@@ -22,6 +22,7 @@ import { firstLevel, nextLevel } from "./server/levelCatalog.js";
 import { RoomManager } from "./server/roomManager.js";
 import { playerSide, canGrab, isInPlayerZone, zoneLimitX, checkKingKnockout } from "./server/gameManager.js";
 import { createFragmentSystem } from "./server/fragments.js";
+import { createInputHandler } from "./server/input.js";
 import { createPhysicsBodySystem } from "./server/physics-bodies.js";
 import {
   applyMagneticDragForce as resolveApplyMagneticDragForce,
@@ -573,174 +574,36 @@ function releaseDrag(object, releaseVelocity) {
   dragState.delete(object.id);
 }
 
-function applyInput(client, message) {
-  if (message.type !== "input") return;
-
-  if (message.action === "reset") {
-    resetGameState();
-    broadcast({
-      type: "event",
-      roomId: activeRoom?.id,
-      tick,
-      events: [{ kind: "reset", playerId: client.playerId }],
-    });
-    return;
-  }
-
-  if (message.action === "dragStart") {
-    const object = gameObjects.get(message.entityId);
-    if (!object || !message.point) return;
-    if (!object.dynamic) return;
-    if (object.loadedInto) return;
-    if (object.isFragment) return;
-    if (!canGrab(client.playerId, object)) return;
-
-    object.draggedBy = client.id;
-    if (isMissileName(object.id)) {
-      setPhysicsBodyTrigger(object, true);
-    }
-    if (usesMagneticDrag(object)) {
-      const aggregate = physicsAggregates.get(object.id);
-      aggregate?.body.setLinearVelocity(Vector3.Zero());
-      aggregate?.body.setAngularVelocity(Vector3.Zero());
-    } else {
-      object.vx = 0;
-      object.vy = 0;
-      object.vz = 0;
-    }
-    dragState.set(object.id, {
-      lastTime: Date.now(),
-      lastPoint: message.point,
-      ...(usesMagneticDrag(object) ? { grabLocalPoint: localPointForObject(object, message.point) } : {}),
-    });
-  }
-
-  if (message.action === "aimStart") {
-    const missile = gameObjects.get(message.entityId);
-    if (!missile || !message.point || !missile.loadedInto) return;
-
-    const trebuchet = gameObjects.get(missile.loadedInto);
-    if (!trebuchet || !trebuchet.loaded || trebuchet.fireState === ARM_STATE_RELEASING) return;
-
-    const aimStart = loadTargetForTrebuchet(trebuchet) ?? missile;
-    trebuchet.fireState = ARM_STATE_AIMING;
-    trebuchet.aimedBy = client.id;
-    trebuchet.aimStart = {
-      x: aimStart.x,
-      y: aimStart.y,
-      z: aimStart.z,
-    };
-    trebuchet.aimCurrent = trebuchet.aimStart;
-    trebuchet.pendingShot = null;
-    trebuchet.releaseElapsedMs = 0;
-    trebuchet.armAngle = restArmAngleForTrebuchet(trebuchet);
-    trebuchet.stretchSoundActive = true;
-    broadcastSoundEffectStart("trebuchet_stretch", trebuchet.id, trebuchet);
-  }
-
-  if (message.action === "aimMove") {
-    const missile = gameObjects.get(message.entityId);
-    if (!missile || !message.point || !missile.loadedInto) return;
-
-    const trebuchet = gameObjects.get(missile.loadedInto);
-    if (!trebuchet || trebuchet.aimedBy !== client.id || trebuchet.fireState !== ARM_STATE_AIMING) return;
-
-    updateTrebuchetAim(trebuchet, message.point);
-  }
-
-  if (message.action === "aimRelease") {
-    const missile = gameObjects.get(message.entityId);
-    if (!missile || !message.point || !missile.loadedInto) return;
-
-    const trebuchet = gameObjects.get(missile.loadedInto);
-    if (!trebuchet || trebuchet.aimedBy !== client.id || trebuchet.fireState !== ARM_STATE_AIMING) return;
-
-    updateTrebuchetAim(trebuchet, message.point);
-    stopTrebuchetStretchSound(trebuchet);
-    beginTrebuchetRelease(trebuchet);
-  }
-
-  if (message.action === "dragMove") {
-    const object = gameObjects.get(message.entityId);
-    if (!object || !message.point) return;
-    if (object.draggedBy !== client.id) return;
-
-    const now = Date.now();
-    const previous = dragState.get(object.id);
-    const dt = Math.max(0.001, (now - (previous?.lastTime ?? now)) / 1000);
-    const next = constrainedPointForObject(object, message.point);
-
-    const side = playerSide(client.playerId);
-    if (side && !isInPlayerZone(side, next.x)) {
-      if (!usesMagneticDrag(object)) {
-        object.x = zoneLimitX(side);
-        object.y = next.y;
-        object.z = next.z;
-      }
-      releaseDrag(object, { x: 0, y: 0, z: 0 });
-      return;
-    }
-
-    const nextX = next.x;
-    const nextY = next.y;
-    const nextZ = next.z;
-
-    object.dragVx = (nextX - object.x) / dt;
-    object.dragVy = (nextY - object.y) / dt;
-    object.dragVz = (nextZ - object.z) / dt;
-    if (usesMagneticDrag(object)) {
-      const previousDrag = dragState.get(object.id);
-      dragState.set(object.id, {
-        lastTime: now,
-        lastPoint: next,
-        grabLocalPoint: previousDrag?.grabLocalPoint ?? localPointForObject(object, next),
-      });
-      return;
-    }
-
-    object.x = nextX;
-    object.y = nextY;
-    object.z = nextZ;
-    constrainWorldBounds(object);
-    syncPhysicsBodyFromObject(object, { x: 0, y: 0, z: 0 });
-    object.vx = 0;
-    object.vy = 0;
-    object.vz = 0;
-    dragState.set(object.id, { lastTime: now, lastPoint: message.point });
-  }
-
-  if (message.action === "dragEnd") {
-    const object = gameObjects.get(message.entityId);
-    if (!object || !message.point) return;
-    if (object.draggedBy !== client.id) return;
-
-    if (usesMagneticDrag(object)) {
-      releaseDrag(object, usableReleaseVelocity(object, message));
-      return;
-    }
-
-    const next = constrainedPointForObject(object, message.point);
-    object.x = next.x;
-    object.y = next.y;
-    object.z = next.z;
-    releaseDrag(object, usableReleaseVelocity(object, message));
-  }
-
-  if (message.action === "fire") {
-    broadcast({
-      type: "event",
-      tick,
-      events: [
-        {
-          kind: "fire",
-          playerId: client.playerId,
-          start: message.start,
-          end: message.end,
-        },
-      ],
-    });
-  }
-}
+const applyInput = createInputHandler({
+  armStateAiming: ARM_STATE_AIMING,
+  armStateReleasing: ARM_STATE_RELEASING,
+  beginTrebuchetRelease,
+  broadcast,
+  broadcastSoundEffectStart,
+  canGrab,
+  constrainedPointForObject,
+  constrainWorldBounds,
+  dragState: () => dragState,
+  gameObjects: () => gameObjects,
+  getActiveRoom: () => activeRoom,
+  getTick: () => tick,
+  isInPlayerZone,
+  isMissileName,
+  loadTargetForTrebuchet,
+  localPointForObject,
+  physicsAggregates: () => physicsAggregates,
+  playerSide,
+  releaseDrag,
+  resetGameState,
+  restArmAngleForTrebuchet,
+  setPhysicsBodyTrigger,
+  stopTrebuchetStretchSound,
+  syncPhysicsBodyFromObject,
+  updateTrebuchetAim,
+  usableReleaseVelocity,
+  usesMagneticDrag,
+  zoneLimitX,
+});
 
 function updateTrebuchetAim(trebuchet, point) {
   resolveUpdateTrebuchetAim(trebuchet, point, { config: BARRAGE_CONFIG });
