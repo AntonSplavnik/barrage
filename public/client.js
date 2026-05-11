@@ -76,6 +76,7 @@ let dragPivotLocalPoint = null;
 let currentRoomId = null;
 let currentLevelUrl = LEVEL_URL;
 let loadedLevelUrl = null;
+let loadingLevelUrl = null;
 let levelSwitchPromise = Promise.resolve();
 let isMatched = false;
 let myPlayerId = null;
@@ -142,10 +143,21 @@ async function loadFragmentTemplates() {
 
 function switchLevelIfNeeded(levelUrl) {
   if (!levelUrl || levelUrl === loadedLevelUrl) return levelSwitchPromise;
-  if (!loadedLevelUrl && levelUrl === currentLevelUrl) return levelSwitchPromise;
+  if (levelUrl === loadingLevelUrl) return levelSwitchPromise;
 
   currentLevelUrl = levelUrl;
-  levelSwitchPromise = levelSwitchPromise.then(() => loadLevel(levelUrl, { replace: Boolean(loadedLevelUrl) }));
+  const requestedLevelUrl = levelUrl;
+  loadingLevelUrl = requestedLevelUrl;
+  levelSwitchPromise = levelSwitchPromise
+    .then(async () => {
+      if (loadedLevelUrl === requestedLevelUrl) return;
+      await loadLevel(requestedLevelUrl, { replace: Boolean(loadedLevelUrl) });
+    })
+    .finally(() => {
+      if (loadingLevelUrl === requestedLevelUrl) {
+        loadingLevelUrl = null;
+      }
+    });
   return levelSwitchPromise;
 }
 
@@ -988,6 +1000,8 @@ socket.addEventListener("message", (event) => {
   }
 
   if (message.type === "event") {
+    if (currentLevelUrl && loadedLevelUrl !== currentLevelUrl) return;
+
     for (const ev of message.events ?? []) {
       playSoundEffectEvent(ev);
       vfxManager.handleEvent(ev);
@@ -1093,6 +1107,12 @@ socket.addEventListener("message", (event) => {
 
   if (message.type === "state") {
     if (message.roomId && currentRoomId && message.roomId !== currentRoomId) return;
+    const stateLevelUrl = message.level ?? currentLevelUrl;
+    if (stateLevelUrl && loadedLevelUrl !== stateLevelUrl) {
+      switchLevelIfNeeded(stateLevelUrl);
+      return;
+    }
+
     updateRoundCounter(message.roundNumber);
     updateCrowns(message.scores ?? {});
     applyState(message);
@@ -1443,7 +1463,13 @@ scene.onPointerObservable.add((pointerInfo) => {
   }
 });
 
-levelSwitchPromise = loadLevel(currentLevelUrl).then(() => {
+const initialLevelUrl = currentLevelUrl;
+loadingLevelUrl = initialLevelUrl;
+levelSwitchPromise = loadLevel(initialLevelUrl).finally(() => {
+  if (loadingLevelUrl === initialLevelUrl) {
+    loadingLevelUrl = null;
+  }
+}).then(() => {
   engine.runRenderLoop(() => {
     if (scene.activeCamera) {
       scene.render();
