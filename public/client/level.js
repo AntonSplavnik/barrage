@@ -1,6 +1,6 @@
 import { engine, scene, canvas, CONFIG } from "./engine.js";
 import { childRole, descendantsOf, isTrebuchetArmRoot, findTrebuchetArmAncestor, isMissileName, colliderNodesFor } from "./utils.js";
-import { visualObjects, visualBaseRotations, trebuchetArmNodes, trebuchetLoadTargets, findGameplayRoot } from "./state.js";
+import { visualObjects, visualBaseRotations, trebuchetArmNodes, trebuchetLoadTargets, latestObjectStates, findGameplayRoot } from "./state.js";
 import { createAimArrowMeshes } from "./aim.js";
 
 const {
@@ -14,7 +14,7 @@ const {
   Vector3,
 } = BABYLON;
 
-const LEVEL_URL = CONFIG.levelUrl ?? "/assets/level1.glb";
+let currentLevelUrl = CONFIG.levelUrl ?? "/assets/level1.glb";
 
 function registerVisualRoots() {
   visualObjects.clear();
@@ -262,9 +262,29 @@ function setupShadows() {
   });
 }
 
-export async function loadLevel() {
+function clearLevel() {
+  visualObjects.clear();
+  visualBaseRotations.clear();
+  trebuchetArmNodes.clear();
+  trebuchetLoadTargets.clear();
+  latestObjectStates.clear();
+
+  for (const generator of scene.shadowGenerators?.slice() ?? []) {
+    generator.dispose();
+  }
+
+  const rootNodes = scene.rootNodes.filter((n) => n.name === "__root__");
+  for (const root of rootNodes) {
+    root.dispose(false, true);
+  }
+}
+
+export async function loadLevel(url) {
+  const levelUrl = url ?? currentLevelUrl;
+  currentLevelUrl = levelUrl;
+
   try {
-    await SceneLoader.AppendAsync("", LEVEL_URL, scene);
+    await SceneLoader.AppendAsync("", levelUrl, scene);
     applyTrebuchetArmRestPose();
     registerVisualRoots();
     createMissilePickColliders();
@@ -283,4 +303,11 @@ export async function loadLevel() {
   ensureCameraAndLight();
   setupShadows();
   engine.resize();
+}
+
+export async function reloadLevel(url) {
+  engine.stopRenderLoop();
+  clearLevel();
+  await loadLevel(url);
+  engine.runRenderLoop(() => scene.render());
 }

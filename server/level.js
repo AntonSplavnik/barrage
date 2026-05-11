@@ -4,8 +4,8 @@ import fs from "node:fs/promises";
 import xhr2 from "xhr2";
 import { SceneLoader } from "@babylonjs/core/Loading/sceneLoader.js";
 import "@babylonjs/loaders/glTF/index.js";
-import { scene, gameObjects, loadTargets } from "./state.js";
-import { PORT, LEVEL_FILE, SERVER_CONFIG } from "./config.js";
+import { scene, gameObjects, loadTargets, physicsAggregates, gameState } from "./state.js";
+import { PORT, SERVER_CONFIG } from "./config.js";
 import { BARRAGE_CONFIG } from "../public/config.js";
 import {
   isDynamicName,
@@ -29,7 +29,6 @@ const __dirname = path.dirname(__filename);
 
 const publicDir = path.join(__dirname, "../public");
 const assetsDir = path.join(publicDir, "assets");
-const levelPath = path.join(assetsDir, LEVEL_FILE);
 
 function findGameplayRootAncestor(node) {
   let current = node.parent;
@@ -163,21 +162,44 @@ function registerMeshRoots() {
   createPhysicsBodies();
 }
 
-export async function loadLevelIfPresent() {
+function clearScene() {
+  for (const [, aggregate] of physicsAggregates) {
+    aggregate.dispose();
+  }
+  physicsAggregates.clear();
+  gameObjects.clear();
+  loadTargets.clear();
+
+  const rootNodes = scene.rootNodes.filter((n) => n.name === "__root__");
+  for (const root of rootNodes) {
+    root.dispose(false, true);
+  }
+}
+
+export async function loadLevelIfPresent(level) {
+  const file = level?.file ?? "level1.glb";
+  const levelPath = path.join(assetsDir, file);
+
   try {
     await fs.access(levelPath);
   } catch {
-    console.log(`No GLB found at public/assets/${LEVEL_FILE}; starting with an empty scene.`);
+    console.log(`No GLB found at public/assets/${file}; starting with an empty scene.`);
     return;
   }
 
-  await SceneLoader.AppendAsync(`http://localhost:${PORT}/assets/`, LEVEL_FILE, scene);
+  await SceneLoader.AppendAsync(`http://localhost:${PORT}/assets/`, file, scene);
   applyTrebuchetArmRestPose();
   registerMeshRoots();
-  console.log(`Loaded ${LEVEL_FILE} with ${gameObjects.size} gameplay objects.`);
+  console.log(`Loaded ${file} with ${gameObjects.size} gameplay objects.`);
   for (const object of gameObjects.values()) {
     console.log(
       `Object ${object.id}: dynamic=${object.dynamic} pos=(${object.x.toFixed(2)}, ${object.y.toFixed(2)}, ${object.z.toFixed(2)}) half=(${object.halfX.toFixed(2)}, ${object.halfY.toFixed(2)}, ${object.halfZ.toFixed(2)}) offset=(${object.offsetX.toFixed(2)}, ${object.offsetY.toFixed(2)}, ${object.offsetZ.toFixed(2)})`,
     );
   }
+}
+
+export async function reloadLevel(level) {
+  clearScene();
+  gameState.currentLevel = level;
+  await loadLevelIfPresent(level);
 }

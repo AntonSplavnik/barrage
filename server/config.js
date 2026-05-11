@@ -1,8 +1,6 @@
 export const PORT = Number(process.env.PORT || 3000);
 export const TICK_RATE = 60;
 export const TICK_MS = 1000 / TICK_RATE;
-export const LEVEL_FILE = "level1.glb";
-
 export const SERVER_CONFIG = {
   gravity: -9.81,
   groundY: 0,

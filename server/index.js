@@ -8,6 +8,7 @@ import { clients, gameState } from "./state.js";
 import { PORT, TICK_RATE, TICK_MS } from "./config.js";
 import { enableHavokPhysics } from "./physics.js";
 import { loadLevelIfPresent } from "./level.js";
+import { discoverLevels, firstLevel } from "./levelCatalog.js";
 import { simulatePhysics } from "./simulation.js";
 import { sendState } from "./network.js";
 import { applyInput } from "./input.js";
@@ -122,7 +123,7 @@ wss.on("connection", (socket) => {
     clientId,
     playerId,
     tickRate: TICK_RATE,
-    level: `/assets/level1.glb`,
+    level: gameState.currentLevel?.url ?? `/assets/level1.glb`,
   }));
 
   socket.on("message", (raw) => {
@@ -146,7 +147,9 @@ await new Promise((resolve) => {
 });
 
 await enableHavokPhysics();
-await loadLevelIfPresent();
+await discoverLevels();
+gameState.currentLevel = firstLevel();
+await loadLevelIfPresent(gameState.currentLevel);
 
 simulationInterval = setInterval(() => {
   if (gameState.paused) return;

@@ -27,4 +27,5 @@ export const gameState = {
   scores: {},
   paused: false,
   matchOver: false,
+  currentLevel: null,
 };

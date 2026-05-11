@@ -3,6 +3,8 @@ import { isKingName } from "./utils.js";
 import { gameObjects, gameState } from "./state.js";
 import { resetGameState } from "./input.js";
 import { broadcast } from "./network.js";
+import { reloadLevel } from "./level.js";
+import { nextLevel, firstLevel } from "./levelCatalog.js";
 
 let roundEndInProgress = false;
 
@@ -65,29 +67,33 @@ export function tryRecordRoundWin() {
     gameState.paused = true;
   }, postSimMs);
 
-  setTimeout(() => {
+  setTimeout(async () => {
     gameState.roundNumber += 1;
+    const level = nextLevel(gameState.currentLevel?.id);
+    await reloadLevel(level);
     gameState.paused = false;
     roundEndInProgress = false;
-    resetGameState();
     broadcast({
       type: "roundStarted",
       roundNumber: gameState.roundNumber,
       scores: gameState.scores,
+      level: level.url,
     });
   }, resetDelayMs);
 }
 
-export function resetMatch() {
+export async function resetMatch() {
+  const level = firstLevel();
+  await reloadLevel(level);
   gameState.roundNumber = 1;
   gameState.scores = {};
   gameState.paused = false;
   gameState.matchOver = false;
   roundEndInProgress = false;
-  resetGameState();
   broadcast({
     type: "matchReset",
     roundNumber: gameState.roundNumber,
     scores: gameState.scores,
+    level: level.url,
   });
 }

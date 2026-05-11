@@ -1,5 +1,6 @@
 import { connectionEl, playerEl, scoreLeftEl, scoreRightEl, matchEndEl, matchEndTextEl, rematchEl } from "./engine.js";
 import { applyState } from "./state.js";
+import { reloadLevel } from "./level.js";
 
 let seq = 0;
 let displayedScores = { P1: 0, P2: 0 };
@@ -101,6 +102,10 @@ socket.addEventListener("message", (event) => {
     updateScores(message.scores, true);
   }
 
+  if (message.type === "roundStarted") {
+    if (message.level) reloadLevel(message.level);
+  }
+
   if (message.type === "matchEnded") {
     updateScores(message.scores, false);
     const color = message.winner === "P1" ? "#ff6b6b" : "#6ba3ff";
@@ -114,6 +119,7 @@ socket.addEventListener("message", (event) => {
     scoreLeftEl.innerHTML = "";
     scoreRightEl.innerHTML = "";
     displayedScores = { P1: 0, P2: 0 };
+    if (message.level) reloadLevel(message.level);
   }
 
   if (message.type === "state") {
