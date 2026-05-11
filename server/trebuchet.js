@@ -1,8 +1,12 @@
 import {
+  clamp,
+  isPullAwayFromCenter,
   isMissileName,
   isTrebuchetName,
+  releaseVelocityForObject,
   restArmAngleForTrebuchet,
   sideSignForTrebuchet,
+  trebuchetFireVelocityMax,
 } from "./utils.js";
 
 export function loadTargetForTrebuchet(trebuchet, { loadTargets }) {
@@ -78,4 +82,81 @@ export function maybeLoadMissile(missile, {
   }
 
   return false;
+}
+
+export function updateTrebuchetAim(trebuchet, point, { config }) {
+  const start = trebuchet.aimStart;
+  if (!start) return;
+
+  const requested = {
+    x: Number(point.x),
+    y: Number(point.y ?? start.y),
+    z: Number(point.z ?? start.z),
+  };
+  if (!isPullAwayFromCenter(requested, start)) {
+    trebuchet.aimCurrent = start;
+    trebuchet.armAngle = restArmAngleForTrebuchet(trebuchet);
+    return;
+  }
+
+  const pullX = requested.x - start.x;
+  const pullY = requested.y - start.y;
+  const pullDistance = Math.hypot(pullX, pullY);
+  const maxPullDistance = config.aimMaxPullDistance ?? 6;
+  const clampedDistance = clamp(pullDistance, 0, maxPullDistance);
+  const pullScale = pullDistance > 0.0001 ? clampedDistance / pullDistance : 0;
+  const current = {
+    x: start.x + pullX * pullScale,
+    y: start.y + pullY * pullScale,
+    z: requested.z,
+  };
+  trebuchet.aimCurrent = current;
+
+  const pullRatio = clampedDistance / Math.max(0.001, maxPullDistance);
+  const maxExtra = config.trebuchetArmPullbackMaxDegrees
+    ?? config.aimArmMaxExtraDegrees
+    ?? 45;
+  const restAngle = Math.abs(config.trebuchetArmRestRotationZDegrees ?? 15);
+
+  trebuchet.armAngle = restAngle + pullRatio * maxExtra;
+}
+
+export function beginTrebuchetRelease(trebuchet, {
+  armStateIdle,
+  armStateReleasing,
+  broadcastSoundEffect,
+  config,
+}) {
+  const start = trebuchet.aimStart;
+  const current = trebuchet.aimCurrent ?? start;
+  if (!start || !current) return;
+
+  if (!isPullAwayFromCenter(current, start)) {
+    trebuchet.fireState = armStateIdle;
+    trebuchet.aimedBy = null;
+    trebuchet.aimStart = null;
+    trebuchet.aimCurrent = null;
+    trebuchet.pendingShot = null;
+    trebuchet.releaseElapsedMs = 0;
+    trebuchet.armAngle = restArmAngleForTrebuchet(trebuchet);
+    return;
+  }
+
+  const powerScale = config.aimPowerScale ?? 8;
+  const shotDirectionX = sideSignForTrebuchet(trebuchet.id);
+  const velocity = releaseVelocityForObject({ id: "missile" }, {
+    x: Math.abs(start.x - current.x) * powerScale * shotDirectionX,
+    y: (start.y - current.y) * powerScale,
+    z: (start.z - current.z) * powerScale,
+  }, trebuchetFireVelocityMax());
+
+  trebuchet.fireState = armStateReleasing;
+  trebuchet.pendingShot = {
+    velocity,
+    released: false,
+    startArmAngle: trebuchet.armAngle ?? (config.trebuchetArmRestRotationZDegrees ?? 15),
+  };
+  trebuchet.releaseElapsedMs = 0;
+
+  broadcastSoundEffect("trebuchet_release", trebuchet);
 }

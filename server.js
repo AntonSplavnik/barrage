@@ -24,8 +24,10 @@ import { firstLevel, nextLevel } from "./server/levelCatalog.js";
 import { RoomManager } from "./server/roomManager.js";
 import { playerSide, canGrab, isInPlayerZone, zoneLimitX, checkKingKnockout } from "./server/gameManager.js";
 import {
+  beginTrebuchetRelease as resolveBeginTrebuchetRelease,
   loadTargetForTrebuchet as resolveLoadTargetForTrebuchet,
   maybeLoadMissile as resolveMaybeLoadMissile,
+  updateTrebuchetAim as resolveUpdateTrebuchetAim,
 } from "./server/trebuchet.js";
 import {
   babylonToProtocolRotationZ,
@@ -40,7 +42,6 @@ import {
   isLeftSideKingName,
   isLeftSideTrebuchetName,
   isMissileName,
-  isPullAwayFromCenter,
   isTrebuchetName,
   lerp,
   lerpAngleDegrees,
@@ -48,8 +49,6 @@ import {
   releaseVelocityForObject,
   restArmAngleForTrebuchet,
   rotationQuaternionForObject,
-  sideSignForTrebuchet,
-  trebuchetFireVelocityMax,
 } from "./server/utils.js";
 import {
   collisionPointFor,
@@ -981,75 +980,16 @@ function applyInput(client, message) {
 }
 
 function updateTrebuchetAim(trebuchet, point) {
-  const start = trebuchet.aimStart;
-  if (!start) return;
-
-  const requested = {
-    x: Number(point.x),
-    y: Number(point.y ?? start.y),
-    z: Number(point.z ?? start.z),
-  };
-  if (!isPullAwayFromCenter(requested, start)) {
-    trebuchet.aimCurrent = start;
-    trebuchet.armAngle = restArmAngleForTrebuchet(trebuchet);
-    return;
-  }
-
-  const pullX = requested.x - start.x;
-  const pullY = requested.y - start.y;
-  const pullDistance = Math.hypot(pullX, pullY);
-  const maxPullDistance = BARRAGE_CONFIG.aimMaxPullDistance ?? 6;
-  const clampedDistance = clamp(pullDistance, 0, maxPullDistance);
-  const pullScale = pullDistance > 0.0001 ? clampedDistance / pullDistance : 0;
-  const current = {
-    x: start.x + pullX * pullScale,
-    y: start.y + pullY * pullScale,
-    z: requested.z,
-  };
-  trebuchet.aimCurrent = current;
-
-  const pullRatio = clampedDistance / Math.max(0.001, maxPullDistance);
-  const maxExtra = BARRAGE_CONFIG.trebuchetArmPullbackMaxDegrees
-    ?? BARRAGE_CONFIG.aimArmMaxExtraDegrees
-    ?? 45;
-  const restAngle = Math.abs(BARRAGE_CONFIG.trebuchetArmRestRotationZDegrees ?? 15);
-
-  trebuchet.armAngle = restAngle + pullRatio * maxExtra;
+  resolveUpdateTrebuchetAim(trebuchet, point, { config: BARRAGE_CONFIG });
 }
 
 function beginTrebuchetRelease(trebuchet) {
-  const start = trebuchet.aimStart;
-  const current = trebuchet.aimCurrent ?? start;
-  if (!start || !current) return;
-
-  if (!isPullAwayFromCenter(current, start)) {
-    trebuchet.fireState = ARM_STATE_IDLE;
-    trebuchet.aimedBy = null;
-    trebuchet.aimStart = null;
-    trebuchet.aimCurrent = null;
-    trebuchet.pendingShot = null;
-    trebuchet.releaseElapsedMs = 0;
-    trebuchet.armAngle = restArmAngleForTrebuchet(trebuchet);
-    return;
-  }
-
-  const powerScale = BARRAGE_CONFIG.aimPowerScale ?? 8;
-  const shotDirectionX = sideSignForTrebuchet(trebuchet.id);
-  const velocity = releaseVelocityForObject({ id: "missile" }, {
-    x: Math.abs(start.x - current.x) * powerScale * shotDirectionX,
-    y: (start.y - current.y) * powerScale,
-    z: (start.z - current.z) * powerScale,
-  }, trebuchetFireVelocityMax());
-
-  trebuchet.fireState = ARM_STATE_RELEASING;
-  trebuchet.pendingShot = {
-    velocity,
-    released: false,
-    startArmAngle: trebuchet.armAngle ?? (BARRAGE_CONFIG.trebuchetArmRestRotationZDegrees ?? 15),
-  };
-  trebuchet.releaseElapsedMs = 0;
-
-  broadcastSoundEffect("trebuchet_release", trebuchet);
+  resolveBeginTrebuchetRelease(trebuchet, {
+    armStateIdle: ARM_STATE_IDLE,
+    armStateReleasing: ARM_STATE_RELEASING,
+    broadcastSoundEffect,
+    config: BARRAGE_CONFIG,
+  });
 }
 
 function targetPointForTrebuchetAtArmAngle(trebuchet, armAngle) {
