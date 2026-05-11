@@ -22,6 +22,7 @@ import { createFragmentSystem } from "./server/fragments.js";
 import { createInputHandler } from "./server/input.js";
 import { createNetworkMessenger } from "./server/network-messages.js";
 import { createPhysicsBodySystem } from "./server/physics-bodies.js";
+import { createRoomLifecycle } from "./server/room-lifecycle.js";
 import {
   createRoomRuntime,
   createRoomState as createRoomStateFromInfo,
@@ -434,6 +435,27 @@ function sendState() {
   broadcast(message);
   broadcastRoomOneToSpectators(message);
 }
+
+const {
+  handlePlayerVacancy,
+  notifyRoomStatus,
+} = createRoomLifecycle({
+  bindRoom,
+  compactWaitingRooms: () => roomManager.compactWaitingRooms(),
+  createRoomRuntime,
+  enableHavokPhysics,
+  isMatched: (room) => roomManager.isMatched(room),
+  loadLevelIfPresent,
+  notifySpectatorRenames,
+  promoteSpectatorToSlot: (room, playerId) => roomManager.promoteSpectatorToSlot(room, playerId),
+  resetGameState,
+  resetRoomProgress,
+  saveActiveRoomTick,
+  sendLobby,
+  sendMatched,
+  sendState,
+  sendWelcome,
+});
 
 function recordRoundWin(loserPlayerId) {
   if (activeRoom.roundWinner) return;
@@ -1084,65 +1106,6 @@ async function enableHavokPhysics() {
   bindRoom(room);
   const havokPlugin = new HavokPlugin(true, havokInterface);
   scene.enablePhysics(new Vector3(0, SERVER_CONFIG.gravity, 0), havokPlugin);
-}
-
-async function resetRoomToFirstLevel(room) {
-  resetRoomProgress(room);
-  createRoomRuntime(room);
-  bindRoom(room);
-  await enableHavokPhysics();
-  await loadLevelIfPresent();
-  saveActiveRoomTick();
-}
-
-function notifyRoomStatus(room) {
-  if (roomManager.isMatched(room)) {
-    bindRoom(room);
-    room.paused = false;
-    room.roundWinner = null;
-    resetGameState();
-    saveActiveRoomTick();
-    sendMatched(room);
-    sendState();
-    return;
-  }
-
-  for (const client of room.clients.values()) {
-    sendLobby(client);
-  }
-}
-
-function compactAndNotifyWaitingRooms() {
-  const moves = roomManager.compactWaitingRooms();
-  if (moves.length === 0) return false;
-
-  const touchedRooms = new Set();
-  for (const move of moves) {
-    touchedRooms.add(move.sourceRoom);
-    touchedRooms.add(move.targetRoom);
-  }
-
-  for (const room of touchedRooms) {
-    notifyRoomStatus(room);
-  }
-
-  return true;
-}
-
-async function handlePlayerVacancy({ room, playerId }) {
-  const promotion = roomManager.promoteSpectatorToSlot(room, playerId);
-  if (promotion) {
-    const { spectator: promoted, spectatorRenames } = promotion;
-    sendWelcome(promoted);
-    notifySpectatorRenames(spectatorRenames);
-    await resetRoomToFirstLevel(room);
-    notifyRoomStatus(room);
-    return;
-  }
-
-  if (!compactAndNotifyWaitingRooms()) {
-    notifyRoomStatus(room);
-  }
 }
 
 wss.on("connection", (socket) => {
