@@ -70,7 +70,7 @@ import {
   isTrebuchetArmRoot,
   parseFragmentGlb as parseFragmentGlbData,
 } from "./server/glb-parser.js";
-import { runPhysicsSimulationTick } from "./server/physics-sim.js";
+import { createSimulationRunner } from "./server/simulation.js";
 import {
   createSoundEventDispatcher,
   impactPositionFor,
@@ -434,6 +434,32 @@ const {
   registerPhysicsAggregate,
   serverConfig: SERVER_CONFIG,
   teleportPhysicsBody,
+  tickMs: TICK_MS,
+});
+
+const { runRoomSimulationTick } = createSimulationRunner({
+  bindRoom,
+  broadcast,
+  broadcastImpactSoundEffect,
+  checkKingKnockout,
+  disposePhysicsAggregate,
+  fragmentBlock,
+  getActiveRoom: () => activeRoom,
+  getGameObjects: () => gameObjects,
+  getPhysicsContactEvents: () => physicsContactEvents,
+  getTick: () => tick,
+  handlePhysicsContacts,
+  impactSpeedFor,
+  incrementTick: () => {
+    tick += 1;
+    return tick;
+  },
+  physicsVelocityForObject,
+  playerIdForKing,
+  recordRoundWin,
+  saveActiveRoomTick,
+  sendState,
+  simulatePhysics,
   tickMs: TICK_MS,
 });
 
@@ -1162,26 +1188,6 @@ async function handlePlayerVacancy({ room, playerId }) {
   }
 }
 
-function handlePhysicsSimulationResults(results) {
-  for (const { object, error } of results.fragmentationErrors) {
-    console.error(`fragmentBlock failed for ${object.id}:`, error);
-  }
-
-  for (const object of results.fragmentHits) {
-    broadcastImpactSoundEffect("missile_hits_fragment", {
-      x: object.hitImpactX ?? object.x,
-      y: object.hitImpactY ?? object.y,
-      z: object.hitImpactZ ?? object.z,
-    }, object.hitImpactSpeed ?? impactSpeedFor(object));
-    broadcast({
-      type: "event",
-      roomId: activeRoom.id,
-      tick,
-      events: [{ kind: "fragmentHit", fragId: object.id }],
-    });
-  }
-}
-
 wss.on("connection", (socket) => {
   const clientId = nextClientId++;
   const client = { id: clientId, playerId: null, room: null, socket };
@@ -1236,24 +1242,7 @@ async function startServer() {
 
   simulationInterval = setInterval(() => {
     for (const room of roomManager.activeRooms()) {
-      bindRoom(room);
-      tick += 1;
-      const physicsResults = runPhysicsSimulationTick({
-        disposePhysicsAggregate,
-        dt: TICK_MS / 1000,
-        fragmentBlock,
-        gameObjects,
-        handlePhysicsContacts,
-        physicsContactEvents,
-        simulatePhysics,
-        tick,
-        velocityFor: physicsVelocityForObject,
-      });
-      handlePhysicsSimulationResults(physicsResults);
-      const knockedKing = checkKingKnockout(gameObjects);
-      if (knockedKing) recordRoundWin(playerIdForKing(knockedKing));
-      sendState();
-      saveActiveRoomTick();
+      runRoomSimulationTick(room);
     }
   }, TICK_MS);
 }
