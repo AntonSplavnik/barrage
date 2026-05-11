@@ -3,6 +3,13 @@ import { createSoundEffectsController } from "./sound_manager.js";
 import { createCameraController } from "./camera_control.js";
 import { createVfxManager } from "./vfx-manager.js";
 import { createTrebuchetShotArcPrediction } from "./trebuche-shot-arc-prediction.js";
+import {
+  appendLevelGlb,
+  loadFragmentTemplatesFromGlb,
+  registerTrebuchetArmNodesFromGlb,
+  registerTrebuchetLoadTargetsFromGlb,
+  registerVisualRootsFromGlb,
+} from "./client-glb-parser.js";
 import { BARRAGE_CONFIG } from "./config.js";
 
 const {
@@ -12,7 +19,6 @@ const {
   HemisphericLight,
   MeshBuilder,
   Scene,
-  SceneLoader,
   ShadowGenerator,
   StandardMaterial,
   Vector3,
@@ -126,41 +132,12 @@ function updateCrowns(scores) {
 }
 
 async function loadFragmentTemplates() {
-  for (const side of ["L", "R"]) {
-    for (const node of fragmentTemplateNodes[side]) {
-      if (!node.isDisposed()) node.dispose();
-    }
-    fragmentTemplateNodes[side] = [];
-  }
-
-  for (const [side, file] of [["L", "/assets/fragmented_blockL.glb"], ["R", "/assets/fragmented_blockR.glb"]]) {
-    try {
-      const existingIds = new Set(scene.meshes.map((m) => m.uniqueId));
-      await SceneLoader.AppendAsync("", file, scene);
-      const newMeshes = scene.meshes.filter((m) => !existingIds.has(m.uniqueId) && m.name !== "__root__");
-
-      fragmentTemplateNodes[side] = [];
-      hitVisualTemplates[side] = {};
-
-      for (const mesh of newMeshes) {
-        mesh.setEnabled(false);
-        // Disable back-face culling to handle mirrored/flipped Blender exports
-        if (mesh.material) mesh.material.backFaceCulling = false;
-        const role = childRole(mesh.name);
-        if (role === "Vis") {
-          const hitMatch = mesh.name.match(/hit(\d+)/i);
-          if (hitMatch) {
-            const n = parseInt(hitMatch[1], 10);
-            hitVisualTemplates[side][n] = mesh;
-          }
-        } else {
-          fragmentTemplateNodes[side].push(mesh);
-        }
-      }
-    } catch (err) {
-      console.warn(`Could not load fragment templates for ${side}:`, err);
-    }
-  }
+  return loadFragmentTemplatesFromGlb({
+    childRole,
+    fragmentTemplateNodes,
+    hitVisualTemplates,
+    scene,
+  });
 }
 
 function switchLevelIfNeeded(levelUrl) {
@@ -235,74 +212,31 @@ function childRole(name) {
 }
 
 function registerVisualRoots() {
-  visualObjects.clear();
-  visualBaseRotations.clear();
-
-  const candidateRoots = [
-    ...scene.transformNodes.filter((transform) => !transform.parent || transform.parent.name === "__root__"),
-    ...scene.meshes.filter((mesh) => !mesh.parent || mesh.parent.name === "__root__"),
-  ];
-  const seenRootNames = new Set();
-
-  for (const transform of candidateRoots) {
-    if (transform.name === "__root__") continue;
-    if (seenRootNames.has(transform.name)) continue;
-    seenRootNames.add(transform.name);
-
-    const descendants = descendantsOf(transform);
-    const selfRole = childRole(transform.name);
-    const visualChild = descendants.find((child) => {
-      const role = childRole(child.name);
-      return role === "Vis" || role === "ColVis";
-    });
-    const hasVisualRole = selfRole === "Vis" || selfRole === "ColVis" || Boolean(visualChild);
-
-    if (!hasVisualRole) continue;
-
-    for (const child of descendants) {
-      if (childRole(child.name) === "Col" && child.setEnabled) {
-        child.setEnabled(false);
-      }
-    }
-
-    visualObjects.set(transform.name, transform);
-    const baseRotation = transform.rotationQuaternion?.toEulerAngles() ?? transform.rotation;
-    visualBaseRotations.set(transform.name, {
-      x: baseRotation.x,
-      y: baseRotation.y,
-      z: baseRotation.z,
-    });
-  }
+  registerVisualRootsFromGlb({
+    childRole,
+    descendantsOf,
+    scene,
+    visualBaseRotations,
+    visualObjects,
+  });
 }
 
 function registerTrebuchetArmNodes() {
-  trebuchetArmNodes.clear();
-
-  for (const transform of scene.transformNodes) {
-    if (!isTrebuchetArmRoot(transform)) continue;
-
-    const root = findGameplayRoot(transform);
-    if (!root) continue;
-
-    trebuchetArmNodes.set(root.name, transform);
-  }
+  registerTrebuchetArmNodesFromGlb({
+    findGameplayRoot,
+    isTrebuchetArmRoot,
+    scene,
+    trebuchetArmNodes,
+  });
 }
 
 function registerTrebuchetLoadTargets() {
-  trebuchetLoadTargets.clear();
-
-  for (const transform of scene.transformNodes) {
-    if (!transform.name.toLowerCase().includes("missile-load-target")) continue;
-
-    const root = findGameplayRoot(transform);
-    if (!root) continue;
-
-    trebuchetLoadTargets.set(root.name, {
-      targetNode: transform,
-      rootNode: root,
-      armNode: findTrebuchetArmAncestor(transform),
-    });
-  }
+  registerTrebuchetLoadTargetsFromGlb({
+    findGameplayRoot,
+    findTrebuchetArmAncestor,
+    scene,
+    trebuchetLoadTargets,
+  });
 }
 
 function descendantsOf(transform) {
@@ -895,7 +829,7 @@ async function loadLevel(levelUrl = LEVEL_URL, { replace = false } = {}) {
   }
 
   try {
-    await SceneLoader.AppendAsync("", levelUrl, scene);
+    await appendLevelGlb(scene, levelUrl);
     applyTrebuchetArmRestPose();
     registerVisualRoots();
     initialBlockVisuals.clear();

@@ -15,16 +15,49 @@ import { Mesh } from "@babylonjs/core/Meshes/mesh.js";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData.js";
 import { HavokPlugin } from "@babylonjs/core/Physics/v2/Plugins/havokPlugin.js";
 import { PhysicsAggregate } from "@babylonjs/core/Physics/v2/physicsAggregate.js";
-import { PhysicsEventType, PhysicsPrestepType, PhysicsShapeType } from "@babylonjs/core/Physics/v2/IPhysicsEnginePlugin.js";
+import { PhysicsPrestepType, PhysicsShapeType } from "@babylonjs/core/Physics/v2/IPhysicsEnginePlugin.js";
 import "@babylonjs/core/Physics/v2/physicsEngineComponent.js";
 import { Scene } from "@babylonjs/core/scene.js";
-import { SceneLoader } from "@babylonjs/core/Loading/sceneLoader.js";
-import "@babylonjs/loaders/glTF/index.js";
 import { SERVER_CONFIG } from "./config/server.js";
 import { BARRAGE_CONFIG } from "./public/config.js";
 import { firstLevel, nextLevel } from "./server/levelCatalog.js";
 import { RoomManager } from "./server/roomManager.js";
 import { playerSide, canGrab, isInPlayerZone, zoneLimitX, checkKingKnockout } from "./server/gameManager.js";
+import {
+  babylonToProtocolRotationZ,
+  childRole,
+  clamp,
+  clampAngularVelocity,
+  clampVector,
+  isBlockName,
+  isDynamicName,
+  isGroundName,
+  isKingName,
+  isLeftSideKingName,
+  isLeftSideTrebuchetName,
+  isMissileName,
+  isPullAwayFromCenter,
+  isTrebuchetArmName,
+  isTrebuchetName,
+  lerp,
+  lerpAngleDegrees,
+  normalReleaseVelocityMax,
+  releaseVelocityForObject,
+  restArmAngleForTrebuchet,
+  rotationQuaternionForObject,
+  sideSignForTrebuchet,
+  trebuchetFireVelocityMax,
+} from "./server/utils.js";
+import {
+  collisionPointFor,
+  createPhysicsContactRecorder,
+  handlePhysicsContacts as handleCollisionContacts,
+} from "./server/collision-events.js";
+import {
+  appendServerLevelGlb,
+  extractConvexPositions as extractConvexPositionsFromGlb,
+  parseFragmentGlb as parseFragmentGlbData,
+} from "./server/glb-parser.js";
 import { runPhysicsSimulationTick } from "./server/physics-sim.js";
 import {
   impactPositionFor,
@@ -82,6 +115,10 @@ const ARM_STATE_IDLE = "idle";
 const ARM_STATE_AIMING = "aiming";
 const ARM_STATE_RELEASING = "releasing";
 const ARM_STATE_RETURNING = "returning";
+const recordPhysicsContactEvent = createPhysicsContactRecorder({
+  getPhysicsContactEvents: () => physicsContactEvents,
+  getTick: () => tick,
+});
 
 function createRoomRuntime(room) {
   room.engine?.dispose?.();
@@ -262,30 +299,6 @@ function toWireObject(object) {
   };
 }
 
-function childRole(name) {
-  if (name.includes("ColVis")) return "ColVis";
-  if (name.includes("Visual") || name.includes("Vis")) return "Vis";
-  if (name.includes("Collider") || name.includes("Col")) return "Col";
-  return null;
-}
-
-function isDynamicName(name) {
-  const lowerName = name.toLowerCase();
-  return lowerName.includes("block")
-    || lowerName.includes("trebuche")
-    || lowerName.includes("missile")
-    || lowerName.includes("king");
-}
-
-function isTrebuchetName(name) {
-  return name.toLowerCase().includes("trebuche");
-}
-
-function isTrebuchetArmName(name) {
-  const lowerName = name.toLowerCase();
-  return lowerName.includes("trebuche") && lowerName.includes("arm");
-}
-
 function isTrebuchetArmRoot(transform) {
   const lowerName = transform.name.toLowerCase();
   return isTrebuchetArmName(transform.name)
@@ -295,111 +308,6 @@ function isTrebuchetArmRoot(transform) {
     && !lowerName.includes("collider")
     && !lowerName.includes("col")
     && descendantsOf(transform).some((child) => child.name.toLowerCase().includes("missile-load-target"));
-}
-
-function isMissileName(name) {
-  return name.toLowerCase().includes("missile");
-}
-
-function isKingName(name) {
-  return name.toLowerCase().includes("king");
-}
-
-function isBlockName(name) {
-  const lowerName = name.toLowerCase();
-  return lowerName.includes("block") && !lowerName.includes("frag");
-}
-
-function isLeftSideTrebuchetName(name) {
-  const lowerName = name.toLowerCase();
-  return lowerName.includes("p1") || lowerName.includes("left") || lowerName.includes("1");
-}
-
-function sideSignForTrebuchet(name) {
-  return isLeftSideTrebuchetName(name) ? 1 : -1;
-}
-
-function restArmAngleForTrebuchet(trebuchet) {
-  return BARRAGE_CONFIG.trebuchetArmRestRotationZDegrees ?? 15;
-}
-
-function isPullAwayFromCenter(point, origin) {
-  if (Math.sign(point.x || 0) !== Math.sign(origin.x || 0)) return false;
-  return Math.abs(point.x) > Math.abs(origin.x);
-}
-
-function clamp(value, min, max) {
-  return Math.min(max, Math.max(min, value));
-}
-
-function clampVector(vector, maxMagnitude) {
-  const magnitude = Math.hypot(vector.x, vector.y, vector.z);
-  if (magnitude <= maxMagnitude || magnitude === 0) return vector;
-
-  const scale = maxMagnitude / magnitude;
-  return {
-    x: vector.x * scale,
-    y: vector.y * scale,
-    z: vector.z * scale,
-  };
-}
-
-function lerp(a, b, t) {
-  return a + (b - a) * t;
-}
-
-function shortestAngleDeltaDegrees(from, to) {
-  return ((((to - from) % 360) + 540) % 360) - 180;
-}
-
-function lerpAngleDegrees(from, to, t) {
-  return from + shortestAngleDeltaDegrees(from, to) * t;
-}
-
-function protocolToBabylonRotation(rotDegrees) {
-  return -(rotDegrees * Math.PI) / 180;
-}
-
-function babylonToProtocolRotationZ(radians) {
-  return -(radians * 180) / Math.PI;
-}
-
-function rotationQuaternionForObject(object) {
-  return Quaternion.FromEulerAngles(0, 0, protocolToBabylonRotation(object.rot ?? 0));
-}
-
-function clampAngularVelocity(value) {
-  const max = BARRAGE_CONFIG.maxAngularVelocity ?? 540;
-  return clamp(value, -max, max);
-}
-
-function normalReleaseVelocityMax() {
-  return BARRAGE_CONFIG.normalReleaseVelocityMax
-    ?? BARRAGE_CONFIG.releaseVelocityMax
-    ?? SERVER_CONFIG.releaseVelocityMax;
-}
-
-function trebuchetFireVelocityMax() {
-  return BARRAGE_CONFIG.trebuchetFireVelocityMax
-    ?? SERVER_CONFIG.releaseVelocityMax;
-}
-
-function releaseVelocityForObject(object, velocity = {}, maxVelocity = normalReleaseVelocityMax()) {
-  const clamped = clampVector({
-    x: Number(velocity.x ?? 0),
-    y: Number(velocity.y ?? 0),
-    z: Number(velocity.z ?? 0),
-  }, maxVelocity);
-
-  if (isTrebuchetName(object.id)) {
-    return {
-      x: clamped.x,
-      y: 0,
-      z: 0,
-    };
-  }
-
-  return clamped;
 }
 
 function usesMagneticDrag(object) {
@@ -650,18 +558,6 @@ function boundsForNodes(nodes) {
   };
 }
 
-function isGroundName(name) {
-  return name.toLowerCase().includes("ground");
-}
-
-function isLeftSideKingName(name) {
-  const lowerName = name.toLowerCase();
-  return lowerName.includes("kingl")
-    || lowerName.includes("left")
-    || lowerName.includes("p1")
-    || lowerName.endsWith("l");
-}
-
 function playerIdForKing(king) {
   return isLeftSideKingName(king.id) ? activeRoom.playerIds[0] : activeRoom.playerIds[1];
 }
@@ -720,14 +616,6 @@ function broadcastImpactSoundEffect(effect, position, impactSpeed, overrides = {
     impactSpeed,
     ...overrides,
   });
-}
-
-function collisionPointFor(object, other) {
-  return {
-    x: ((object.x ?? 0) + (other.x ?? 0)) / 2,
-    y: ((object.y ?? 0) + (other.y ?? 0)) / 2,
-    z: ((object.z ?? 0) + (other.z ?? 0)) / 2,
-  };
 }
 
 function stopTrebuchetStretchSound(trebuchet) {
@@ -860,65 +748,7 @@ async function loadFragmentTemplates() {
 }
 
 function parseFragmentGlb(buffer) {
-  if (buffer.readUInt32LE(0) !== 0x46546C67) throw new Error("Not a GLB file");
-
-  const jsonChunkLen = buffer.readUInt32LE(12);
-  const gltf = JSON.parse(buffer.subarray(20, 20 + jsonChunkLen).toString("utf8"));
-
-  const binStart = (20 + jsonChunkLen + 3) & ~3;
-  const binData = buffer.subarray(binStart + 8);
-
-  const templates = [];
-
-  for (const node of gltf.nodes ?? []) {
-    if (node.mesh === undefined) continue;
-    const mesh = gltf.meshes?.[node.mesh];
-    const posAccIdx = mesh?.primitives?.[0]?.attributes?.POSITION;
-    if (posAccIdx === undefined) continue;
-
-    const nodeName = node.name ?? mesh.name ?? "";
-    const role = childRole(nodeName);
-    if (role !== "ColVis" && role !== "Col") continue;
-
-    const accessor = gltf.accessors[posAccIdx];
-    const bufView = gltf.bufferViews[accessor.bufferView];
-    const byteOffset = (bufView.byteOffset ?? 0) + (accessor.byteOffset ?? 0);
-    const count = accessor.count;
-    const stride = bufView.byteStride ?? 12;
-
-    const positions = new Float32Array(count * 3);
-    for (let i = 0; i < count; i++) {
-      const off = byteOffset + i * stride;
-      positions[i * 3]     = binData.readFloatLE(off);
-      positions[i * 3 + 1] = binData.readFloatLE(off + 4);
-      positions[i * 3 + 2] = binData.readFloatLE(off + 8);
-    }
-
-    const [lx = 0, ly = 0, lz = 0] = node.translation ?? [0, 0, 0];
-
-    let minX = Infinity, minY = Infinity, minZ = Infinity;
-    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-    for (let i = 0; i < count; i++) {
-      minX = Math.min(minX, positions[i * 3]);     maxX = Math.max(maxX, positions[i * 3]);
-      minY = Math.min(minY, positions[i * 3 + 1]); maxY = Math.max(maxY, positions[i * 3 + 1]);
-      minZ = Math.min(minZ, positions[i * 3 + 2]); maxZ = Math.max(maxZ, positions[i * 3 + 2]);
-    }
-
-    templates.push({
-      localX: lx,
-      localY: ly,
-      localZ: lz,
-      positions,
-      offsetX: (minX + maxX) / 2,
-      offsetY: (minY + maxY) / 2,
-      offsetZ: (minZ + maxZ) / 2,
-      halfX: Math.max(0.05, (maxX - minX) / 2),
-      halfY: Math.max(0.05, (maxY - minY) / 2),
-      halfZ: Math.max(0.05, (maxZ - minZ) / 2),
-    });
-  }
-
-  return templates;
+  return parseFragmentGlbData(buffer, { childRole });
 }
 
 function fragmentBlock(block, missile) {
@@ -1109,101 +939,22 @@ function maybeBroadcastGroundImpactSound(effect, object, ground, hitPosition = n
   maybeBroadcastObjectImpactSound(effect, object, ground, impactSpeed, hitPosition ?? object);
 }
 
-function contactPositionFor(contact, object, other) {
-  return contact.point ?? collisionPointFor(object, other);
-}
-
-function objectPairFromContact(contact) {
-  const object = gameObjects.get(contact.objectId);
-  const other = gameObjects.get(contact.otherId);
-  return object && other ? [object, other] : null;
-}
-
-function handlePhysicsContact(contact) {
-  const pair = objectPairFromContact(contact);
-  if (!pair) return;
-
-  const [object, other] = pair;
-  const missile = isMissileName(object.id) ? object : isMissileName(other.id) ? other : null;
-  const block = isBlockName(object.id) ? object : isBlockName(other.id) ? other : null;
-  const king = isKingName(object.id) ? object : isKingName(other.id) ? other : null;
-  const fragment = object.isFragment ? object : other.isFragment ? other : null;
-  const trebuchet = isTrebuchetName(object.id) ? object : isTrebuchetName(other.id) ? other : null;
-  const ground = isGroundName(object.id) ? object : isGroundName(other.id) ? other : null;
-
-  if (ground && block) {
-    maybeBroadcastGroundImpactSound("block_hit_ground", block, ground, contactPositionFor(contact, block, ground));
-    return;
-  }
-
-  if (ground && missile) {
-    maybeBroadcastGroundImpactSound("missile_hit_ground", missile, ground, contactPositionFor(contact, missile, ground));
-    return;
-  }
-
-  if (missile && king) {
-    maybeRecordKingHit(missile, king, contactPositionFor(contact, missile, king));
-    return;
-  }
-
-  if (missile && block) {
-    const position = contactPositionFor(contact, missile, block);
-    const speed = Math.hypot(missile.vx ?? 0, missile.vy ?? 0, missile.vz ?? 0);
-    if (speed >= (BARRAGE_CONFIG.blockHitVelocityMin ?? 3)) {
-      maybeRecordBlockHit(missile, block, position);
-    } else {
-      maybeBroadcastObjectImpactSound("missile_hit_block", missile, block, impactSpeedFor(missile, block), position);
-    }
-    return;
-  }
-
-  if (missile && fragment) {
-    maybeRecordFragmentHit(missile, fragment, contactPositionFor(contact, missile, fragment));
-    return;
-  }
-
-  if (missile && trebuchet) {
-    maybeBroadcastObjectImpactSound(
-      "missile_hit_trebuchet",
-      missile,
-      trebuchet,
-      impactSpeedFor(missile, trebuchet),
-      contactPositionFor(contact, missile, trebuchet),
-    );
-    return;
-  }
-
-  if (isMissileName(object.id) && isMissileName(other.id)) {
-    maybeBroadcastObjectImpactSound(
-      "missile_hit_missile",
-      object,
-      other,
-      impactSpeedFor(object, other),
-      contactPositionFor(contact, object, other),
-    );
-    return;
-  }
-
-  if (block && isBlockName(object.id) && isBlockName(other.id)) {
-    maybeBroadcastObjectImpactSound(
-      "block_hit_block",
-      object,
-      other,
-      impactSpeedFor(object, other),
-      contactPositionFor(contact, object, other),
-    );
-  }
-}
-
 function handlePhysicsContacts(contacts) {
-  const handledPairs = new Set();
-
-  for (const contact of contacts ?? []) {
-    const key = [contact.type, contact.objectId, contact.otherId].sort().join(":");
-    if (handledPairs.has(key)) continue;
-    handledPairs.add(key);
-    handlePhysicsContact(contact);
-  }
+  handleCollisionContacts(contacts, {
+    blockHitVelocityMin: BARRAGE_CONFIG.blockHitVelocityMin ?? 3,
+    gameObjects,
+    impactSpeedFor,
+    isBlockName,
+    isGroundName,
+    isKingName,
+    isMissileName,
+    isTrebuchetName,
+    maybeBroadcastGroundImpactSound,
+    maybeBroadcastObjectImpactSound,
+    maybeRecordBlockHit,
+    maybeRecordFragmentHit,
+    maybeRecordKingHit,
+  });
 }
 
 function maybeRecordFragmentHit(missile, fragment, hitPosition = null) {
@@ -1552,28 +1303,7 @@ function releaseLoadedMissileFromTrebuchet(trebuchet, velocity, armAngle = null)
 }
 
 function extractConvexPositions(rootTransform) {
-  rootTransform.computeWorldMatrix(true);
-  const invRootWorld = rootTransform.getWorldMatrix().clone().invert();
-
-  const all = [];
-  const colliders = descendantsOf(rootTransform).filter((d) => {
-    const role = childRole(d.name);
-    return (role === "Col" || role === "ColVis") && typeof d.getVerticesData === "function";
-  });
-
-  for (const mesh of colliders) {
-    mesh.computeWorldMatrix(true);
-    const raw = mesh.getVerticesData("position");
-    if (!raw) continue;
-    const meshWorld = mesh.getWorldMatrix();
-    for (let i = 0; i < raw.length; i += 3) {
-      const world = Vector3.TransformCoordinates(new Vector3(raw[i], raw[i + 1], raw[i + 2]), meshWorld);
-      const local = Vector3.TransformCoordinates(world, invRootWorld);
-      all.push(local.x, local.y, local.z);
-    }
-  }
-
-  return all.length > 0 ? new Float32Array(all) : null;
+  return extractConvexPositionsFromGlb(rootTransform, { childRole, descendantsOf });
 }
 
 function massForObject(name) {
@@ -1592,39 +1322,6 @@ function linearDampingForObject(object) {
   if (isTrebuchetName(object.id)) return 2.2;
   if (isMissileName(object.id)) return BARRAGE_CONFIG.missileLinearDamping ?? 0.15;
   return 0.15;
-}
-
-function bodyObjectId(body) {
-  return body?.transformNode?.metadata?.gameObjectId ?? null;
-}
-
-function vectorToPlain(vector) {
-  if (!vector) return null;
-  return {
-    x: Number(vector.x ?? 0),
-    y: Number(vector.y ?? 0),
-    z: Number(vector.z ?? 0),
-  };
-}
-
-function recordPhysicsContactEvent(event) {
-  if (!physicsContactEvents) return;
-  if (event.type !== PhysicsEventType.COLLISION_STARTED) return;
-
-  const objectId = bodyObjectId(event.collider);
-  const otherId = bodyObjectId(event.collidedAgainst);
-  if (!objectId || !otherId || objectId === otherId) return;
-
-  physicsContactEvents.push({
-    tick,
-    type: event.type,
-    objectId,
-    otherId,
-    point: vectorToPlain(event.point),
-    normal: vectorToPlain(event.normal),
-    impulse: Number(event.impulse ?? 0),
-    distance: Number(event.distance ?? 0),
-  });
 }
 
 function unregisterPhysicsAggregate(id) {
@@ -2281,7 +1978,7 @@ async function loadLevelIfPresent() {
     return;
   }
 
-  await SceneLoader.AppendAsync(`http://localhost:${PORT}/assets/`, level.file, room.scene);
+  await appendServerLevelGlb({ levelFile: level.file, port: PORT, scene: room.scene });
   bindRoom(room);
   applyTrebuchetArmRestPose();
   registerMeshRoots();
