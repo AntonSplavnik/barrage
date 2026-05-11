@@ -65,14 +65,9 @@ import {
 } from "./server/glb-parser.js";
 import { runPhysicsSimulationTick } from "./server/physics-sim.js";
 import {
+  createSoundEventDispatcher,
   impactPositionFor,
-  impactSoundKey,
   impactSpeedFor,
-  impactVolumeFor,
-  shouldEmitImpactSound,
-  soundEffectEvent,
-  soundEffectStartEvent,
-  soundEffectStopEvent,
 } from "./server/server-events.js";
 
 const { XMLHttpRequest } = xhr2;
@@ -473,53 +468,21 @@ function broadcast(message) {
   }
 }
 
-function broadcastSoundEffect(effect, position = {}, overrides = {}) {
-  if (!activeRoom) return;
-
-  broadcast({
-    type: "event",
-    roomId: activeRoom.id,
-    tick,
-    events: [soundEffectEvent(effect, position, overrides)],
-  });
-}
-
-function broadcastSoundEffectStart(effect, instanceId, position = {}, overrides = {}) {
-  if (!activeRoom) return;
-
-  broadcast({
-    type: "event",
-    roomId: activeRoom.id,
-    tick,
-    events: [soundEffectStartEvent(effect, instanceId, position, overrides)],
-  });
-}
-
-function broadcastSoundEffectStop(effect, instanceId) {
-  if (!activeRoom) return;
-
-  broadcast({
-    type: "event",
-    roomId: activeRoom.id,
-    tick,
-    events: [soundEffectStopEvent(effect, instanceId)],
-  });
-}
-
-function broadcastImpactSoundEffect(effect, position, impactSpeed, overrides = {}) {
-  broadcastSoundEffect(effect, position, {
-    volume: impactVolumeFor(BARRAGE_CONFIG, effect, impactSpeed),
-    impactSpeed,
-    ...overrides,
-  });
-}
-
-function stopTrebuchetStretchSound(trebuchet) {
-  if (!trebuchet?.stretchSoundActive) return;
-
-  trebuchet.stretchSoundActive = false;
-  broadcastSoundEffectStop("trebuchet_stretch", trebuchet.id);
-}
+const {
+  broadcastImpactSoundEffect,
+  broadcastSoundEffect,
+  broadcastSoundEffectStart,
+  maybeBroadcastGroundImpactSound,
+  maybeBroadcastObjectImpactSound,
+  stopTrebuchetStretchSound,
+} = createSoundEventDispatcher({
+  broadcast,
+  config: BARRAGE_CONFIG,
+  getActiveRoom: () => activeRoom,
+  getImpactSoundTicks: () => impactSoundTicks,
+  getTick: () => tick,
+  tickMs: TICK_MS,
+});
 
 function sendState() {
   const message = {
@@ -814,25 +777,6 @@ function maybeRecordBlockHit(object, other, hitPosition = null) {
     block.pendingFragmentHitPosition = hitPosition ?? collisionPointFor(missile, block);
     missile.usedToFragment = true;
   }
-}
-
-function maybeBroadcastObjectImpactSound(effect, object, other, impactSpeed, hitPosition = null) {
-  if (!impactSoundTicks) return;
-
-  const minSpeed = BARRAGE_CONFIG.impactSoundVelocityMin ?? 1.5;
-  if (impactSpeed < minSpeed) return;
-
-  const effectCooldownMs = BARRAGE_CONFIG.soundEffects?.[effect]?.cooldownMs;
-  const cooldownTicks = Math.ceil((effectCooldownMs ?? BARRAGE_CONFIG.impactSoundCooldownMs ?? 0) / TICK_MS);
-  const key = impactSoundKey(effect, object.id, other?.id);
-  if (!shouldEmitImpactSound(impactSoundTicks, key, tick, cooldownTicks)) return;
-
-  broadcastImpactSoundEffect(effect, hitPosition ?? impactPositionFor(object, other), impactSpeed);
-}
-
-function maybeBroadcastGroundImpactSound(effect, object, ground, hitPosition = null) {
-  const impactSpeed = Math.abs(object.impactVy ?? object.vy ?? 0);
-  maybeBroadcastObjectImpactSound(effect, object, ground, impactSpeed, hitPosition ?? object);
 }
 
 function handlePhysicsContacts(contacts) {

@@ -90,3 +90,93 @@ export function shouldEmitImpactSound(cache, key, tick, cooldownTicks) {
   cache.set(key, tick);
   return true;
 }
+
+export function createSoundEventDispatcher({
+  broadcast,
+  config,
+  getActiveRoom,
+  getImpactSoundTicks,
+  getTick,
+  tickMs,
+}) {
+  function broadcastSoundEffect(effect, position = {}, overrides = {}) {
+    const activeRoom = getActiveRoom?.();
+    if (!activeRoom) return;
+
+    broadcast({
+      type: "event",
+      roomId: activeRoom.id,
+      tick: getTick?.() ?? 0,
+      events: [soundEffectEvent(effect, position, overrides)],
+    });
+  }
+
+  function broadcastSoundEffectStart(effect, instanceId, position = {}, overrides = {}) {
+    const activeRoom = getActiveRoom?.();
+    if (!activeRoom) return;
+
+    broadcast({
+      type: "event",
+      roomId: activeRoom.id,
+      tick: getTick?.() ?? 0,
+      events: [soundEffectStartEvent(effect, instanceId, position, overrides)],
+    });
+  }
+
+  function broadcastSoundEffectStop(effect, instanceId) {
+    const activeRoom = getActiveRoom?.();
+    if (!activeRoom) return;
+
+    broadcast({
+      type: "event",
+      roomId: activeRoom.id,
+      tick: getTick?.() ?? 0,
+      events: [soundEffectStopEvent(effect, instanceId)],
+    });
+  }
+
+  function broadcastImpactSoundEffect(effect, position, impactSpeed, overrides = {}) {
+    broadcastSoundEffect(effect, position, {
+      volume: impactVolumeFor(config, effect, impactSpeed),
+      impactSpeed,
+      ...overrides,
+    });
+  }
+
+  function maybeBroadcastObjectImpactSound(effect, object, other, impactSpeed, hitPosition = null) {
+    const impactSoundTicks = getImpactSoundTicks?.();
+    if (!impactSoundTicks) return;
+
+    const minSpeed = config.impactSoundVelocityMin ?? 1.5;
+    if (impactSpeed < minSpeed) return;
+
+    const effectCooldownMs = config.soundEffects?.[effect]?.cooldownMs;
+    const cooldownTicks = Math.ceil((effectCooldownMs ?? config.impactSoundCooldownMs ?? 0) / tickMs);
+    const key = impactSoundKey(effect, object.id, other?.id);
+    if (!shouldEmitImpactSound(impactSoundTicks, key, getTick?.() ?? 0, cooldownTicks)) return;
+
+    broadcastImpactSoundEffect(effect, hitPosition ?? impactPositionFor(object, other), impactSpeed);
+  }
+
+  function maybeBroadcastGroundImpactSound(effect, object, ground, hitPosition = null) {
+    const impactSpeed = Math.abs(object.impactVy ?? object.vy ?? 0);
+    maybeBroadcastObjectImpactSound(effect, object, ground, impactSpeed, hitPosition ?? object);
+  }
+
+  function stopTrebuchetStretchSound(trebuchet) {
+    if (!trebuchet?.stretchSoundActive) return;
+
+    trebuchet.stretchSoundActive = false;
+    broadcastSoundEffectStop("trebuchet_stretch", trebuchet.id);
+  }
+
+  return {
+    broadcastImpactSoundEffect,
+    broadcastSoundEffect,
+    broadcastSoundEffectStart,
+    broadcastSoundEffectStop,
+    maybeBroadcastGroundImpactSound,
+    maybeBroadcastObjectImpactSound,
+    stopTrebuchetStretchSound,
+  };
+}
