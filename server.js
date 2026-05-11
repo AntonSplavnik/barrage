@@ -24,6 +24,14 @@ import { firstLevel, nextLevel } from "./server/levelCatalog.js";
 import { RoomManager } from "./server/roomManager.js";
 import { playerSide, canGrab, isInPlayerZone, zoneLimitX, checkKingKnockout } from "./server/gameManager.js";
 import {
+  applyMagneticDragForce as resolveApplyMagneticDragForce,
+  constrainedPointForObject as resolveConstrainedPointForObject,
+  constrainWorldBounds as resolveConstrainWorldBounds,
+  localPointForObject as resolveLocalPointForObject,
+  usableReleaseVelocity as resolveUsableReleaseVelocity,
+  usesMagneticDrag,
+} from "./server/drag.js";
+import {
   beginTrebuchetRelease as resolveBeginTrebuchetRelease,
   loadTargetForTrebuchet as resolveLoadTargetForTrebuchet,
   maybeLoadMissile as resolveMaybeLoadMissile,
@@ -34,19 +42,15 @@ import {
   childRole,
   clamp,
   clampAngularVelocity,
-  clampVector,
   isBlockName,
   isDynamicName,
   isGroundName,
   isKingName,
   isLeftSideKingName,
-  isLeftSideTrebuchetName,
   isMissileName,
   isTrebuchetName,
   lerp,
   lerpAngleDegrees,
-  normalReleaseVelocityMax,
-  releaseVelocityForObject,
   restArmAngleForTrebuchet,
   rotationQuaternionForObject,
 } from "./server/utils.js";
@@ -302,81 +306,20 @@ function toWireObject(object) {
   };
 }
 
-function usesMagneticDrag(object) {
-  return isBlockName(object.id) || isTrebuchetName(object.id);
-}
-
 function localPointForObject(object, point) {
-  const aggregate = physicsAggregates.get(object.id);
-  if (!aggregate) return null;
-
-  aggregate.transformNode.computeWorldMatrix(true);
-  const local = Vector3.TransformCoordinates(
-    new Vector3(Number(point.x), Number(point.y ?? object.y), Number(point.z)),
-    aggregate.transformNode.getWorldMatrix().clone().invert(),
-  );
-
-  return {
-    x: local.x,
-    y: local.y,
-    z: local.z,
-  };
+  return resolveLocalPointForObject(object, point, { physicsAggregates });
 }
 
 function constrainWorldBounds(object) {
-  object.x = clamp(object.x, SERVER_CONFIG.worldMinX, SERVER_CONFIG.worldMaxX);
-  object.z = clamp(object.z, SERVER_CONFIG.worldMinZ, SERVER_CONFIG.worldMaxZ);
-
-  if (object.x === SERVER_CONFIG.worldMinX && object.vx < 0) object.vx = 0;
-  if (object.x === SERVER_CONFIG.worldMaxX && object.vx > 0) object.vx = 0;
-  if (object.z === SERVER_CONFIG.worldMinZ && object.vz < 0) object.vz = 0;
-  if (object.z === SERVER_CONFIG.worldMaxZ && object.vz > 0) object.vz = 0;
-}
-
-function velocityFromDragState(object, point) {
-  const previous = dragState.get(object.id);
-  if (!previous?.lastPoint || !previous.lastTime) return { x: 0, y: 0, z: 0 };
-
-  const dt = Math.max(0.001, (Date.now() - previous.lastTime) / 1000);
-  return clampVector({
-    x: (Number(point.x) - Number(previous.lastPoint.x)) / dt,
-    y: (Number(point.y ?? object.y) - Number(previous.lastPoint.y ?? object.y)) / dt,
-    z: (Number(point.z) - Number(previous.lastPoint.z)) / dt,
-  }, normalReleaseVelocityMax());
+  resolveConstrainWorldBounds(object, { serverConfig: SERVER_CONFIG });
 }
 
 function usableReleaseVelocity(object, message) {
-  const clientVelocity = releaseVelocityForObject(object, message.velocity);
-  const clientSpeed = Math.hypot(clientVelocity.x, clientVelocity.y, clientVelocity.z);
-
-  if (clientSpeed > 0.1) {
-    return clientVelocity;
-  }
-
-  return releaseVelocityForObject(object, velocityFromDragState(object, message.point));
+  return resolveUsableReleaseVelocity(object, message, { dragState });
 }
 
 function constrainedPointForObject(object, point) {
-  if (!isTrebuchetName(object.id)) {
-    return {
-      x: Number(point.x),
-      y: Number(point.y ?? object.y),
-      z: Number(point.z),
-    };
-  }
-
-  const minX = isLeftSideTrebuchetName(object.id)
-    ? BARRAGE_CONFIG.trebuchetLeftMinX
-    : BARRAGE_CONFIG.trebuchetRightMinX;
-  const maxX = isLeftSideTrebuchetName(object.id)
-    ? BARRAGE_CONFIG.trebuchetLeftMaxX
-    : BARRAGE_CONFIG.trebuchetRightMaxX;
-
-  return {
-    x: clamp(Number(point.x), minX, maxX),
-    y: object.originY,
-    z: object.originZ,
-  };
+  return resolveConstrainedPointForObject(object, point, { config: BARRAGE_CONFIG });
 }
 
 function distance3(a, b) {
@@ -1394,42 +1337,11 @@ function setPhysicsBodyTrigger(object, isTrigger) {
 }
 
 function applyMagneticDragForce(object) {
-  const drag = dragState.get(object.id);
-  const target = drag?.lastPoint;
-  const aggregate = physicsAggregates.get(object.id);
-  if (!target || !aggregate) return;
-
-  const node = aggregate.transformNode;
-  node.computeWorldMatrix(true);
-  const grabLocal = drag.grabLocalPoint ?? { x: 0, y: 0, z: 0 };
-  const grabWorldPoint = Vector3.TransformCoordinates(
-    new Vector3(grabLocal.x, grabLocal.y, grabLocal.z),
-    node.getWorldMatrix(),
-  );
-  const dx = Number(target.x) - grabWorldPoint.x;
-  const dy = Number(target.y ?? grabWorldPoint.y) - grabWorldPoint.y;
-  const dz = Number(target.z) - grabWorldPoint.z;
-  const distance = Math.hypot(dx, dy, dz);
-  const radiusLimit = Math.max(0.001, BARRAGE_CONFIG.dragRadiusLimit ?? 8);
-  if (distance <= 0.0001 || distance >= radiusLimit) return;
-
-  const forceScale = 1 - (distance / radiusLimit);
-  const forceMagnitude = Math.max(0, BARRAGE_CONFIG.dragForceMax ?? 420) * forceScale;
-  const invDistance = 1 / distance;
-  const force = new Vector3(
-    dx * invDistance * forceMagnitude,
-    dy * invDistance * forceMagnitude,
-    dz * invDistance * forceMagnitude,
-  );
-
-  const linearVelocity = aggregate.body.getLinearVelocity?.() ?? Vector3.Zero();
-  const angularVelocity = aggregate.body.getAngularVelocity?.() ?? Vector3.Zero();
-  const radius = grabWorldPoint.subtract(node.getAbsolutePosition());
-  const pointVelocity = linearVelocity.add(Vector3.Cross(angularVelocity, radius));
-  const dampingMagnitude = Math.max(0, BARRAGE_CONFIG.dragDampingMax ?? 80) * forceScale;
-  const dampingForce = pointVelocity.scale(-dampingMagnitude);
-
-  aggregate.body.applyForce(force.add(dampingForce), grabWorldPoint);
+  resolveApplyMagneticDragForce(object, {
+    config: BARRAGE_CONFIG,
+    dragState,
+    physicsAggregates,
+  });
 }
 
 function constrainBodyToPlane(object) {
