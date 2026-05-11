@@ -7,15 +7,12 @@ import fs from "node:fs/promises";
 import xhr2 from "xhr2";
 import { WebSocketServer } from "ws";
 import HavokPhysics from "@babylonjs/havok";
-import { NullEngine } from "@babylonjs/core/Engines/nullEngine.js";
-import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera.js";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode.js";
 import { HavokPlugin } from "@babylonjs/core/Physics/v2/Plugins/havokPlugin.js";
 import { PhysicsAggregate } from "@babylonjs/core/Physics/v2/physicsAggregate.js";
 import { PhysicsShapeType } from "@babylonjs/core/Physics/v2/IPhysicsEnginePlugin.js";
 import "@babylonjs/core/Physics/v2/physicsEngineComponent.js";
-import { Scene } from "@babylonjs/core/scene.js";
 import { SERVER_CONFIG } from "./config/server.js";
 import { BARRAGE_CONFIG } from "./public/config.js";
 import { firstLevel, nextLevel } from "./server/levelCatalog.js";
@@ -25,6 +22,11 @@ import { createFragmentSystem } from "./server/fragments.js";
 import { createInputHandler } from "./server/input.js";
 import { createNetworkMessenger } from "./server/network-messages.js";
 import { createPhysicsBodySystem } from "./server/physics-bodies.js";
+import {
+  createRoomRuntime,
+  createRoomState as createRoomStateFromInfo,
+  resetRoomProgress as resetRoomProgressState,
+} from "./server/room-state.js";
 import {
   applyMagneticDragForce as resolveApplyMagneticDragForce,
   constrainedPointForObject as resolveConstrainedPointForObject,
@@ -126,53 +128,8 @@ const recordPhysicsContactEvent = createPhysicsContactRecorder({
   getTick: () => tick,
 });
 
-function createRoomRuntime(room) {
-  room.engine?.dispose?.();
-  room.scene?.dispose?.();
-
-  const roomEngine = new NullEngine({
-    renderHeight: 1,
-    renderWidth: 1,
-    textureSize: 1,
-    deterministicLockstep: false,
-  });
-  const roomScene = new Scene(roomEngine);
-  roomScene.activeCamera = new FreeCamera(`HeadlessCamera-${room.id}`, new Vector3(0, 10, -10), roomScene);
-
-  room.engine = roomEngine;
-  room.scene = roomScene;
-  room.tick = 0;
-  room.gameObjects = new Map();
-  room.dragState = new Map();
-  room.loadTargets = new Map();
-  room.physicsAggregates = new Map();
-  room.physicsCollisionObservers = new Map();
-  room.physicsContactEvents = [];
-  room.impactSoundTicks = new Map();
-}
-
-function createRoomState({ id, index, playerIds }) {
-  const room = {
-    id,
-    index,
-    playerIds,
-    clients: new Map(),
-    level: firstLevel(),
-    roundNumber: 1,
-    scores: Object.fromEntries(playerIds.map((playerId) => [playerId, 0])),
-    roundWinner: null,
-    paused: false,
-  };
-  createRoomRuntime(room);
-  return room;
-}
-
 function resetRoomProgress(room) {
-  room.level = firstLevel();
-  room.roundNumber = 1;
-  room.roundWinner = null;
-  room.paused = false;
-  room.scores = Object.fromEntries(room.playerIds.map((playerId) => [playerId, 0]));
+  resetRoomProgressState(room, { firstLevel });
 }
 
 function bindRoom(room) {
@@ -197,7 +154,7 @@ function saveActiveRoomTick() {
 
 const roomManager = new RoomManager({
   async createRoom(roomInfo) {
-    const room = createRoomState(roomInfo);
+    const room = createRoomStateFromInfo({ roomInfo, firstLevel });
     bindRoom(room);
     await enableHavokPhysics();
     await loadLevelIfPresent();
