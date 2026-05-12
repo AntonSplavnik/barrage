@@ -1,5 +1,5 @@
 import { engine, scene, canvas, CONFIG } from "./engine.js";
-import { childRole, descendantsOf, isTrebuchetArmRoot, findTrebuchetArmAncestor, isMissileName, colliderNodesFor } from "./utils.js";
+import { childRole, descendantsOf, isTrebuchetArmRoot, isMissileName, colliderNodesFor } from "./utils.js";
 import { visualObjects, visualBaseRotations, trebuchetArmNodes, trebuchetLoadTargets, latestObjectStates, findGameplayRoot } from "./state.js";
 import { createAimArrowMeshes } from "./aim.js";
 import { getTemplateRoot } from "./templateRegistry.js";
