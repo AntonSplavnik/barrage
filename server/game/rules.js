@@ -19,7 +19,7 @@ export function resetGameState() {
     object.x = object.originX;
     object.y = object.originY;
     object.z = object.originZ;
-    object.rot = 0;
+    object.rot = object.originRot ?? 0;
     object.angularVelocity = 0;
     object.vx = 0;
     object.vy = 0;
@@ -63,7 +63,7 @@ export function checkKingKnockout() {
 }
 
 export function playerIdForKing(king) {
-  return king.originX < 0 ? "P1" : "P2";
+  return king.player === 1 ? "P1" : "P2";
 }
 
 export function tryRecordRoundWin() {

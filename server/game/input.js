@@ -38,6 +38,7 @@ export function applyInput(client, message) {
 
     const trebuchet = gameObjects.get(missile.loadedInto);
     if (!trebuchet || !trebuchet.loaded || trebuchet.fireState === ARM_STATE_RELEASING) return;
+    if (trebuchet.player && trebuchet.player !== client.id) return;
 
     trebuchet.fireState = ARM_STATE_AIMING;
     trebuchet.aimedBy = client.id;

@@ -173,7 +173,7 @@ export function beginTrebuchetRelease(trebuchet) {
   if (!start || !current) return;
 
   const powerScale = BARRAGE_CONFIG.aimPowerScale ?? 8;
-  const shotDirectionX = sideSignForTrebuchet(trebuchet.id);
+  const shotDirectionX = trebuchet.player === 1 ? 1 : -1;
   const velocity = releaseVelocityForObject({ id: "missile" }, {
     x: Math.abs(start.x - current.x) * powerScale * shotDirectionX,
     y: (start.y - current.y) * powerScale,

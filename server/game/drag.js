@@ -46,7 +46,9 @@ export function handleDragStart(client, message) {
   if (object.loadedInto) return;
   if (isKingName(object.id)) return;
 
-  if (!isTrebuchetName(object.id)) {
+  if (isTrebuchetName(object.id)) {
+    if (object.player && object.player !== client.id) return;
+  } else {
     if (client.id === 1 && object.x > 2) return;
     if (client.id === 2 && object.x < -2) return;
   }
