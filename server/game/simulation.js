@@ -5,6 +5,7 @@ import {
   physicsAggregates,
   syncPhysicsBodyFromObject,
   constrainBodyToPlane,
+  teleportPhysicsBody,
   returnDraggedObjectUpright,
 } from "./physics.js";
 import { SERVER_CONFIG, TICK_MS } from "../config.js";
@@ -78,6 +79,8 @@ export function simulatePhysics() {
       object.y = floorY;
       if (object.vy < 0) object.vy = 0;
       node.position.y = floorY;
+      node.computeWorldMatrix(true);
+      teleportPhysicsBody(aggregate);
       aggregate.body.setLinearVelocity(new Vector3(object.vx, 0, 0));
     }
   }
