@@ -2,6 +2,7 @@ import { WebSocketServer } from "ws";
 import { clients, gameState } from "../game/state.js";
 import { TICK_RATE } from "../config.js";
 import { applyInput } from "../game/input.js";
+import { getAllPaths } from "../game/templateRegistry.js";
 
 export function setupWebSocket(httpServer) {
   const wss = new WebSocketServer({ server: httpServer });
@@ -17,7 +18,8 @@ export function setupWebSocket(httpServer) {
       clientId,
       playerId,
       tickRate: TICK_RATE,
-      level: gameState.currentLevel?.url ?? `/assets/level1.glb`,
+      level: gameState.currentLevel?.url ?? "/assets/levels/level1.glb",
+      templates: getAllPaths(),
     }));
 
     socket.on("message", (raw) => {

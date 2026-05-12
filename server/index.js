@@ -8,6 +8,7 @@ import { clients, gameState } from "./game/state.js";
 import { enableHavokPhysics } from "./game/physics.js";
 import { loadLevelIfPresent } from "./game/level.js";
 import { discoverLevels, firstLevel } from "./game/levelCatalog.js";
+import { initTemplateRegistry } from "./game/templateRegistry.js";
 import { setupWebSocket } from "./net/connections.js";
 import { startGameLoop, stopGameLoop } from "./game/loop.js";
 
@@ -113,6 +114,7 @@ await new Promise((resolve) => {
 });
 
 await enableHavokPhysics();
+await initTemplateRegistry();
 await discoverLevels();
 gameState.currentLevel = firstLevel();
 await loadLevelIfPresent(gameState.currentLevel);
