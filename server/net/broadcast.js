@@ -1,5 +1,5 @@
-import { clients, gameObjects, gameState } from "./state.js";
-import { toWireObject } from "./utils.js";
+import { clients, gameObjects, gameState } from "../game/state.js";
+import { toWireObject } from "../game/entities.js";
 
 export function broadcast(message) {
   const payload = JSON.stringify(message);

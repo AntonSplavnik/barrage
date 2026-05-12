@@ -1,17 +1,74 @@
 import { gameObjects, loadTargets } from "./state.js";
-import { BARRAGE_CONFIG } from "../public/config.js";
+import { BARRAGE_CONFIG } from "../../public/config.js";
 import {
   isTrebuchetName,
   isMissileName,
   sideSignForTrebuchet,
   restArmAngleForTrebuchet,
-  clamp,
   releaseVelocityForObject,
   trebuchetFireVelocityMax,
   ARM_STATE_IDLE,
   ARM_STATE_RELEASING,
-} from "./utils.js";
+  ARM_STATE_RETURNING,
+} from "./entities.js";
+import { clamp, lerp } from "../math.js";
 import { setPhysicsBodyTrigger, syncPhysicsBodyFromObject } from "./physics.js";
+
+export function updateTrebuchetFireState(dt) {
+  for (const trebuchet of gameObjects.values()) {
+    if (!isTrebuchetName(trebuchet.id)) continue;
+
+    if (trebuchet.fireState === ARM_STATE_RETURNING) {
+      const durationMs = Math.max(1, BARRAGE_CONFIG.fireReturnAnimationMs ?? 220);
+      trebuchet.releaseElapsedMs = (trebuchet.releaseElapsedMs ?? 0) + dt * 1000;
+      const progress = clamp(trebuchet.releaseElapsedMs / durationMs, 0, 1);
+      const startArmAngle = trebuchet.returnStartArmAngle ?? trebuchet.armAngle ?? 0;
+      const restArmAngle = restArmAngleForTrebuchet();
+      trebuchet.armAngle = lerp(startArmAngle, restArmAngle, progress);
+
+      if (progress >= 1) {
+        trebuchet.armAngle = restArmAngle;
+        trebuchet.fireState = ARM_STATE_IDLE;
+        trebuchet.returnStartArmAngle = null;
+        trebuchet.releaseElapsedMs = 0;
+      }
+
+      continue;
+    }
+
+    if (trebuchet.fireState !== ARM_STATE_RELEASING) continue;
+
+    const durationMs = Math.max(1, BARRAGE_CONFIG.fireReleaseAnimationMs ?? 180);
+    trebuchet.releaseElapsedMs = (trebuchet.releaseElapsedMs ?? 0) + dt * 1000;
+    const progress = clamp(trebuchet.releaseElapsedMs / durationMs, 0, 1);
+    const startArmAngle = trebuchet.pendingShot?.startArmAngle ?? trebuchet.armAngle ?? 0;
+    const restArmAngle = restArmAngleForTrebuchet(trebuchet);
+    const previousArmAngle = trebuchet.armAngle ?? startArmAngle;
+    const velocity = trebuchet.pendingShot?.velocity ?? { x: 0, y: 0, z: 0 };
+    trebuchet.armAngle = lerp(startArmAngle, 0, progress);
+
+    const shouldReleaseAtRest = !trebuchet.pendingShot?.released
+      && (startArmAngle <= restArmAngle || (previousArmAngle > restArmAngle && trebuchet.armAngle <= restArmAngle));
+
+    if (shouldReleaseAtRest) {
+      releaseLoadedMissileFromTrebuchet(trebuchet, velocity, restArmAngle);
+      if (trebuchet.pendingShot) {
+        trebuchet.pendingShot.released = true;
+      }
+    }
+
+    if (progress < 1) continue;
+
+    if (!trebuchet.pendingShot?.released) {
+      releaseLoadedMissileFromTrebuchet(trebuchet, velocity, restArmAngle);
+    }
+
+    trebuchet.fireState = ARM_STATE_RETURNING;
+    trebuchet.pendingShot = null;
+    trebuchet.returnStartArmAngle = trebuchet.armAngle;
+    trebuchet.releaseElapsedMs = 0;
+  }
+}
 
 export function loadTargetForTrebuchet(trebuchet) {
   const target = loadTargets.get(trebuchet.id) ?? loadTargets.get("default") ?? null;
@@ -133,7 +190,7 @@ export function beginTrebuchetRelease(trebuchet) {
   trebuchet.releaseElapsedMs = 0;
 }
 
-export function targetPointForTrebuchetAtArmAngle(trebuchet, armAngle) {
+function targetPointForTrebuchetAtArmAngle(trebuchet, armAngle) {
   const previousAngle = trebuchet.armAngle;
   trebuchet.armAngle = armAngle;
   const target = loadTargetForTrebuchet(trebuchet);

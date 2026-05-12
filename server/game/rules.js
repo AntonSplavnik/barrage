@@ -1,12 +1,56 @@
-import { BARRAGE_CONFIG } from "../public/config.js";
-import { isKingName } from "./utils.js";
-import { gameObjects, gameState } from "./state.js";
-import { resetGameState } from "./input.js";
-import { broadcast } from "./network.js";
+import { BARRAGE_CONFIG } from "../../public/config.js";
+import {
+  isKingName,
+  restArmAngleForTrebuchet,
+  ARM_STATE_IDLE,
+} from "./entities.js";
+import { gameObjects, gameState, dragState } from "./state.js";
+import { broadcast } from "../net/broadcast.js";
 import { reloadLevel } from "./level.js";
 import { nextLevel, firstLevel } from "./levelCatalog.js";
+import { syncPhysicsBodyFromObject, setPhysicsBodyTrigger } from "./physics.js";
 
 let roundEndInProgress = false;
+
+export function resetGameState() {
+  dragState.clear();
+
+  for (const object of gameObjects.values()) {
+    object.x = object.originX;
+    object.y = object.originY;
+    object.z = object.originZ;
+    object.rot = 0;
+    object.angularVelocity = 0;
+    object.vx = 0;
+    object.vy = 0;
+    object.vz = 0;
+    object.dragVx = 0;
+    object.dragVy = 0;
+    object.dragVz = 0;
+    object.draggedBy = null;
+
+    if (object.loaded !== undefined) object.loaded = false;
+    if (object.loadedInto !== undefined) {
+      object.loadedInto = null;
+      setPhysicsBodyTrigger(object, false);
+    }
+    if (object.armAngle !== undefined) object.armAngle = restArmAngleForTrebuchet();
+    if (object.fireState !== undefined) object.fireState = ARM_STATE_IDLE;
+    if (object.loadedMissileId !== undefined) object.loadedMissileId = null;
+    if (object.aimedBy !== undefined) object.aimedBy = null;
+    if (object.aimStart !== undefined) object.aimStart = null;
+    if (object.aimCurrent !== undefined) object.aimCurrent = null;
+    if (object.pendingShot !== undefined) object.pendingShot = null;
+    if (object.returnStartArmAngle !== undefined) object.returnStartArmAngle = null;
+    if (object.releaseElapsedMs !== undefined) object.releaseElapsedMs = 0;
+
+    if (object.hits !== undefined) {
+      object.hits = 0;
+    }
+
+    syncPhysicsBodyFromObject(object, { x: 0, y: 0, z: 0 });
+  }
+}
 
 export function checkKingKnockout() {
   const threshold = BARRAGE_CONFIG.kingKnockoutAngle ?? 45;

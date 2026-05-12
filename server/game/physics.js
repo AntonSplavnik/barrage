@@ -1,29 +1,40 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { NullEngine } from "@babylonjs/core/Engines/nullEngine.js";
+import { FreeCamera } from "@babylonjs/core/Cameras/freeCamera.js";
 import { Vector3, Quaternion } from "@babylonjs/core/Maths/math.vector.js";
+import { Scene } from "@babylonjs/core/scene.js";
+import "@babylonjs/core/Physics/v2/physicsEngineComponent.js";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode.js";
 import { HavokPlugin } from "@babylonjs/core/Physics/v2/Plugins/havokPlugin.js";
 import { PhysicsAggregate } from "@babylonjs/core/Physics/v2/physicsAggregate.js";
 import { PhysicsPrestepType, PhysicsShapeType } from "@babylonjs/core/Physics/v2/IPhysicsEnginePlugin.js";
 import HavokPhysics from "@babylonjs/havok";
-import { scene, gameObjects, physicsAggregates } from "./state.js";
-import { SERVER_CONFIG } from "./config.js";
-import { BARRAGE_CONFIG } from "../public/config.js";
-import {
-  isTrebuchetName,
-  isMissileName,
-  rotationQuaternionForObject,
-  clamp,
-  lerpAngleDegrees,
-} from "./utils.js";
+import { SERVER_CONFIG } from "../config.js";
+import { BARRAGE_CONFIG } from "../../public/config.js";
+import { gameObjects } from "./state.js";
+import { isTrebuchetName, isMissileName } from "./entities.js";
+import { rotationQuaternionForObject, clamp, lerpAngleDegrees } from "../math.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+export const engine = new NullEngine({
+  renderHeight: 1,
+  renderWidth: 1,
+  textureSize: 1,
+  deterministicLockstep: false,
+});
+
+export const scene = new Scene(engine);
+scene.activeCamera = new FreeCamera("HeadlessCamera", new Vector3(0, 10, -10), scene);
+
+export const physicsAggregates = new Map();
+
 export async function enableHavokPhysics() {
   const wasmBinary = await fs.readFile(
-    path.join(__dirname, "../node_modules/@babylonjs/havok/lib/esm/HavokPhysics.wasm"),
+    path.join(__dirname, "../../node_modules/@babylonjs/havok/lib/esm/HavokPhysics.wasm"),
   );
   const havokInterface = await HavokPhysics({ wasmBinary });
   const havokPlugin = new HavokPlugin(true, havokInterface);
@@ -82,7 +93,6 @@ export function setPhysicsBodyTrigger(object, isTrigger) {
   aggregate.shape.isTrigger = isTrigger;
 }
 
-
 export function constrainBodyToPlane(object) {
   const aggregate = physicsAggregates.get(object.id);
   if (!aggregate) return;
@@ -116,15 +126,8 @@ export function constrainBodyToPlane(object) {
   aggregate.body.setAngularVelocity(angularVelocity);
 }
 
-export function shouldReturnUprightWhileDragged(object) {
-  return object.dynamic
-    && !isTrebuchetName(object.id)
-    && !isMissileName(object.id)
-    && !object.loadedInto;
-}
-
 export function returnDraggedObjectUpright(object) {
-  if (!shouldReturnUprightWhileDragged(object)) return;
+  if (!object.dynamic || isTrebuchetName(object.id) || isMissileName(object.id) || object.loadedInto) return;
 
   const amount = clamp(BARRAGE_CONFIG.dragUprightLerp ?? 0.25, 0, 1);
   object.rot = lerpAngleDegrees(object.rot ?? 0, 0, amount);

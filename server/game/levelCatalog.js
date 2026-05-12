@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const assetsDir = path.join(__dirname, "../public/assets");
+const assetsDir = path.join(__dirname, "../../public/assets");
 
 let levels = [];
 
