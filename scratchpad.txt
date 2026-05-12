@@ -32,3 +32,5 @@ you can also wwire up king-hit.mp3 for king hits and i will add a file for it so
 when we destrpy blocks and fragments, and when we load a new level,,  are we clearing all necessary leftovers from memory
 
 in the client i want to add a trajectory visualiser, similar to angrybirds.  when you pull back on the trebuche it should draw 2/3rds (a tunable fraction in config) of of a dotted parabola describing the projected arc of the shot with a dotted black line, based on the vector that would be created if i released at any given point. As i pull back harder the parabola adjusts to the stronger shot etc.  This function is a helper that could live in its own js file called trebuche-shot-arc-prediction.js
+
+i want to limit the render resolution on the canvas, i see visiblue slowdown on my 4k monitor when running powered by laptop.  I still want fullscreenbut scaled lower res, is that possible?

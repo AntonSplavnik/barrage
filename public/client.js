@@ -1,6 +1,7 @@
 import { createMusicController } from "./music.js";
 import { createSoundEffectsController } from "./sound_manager.js";
 import { createCameraController } from "./camera_control.js";
+import { applyRenderResolutionLimit } from "./render-effects.js";
 import { createVfxManager } from "./vfx-manager.js";
 import { createTrebuchetShotArcPrediction } from "./trebuche-shot-arc-prediction.js";
 import {
@@ -93,6 +94,8 @@ const soundEffectsController = createSoundEffectsController(sfxToggleEl, scene, 
 let shotArcPrediction = createTrebuchetShotArcPrediction(scene, CONFIG);
 const vfxManager = createVfxManager(scene);
 const cameraControl = createCameraController(scene, () => myPlayerId);
+
+applyRenderResolutionLimit(engine, CONFIG);
 
 function setStatus(text) {
   connectionEl.textContent = text;
@@ -509,23 +512,69 @@ function isShadowCapableLight(light) {
   return light.getClassName() !== "HemisphericLight";
 }
 
+function lightPositionArray(light) {
+  const position = light.position ?? light.getAbsolutePosition?.();
+  return position?.asArray?.() ?? null;
+}
+
+function lightDistanceSquaredToOrigin(light) {
+  const position = light.position ?? light.getAbsolutePosition?.();
+  if (!position) return Number.POSITIVE_INFINITY;
+  return (position.x * position.x) + (position.y * position.y) + (position.z * position.z);
+}
+
+function describeLight(light) {
+  return {
+    name: light.name,
+    parentName: light.parent?.name ?? null,
+    type: light.getClassName(),
+    position: lightPositionArray(light),
+    intensity: light.intensity,
+    distanceToOrigin: Math.sqrt(lightDistanceSquaredToOrigin(light)),
+  };
+}
+
+function selectShadowLight() {
+  const candidates = scene.lights.filter(isShadowCapableLight);
+  const configuredName = CONFIG.shadowLightName;
+
+  if (configuredName) {
+    const exactMatch = candidates.find((light) => light.name === configuredName || light.parent?.name === configuredName);
+    if (exactMatch) return exactMatch;
+
+    console.warn("Configured shadow light not found; using nearest light to origin.", {
+      shadowLightName: configuredName,
+      candidates: candidates.map(describeLight),
+    });
+  }
+
+  return candidates.sort((a, b) => lightDistanceSquaredToOrigin(a) - lightDistanceSquaredToOrigin(b))[0] ?? null;
+}
+
 function shouldReceiveShadows(mesh) {
   const name = mesh.name.toLowerCase();
   return name.includes("ground") || name.includes("plane");
 }
 
+function shouldVisibleGameplayMeshReceiveShadows(role) {
+  return Boolean(CONFIG.shadowVisualsReceive ?? true) && (role === "Vis" || role === "ColVis");
+}
+
 function setupShadows() {
   if (!CONFIG.shadowsEnabled) return;
 
-  const light = scene.lights.find(isShadowCapableLight);
+  shadowGenerator?.dispose();
+  shadowGenerator = null;
+
+  const light = selectShadowLight();
   if (!light) {
     console.info("Shadows disabled: no shadow-capable light found.");
     return;
   }
 
   shadowGenerator = new ShadowGenerator(CONFIG.shadowMapSize ?? 2048, light);
-  shadowGenerator.useBlurExponentialShadowMap = true;
-  shadowGenerator.blurKernel = 16;
+  shadowGenerator.useBlurExponentialShadowMap = CONFIG.shadowBlurEnabled ?? true;
+  shadowGenerator.blurKernel = CONFIG.shadowBlurKernel ?? 4;
   shadowGenerator.bias = CONFIG.shadowBias ?? 0.0005;
   shadowGenerator.normalBias = CONFIG.shadowNormalBias ?? 0.02;
 
@@ -538,7 +587,7 @@ function setupShadows() {
       continue;
     }
 
-    mesh.receiveShadows = shouldReceiveShadows(mesh);
+    mesh.receiveShadows = shouldReceiveShadows(mesh) || shouldVisibleGameplayMeshReceiveShadows(role);
 
     if (role === "Vis" || role === "ColVis") {
       shadowGenerator.addShadowCaster(mesh, true);
@@ -546,8 +595,14 @@ function setupShadows() {
   }
 
   console.info("Shadows enabled", {
-    light: light.name,
+    light: describeLight(light),
+    candidates: scene.lights.filter(isShadowCapableLight).map(describeLight),
     casters: shadowGenerator.getShadowMap().renderList.length,
+    receivers: scene.meshes.filter((mesh) => mesh.receiveShadows).map((mesh) => mesh.name),
+    blurEnabled: shadowGenerator.useBlurExponentialShadowMap,
+    blurKernel: shadowGenerator.blurKernel,
+    bias: shadowGenerator.bias,
+    normalBias: shadowGenerator.normalBias,
     mapSize: CONFIG.shadowMapSize ?? 2048,
   });
 }
@@ -867,6 +922,7 @@ async function loadLevel(levelUrl = LEVEL_URL, { replace = false } = {}) {
   ensureCameraAndLight();
   cameraControl.snapshotAndPan();
   setupShadows();
+  applyRenderResolutionLimit(engine, CONFIG);
   engine.resize();
   loadedLevelUrl = levelUrl;
 }
@@ -1481,6 +1537,7 @@ levelSwitchPromise = loadLevel(initialLevelUrl).finally(() => {
 });
 
 window.addEventListener("resize", () => {
+  applyRenderResolutionLimit(engine, CONFIG);
   engine.resize();
 });
 
