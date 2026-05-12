@@ -1,16 +1,9 @@
-import { engine, scene } from "./engine.js";
-import { loadLevel } from "./level.js";
+import { engine } from "./engine.js";
 import { setupInput } from "./input.js";
 import "./network.js";
 import "./aim.js";
 
 setupInput();
-
-loadLevel().then(() => {
-  engine.runRenderLoop(() => {
-    scene.render();
-  });
-});
 
 window.addEventListener("resize", () => {
   engine.resize();
