@@ -139,7 +139,8 @@ export function updateAimArrow() {
     return;
   }
 
-  if (!isForwardPullPoint(trebuchetId, aimWorldPoint, headPoint)) {
+  const trebuchetState = latestObjectStates.get(trebuchetId);
+  if (!trebuchetState || !isForwardPullPoint(trebuchetState, aimWorldPoint, headPoint)) {
     hideAimArrow();
     return;
   }

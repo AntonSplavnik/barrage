@@ -30,7 +30,7 @@ export function descendantsOf(transform) {
 }
 
 export function isMissileName(name) {
-  return name.toLowerCase().includes("missile");
+  return name.startsWith("missiles/");
 }
 
 export function colliderNodesFor(root) {
@@ -70,12 +70,7 @@ export function isTrebuchetArmRoot(transform) {
 }
 
 export function isTrebuchetName(name) {
-  return name.toLowerCase().includes("trebuche");
-}
-
-export function isLeftSideTrebuchetName(name) {
-  const lowerName = name.toLowerCase();
-  return lowerName.includes("p1") || lowerName.includes("left") || lowerName.includes("1");
+  return name.startsWith("trebuchets/");
 }
 
 export function findTrebuchetArmAncestor(node) {
@@ -92,11 +87,10 @@ export function findTrebuchetArmAncestor(node) {
   return null;
 }
 
-export function isForwardPullPoint(trebuchetId, point, releasePoint) {
-  if (isLeftSideTrebuchetName(trebuchetId)) {
+export function isForwardPullPoint(trebuchetState, point, releasePoint) {
+  if (trebuchetState.player === 1) {
     return point.x > releasePoint.x;
   }
-
   return point.x < releasePoint.x;
 }
 
