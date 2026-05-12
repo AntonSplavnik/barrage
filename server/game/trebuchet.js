@@ -70,7 +70,7 @@ export function updateTrebuchetFireState(dt) {
 }
 
 export function loadTargetForTrebuchet(trebuchet) {
-  const target = loadTargets.get(trebuchet.id) ?? loadTargets.get("default") ?? null;
+  const target = loadTargets.get(trebuchet.id) ?? null;
   if (!target) return null;
 
   if (target.targetNode && target.rootNode) {
