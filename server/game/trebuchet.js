@@ -3,7 +3,6 @@ import { BARRAGE_CONFIG } from "../../public/config.js";
 import {
   isTrebuchetName,
   isMissileName,
-  sideSignForTrebuchet,
   restArmAngleForTrebuchet,
   releaseVelocityForObject,
   trebuchetFireVelocityMax,
