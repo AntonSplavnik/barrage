@@ -3,16 +3,13 @@ import http from "node:http";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { WebSocketServer } from "ws";
-import { clients, gameState } from "./state.js";
-import { PORT, TICK_RATE, TICK_MS } from "./config.js";
-import { enableHavokPhysics } from "./physics.js";
-import { loadLevelIfPresent } from "./level.js";
-import { discoverLevels, firstLevel } from "./levelCatalog.js";
-import { simulatePhysics } from "./simulation.js";
-import { sendState } from "./network.js";
-import { applyInput } from "./input.js";
-import { tryRecordRoundWin } from "./gameManager.js";
+import { PORT } from "./config.js";
+import { clients, gameState } from "./game/state.js";
+import { enableHavokPhysics } from "./game/physics.js";
+import { loadLevelIfPresent } from "./game/level.js";
+import { discoverLevels, firstLevel } from "./game/levelCatalog.js";
+import { setupWebSocket } from "./net/connections.js";
+import { startGameLoop, stopGameLoop } from "./game/loop.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -26,9 +23,8 @@ app.use((_request, response, next) => {
 });
 
 const httpServer = http.createServer(app);
-const wss = new WebSocketServer({ server: httpServer });
+const wss = setupWebSocket(httpServer);
 
-let simulationInterval = null;
 let restartInProgress = false;
 
 function isLocalRequest(request) {
@@ -69,10 +65,7 @@ async function restartServerProcess() {
   restartInProgress = true;
   console.log("Restart requested from local browser.");
 
-  if (simulationInterval) {
-    clearInterval(simulationInterval);
-    simulationInterval = null;
-  }
+  stopGameLoop();
 
   for (const client of clients.values()) {
     closeSocket(client.socket);
@@ -112,33 +105,6 @@ app.post("/admin/restart", (request, response) => {
 
 app.use(express.static(publicDir));
 
-wss.on("connection", (socket) => {
-  const clientId = gameState.nextClientId++;
-  const playerId = clientId === 1 ? "P1" : clientId === 2 ? "P2" : `Spectator_${clientId}`;
-  const client = { id: clientId, playerId, socket };
-  clients.set(clientId, client);
-
-  socket.send(JSON.stringify({
-    type: "welcome",
-    clientId,
-    playerId,
-    tickRate: TICK_RATE,
-    level: gameState.currentLevel?.url ?? `/assets/level1.glb`,
-  }));
-
-  socket.on("message", (raw) => {
-    try {
-      applyInput(client, JSON.parse(raw.toString()));
-    } catch (error) {
-      socket.send(JSON.stringify({ type: "error", message: "Invalid message JSON" }));
-    }
-  });
-
-  socket.on("close", () => {
-    clients.delete(clientId);
-  });
-});
-
 await new Promise((resolve) => {
   httpServer.listen(PORT, () => {
     console.log(`Barrage server running at http://localhost:${PORT}`);
@@ -151,10 +117,4 @@ await discoverLevels();
 gameState.currentLevel = firstLevel();
 await loadLevelIfPresent(gameState.currentLevel);
 
-simulationInterval = setInterval(() => {
-  if (gameState.paused) return;
-  gameState.tick += 1;
-  simulatePhysics();
-  tryRecordRoundWin();
-  sendState();
-}, TICK_MS);
+startGameLoop();
