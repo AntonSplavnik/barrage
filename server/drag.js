@@ -32,10 +32,14 @@ export function localPointForObject(object, point, { physicsAggregates }) {
 
 export function constrainWorldBounds(object, { serverConfig }) {
   object.x = clamp(object.x, serverConfig.worldMinX, serverConfig.worldMaxX);
+  if (typeof serverConfig.worldMinY === "number") {
+    object.y = Math.max(serverConfig.worldMinY, object.y);
+  }
   object.z = clamp(object.z, serverConfig.worldMinZ, serverConfig.worldMaxZ);
 
   if (object.x === serverConfig.worldMinX && object.vx < 0) object.vx = 0;
   if (object.x === serverConfig.worldMaxX && object.vx > 0) object.vx = 0;
+  if (object.y === serverConfig.worldMinY && object.vy < 0) object.vy = 0;
   if (object.z === serverConfig.worldMinZ && object.vz < 0) object.vz = 0;
   if (object.z === serverConfig.worldMaxZ && object.vz > 0) object.vz = 0;
 }
@@ -106,8 +110,7 @@ export function applyMagneticDragForce(object, { config, dragState, physicsAggre
   const radiusLimit = Math.max(0.001, config.dragRadiusLimit ?? 8);
   if (distance <= 0.0001 || distance >= radiusLimit) return;
 
-  const forceScale = 1 - (distance / radiusLimit);
-  const forceMagnitude = Math.max(0, config.dragForceMax ?? 420) * forceScale;
+  const forceMagnitude = Math.max(0, config.dragForceMax ?? 420);
   const invDistance = 1 / distance;
   const force = new Vector3(
     dx * invDistance * forceMagnitude,
@@ -119,7 +122,7 @@ export function applyMagneticDragForce(object, { config, dragState, physicsAggre
   const angularVelocity = aggregate.body.getAngularVelocity?.() ?? Vector3.Zero();
   const radius = grabWorldPoint.subtract(node.getAbsolutePosition());
   const pointVelocity = linearVelocity.add(Vector3.Cross(angularVelocity, radius));
-  const dampingMagnitude = Math.max(0, config.dragDampingMax ?? 80) * forceScale;
+  const dampingMagnitude = Math.max(0, config.dragDampingMax ?? 80);
   const dampingForce = pointVelocity.scale(-dampingMagnitude);
 
   aggregate.body.applyForce(force.add(dampingForce), grabWorldPoint);

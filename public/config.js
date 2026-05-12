@@ -78,7 +78,7 @@ export const BARRAGE_CONFIG = {
 
   // Drag And Release.
   dragHeightOffset: 0.2,                  // m
-  dragRadiusLimit: 10,                     // m, magnetic grip reaches zero force at this distance
+  dragRadiusLimit: 20,                     // m, magnetic grip reaches zero force at this distance
   dragForceMax: 1500,                      // N, magnetic grip force at zero distance
   dragDampingMax: 400,                     // N per m/s, strongest near the magnetic grip point
   blockAngularDamping: 0.8,              // rotational damping for block physics bodies
@@ -136,7 +136,7 @@ export const BARRAGE_CONFIG = {
   // Shot Arc Prediction.
   shotArcFraction: 0.67,                  // fraction of predicted flight path to draw
   shotArcDotCount: 34,                    // number of dotted trajectory points
-  shotArcDotSize: 0.14,                   // m
+  shotArcDotSize: 0.25,                   // m
   shotArcMaxDuration: 4,                  // s
   shotArcFadeMs: 1500,                    // ms fade after firing
   shotArcVelocityMin: 0.5,                // m/s
@@ -161,6 +161,10 @@ export const BARRAGE_CONFIG = {
   // Camera Animation.
   cameraInitialPanMs: 4000,             // ms — battlefield → player on level load
   cameraAimZoomOutMs: 700,              // ms — player → battlefield when aiming
+  cameraDragViewBlend: 0.4,             // 0–1, battlefield → player interpolation for drag view
+  cameraDragViewMs: 1000,                // ms — player → drag view when dragging
+  cameraDragReturnDelayMs: 5000,        // ms — wait at drag view before returning to player
+  cameraDragReturnMs: 1200,             // ms — drag view → player after dragging
   cameraReturnDelayMs: 4000,            // ms — wait after shot fires before panning back
   cameraReturnMs: 2000,                 // ms — battlefield → player after shot
 };

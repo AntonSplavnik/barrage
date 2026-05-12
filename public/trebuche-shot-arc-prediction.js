@@ -63,17 +63,36 @@ function dampedFlightDurationToGround(startPoint, velocity, gravity, damping, gr
 export function createTrebuchetShotArcPrediction(scene, config = {}) {
   const dotCount = Math.max(2, config.shotArcDotCount ?? 32);
   const dots = [];
+  const outlineDots = [];
   let fadeObserver = null;
+  const outlineMaterial = new StandardMaterial("TrebuchetShotArcOutlineMaterial", scene);
+  outlineMaterial.diffuseColor = Color3.White();
+  outlineMaterial.emissiveColor = Color3.White();
+  outlineMaterial.specularColor = Color3.White();
+  outlineMaterial.disableLighting = true;
+  outlineMaterial.alpha = 1;
+
   const material = new StandardMaterial("TrebuchetShotArcMaterial", scene);
-  material.diffuseColor = Color3.Black();
-  material.emissiveColor = Color3.Black();
-  material.specularColor = Color3.Black();
+  const arcColor = Color3.Black();
+  material.diffuseColor = arcColor;
+  material.emissiveColor = arcColor;
+  material.specularColor = arcColor;
   material.disableLighting = true;
   material.alpha = 1;
 
   for (let i = 0; i < dotCount; i += 1) {
+    const outlineDot = MeshBuilder.CreateSphere("TrebuchetShotArcOutlineDot", {
+      diameter: config.shotArcOutlineDotSize ?? ((config.shotArcDotSize ?? 5) * 1.5),
+      segments: 8,
+    }, scene);
+    outlineDot.material = outlineMaterial;
+    outlineDot.isPickable = false;
+    outlineDot.renderingGroupId = 1;
+    outlineDot.setEnabled(false);
+    outlineDots.push(outlineDot);
+
     const dot = MeshBuilder.CreateSphere("TrebuchetShotArcDot", {
-      diameter: config.shotArcDotSize ?? 0.12,
+      diameter: config.shotArcDotSize ?? 1.92,
       segments: 8,
     }, scene);
     dot.material = material;
@@ -89,8 +108,12 @@ export function createTrebuchetShotArcPrediction(scene, config = {}) {
       fadeObserver = null;
     }
     material.alpha = 1;
+    outlineMaterial.alpha = 1;
     for (const dot of dots) {
       dot.setEnabled(false);
+    }
+    for (const outlineDot of outlineDots) {
+      outlineDot.setEnabled(false);
     }
   }
 
@@ -102,9 +125,11 @@ export function createTrebuchetShotArcPrediction(scene, config = {}) {
     const startTime = performance.now();
     const duration = Math.max(1, durationMs);
     material.alpha = 1;
+    outlineMaterial.alpha = 1;
     fadeObserver = scene.onBeforeRenderObservable.add(() => {
       const t = clamp((performance.now() - startTime) / duration, 0, 1);
       material.alpha = 1 - t;
+      outlineMaterial.alpha = 1 - t;
       if (t >= 1) {
         scene.onBeforeRenderObservable.remove(fadeObserver);
         fadeObserver = null;
@@ -119,6 +144,7 @@ export function createTrebuchetShotArcPrediction(scene, config = {}) {
       fadeObserver = null;
     }
     material.alpha = 1;
+    outlineMaterial.alpha = 1;
 
     if (!startPoint || !velocity) {
       hide();
@@ -151,7 +177,10 @@ export function createTrebuchetShotArcPrediction(scene, config = {}) {
     for (let i = 0; i < dots.length; i += 1) {
       const t = dots.length === 1 ? 0 : (i / (dots.length - 1)) * duration;
       const dot = dots[i];
+      const outlineDot = outlineDots[i];
       const position = dampedPosition(startPoint, velocity, gravity, damping, t);
+      outlineDot.position.set(position.x, position.y, position.z + zOffset);
+      outlineDot.setEnabled(true);
       dot.position.set(position.x, position.y, position.z + zOffset);
       dot.setEnabled(true);
     }
@@ -165,7 +194,11 @@ export function createTrebuchetShotArcPrediction(scene, config = {}) {
     for (const dot of dots) {
       dot.dispose();
     }
+    for (const outlineDot of outlineDots) {
+      outlineDot.dispose();
+    }
     material.dispose();
+    outlineMaterial.dispose();
   }
 
   return {

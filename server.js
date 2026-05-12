@@ -920,6 +920,7 @@ function simulateHavokPhysics() {
     }
 
     if (object.draggedBy && isMissileName(object.id)) {
+      constrainWorldBounds(object);
       syncPhysicsBodyFromObject(object, { x: 0, y: 0, z: 0 });
       continue;
     }

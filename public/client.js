@@ -1355,6 +1355,9 @@ function beginDrag() {
 
   startReleaseVelocitySampling(point);
   releaseVelocity = { x: 0, y: 0, z: 0 };
+  if (!isMissileName(selectedEntityId)) {
+    cameraControl.onDragStart();
+  }
   sendInput("dragStart", {
     entityId: selectedEntityId,
     point,

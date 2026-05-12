@@ -1,8 +1,9 @@
 export const SERVER_CONFIG = {
   gravity: -9.81,
   groundY: 0,
-  worldMinX: -70,
-  worldMaxX: 70,
+  worldMinX: -40,
+  worldMaxX: 40,
+  worldMinY: 0.7,
   worldMinZ: -20,
   worldMaxZ: 20,
   dynamicMass: 6,
