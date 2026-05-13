@@ -302,3 +302,11 @@ These four keys are **removed** from `BARRAGE_CONFIG` after migration to avoid a
 **Dynamic import caching.** Node caches ESM modules after first `import()`. Level definitions are static objects so this is fine — `setup()` runs fresh each time. But editing a level file won't take effect without a server restart. Acceptable for now; a dev-mode file watcher could be added later if level iteration speed matters.
 
 **Client message contract.** The client depends on level URLs in `welcome`, `roundStarted`, and `matchReset` messages. The modeRunner must include `level: activeLevel.url` in these broadcast payloads. As long as message shapes are preserved, all client code remains untouched.
+
+**levelOrder: "random"** — uses shuffle-without-repeat: all levels are played once in random order before any repeats. `pickNextLevel()` in modeRunner maintains a shuffled queue, refilled when exhausted.
+
+**Custom winCondition performance.** `checkRoundEnd()` runs every tick (60/s). Custom win condition functions must be cheap — no allocations per call, no large iterations. The built-in `"kingKnockout"` iterates only king objects (typically 2). Custom functions should follow the same pattern.
+
+**Mode switching at runtime** is not in scope. `startMode()` is called once at startup. Supporting mid-game mode switching would require client notification and UI for mode selection — future work.
+
+**resetRoundState()** must faithfully port the full property reset from current `resetGameState()` (rules.js:15-52): position to origin, zero velocities, clear drag state, reset trebuchet arm/aim/fire state, reset missile loadedInto, reset king hits, and call `syncPhysicsBodyFromObject` per object. This is ~20 properties per object — the logic moves as-is, not reimplemented.
