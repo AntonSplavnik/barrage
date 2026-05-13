@@ -64,7 +64,7 @@ export default {
 | `rotation` | number | 0 | Rotation in degrees |
 | `player` | 1 \| 2 \| null | null | Player ownership |
 
-Internally does what `spawnObjectsFromConfig` currently does per-entry: looks up template from registry, builds game object with physics properties, adds to `gameObjects` Map. The `spawn` function is created fresh per level load so ID counters reset.
+Internally does what `spawnObjectsFromConfig` currently does per-entry: looks up template from registry (warns and skips if not found), builds game object with physics properties, adds to `gameObjects` Map, and populates `loadTargets` for trebuchets. The `spawn` function is created fresh per level load so ID counters reset.
 
 ## Mode Definition
 
@@ -120,12 +120,19 @@ Replaces `spawnObjectsFromConfig()` and the level-loading portion of `level.js`.
 
 ```js
 async function loadLevel(levelId) {
-  const levelDef = (await import(`./levels/${levelId}.js`)).default;
+  let levelModule;
+  try {
+    levelModule = await import(`./levels/${levelId}.js`);
+  } catch (error) {
+    throw new Error(`Failed to load level "${levelId}": ${error.message}`);
+  }
+  const levelDef = levelModule.default;
 
   clearScene();
 
   if (levelDef.arena) {
     await loadArenaGlb(levelDef.arena);
+    createArenaColliders();
   }
 
   const counters = new Map();
@@ -133,15 +140,30 @@ async function loadLevel(levelId) {
     const count = counters.get(templatePath) ?? 0;
     counters.set(templatePath, count + 1);
     const id = `${templatePath}_${count}`;
-    // ... build game object (same logic as current spawnObjectsFromConfig per-entry)
+
+    const templateData = getTemplate(templatePath);
+    if (!templateData) {
+      console.warn(`Template "${templatePath}" not found, skipping ${id}`);
+      return;
+    }
+
+    // Build game object — same fields as current spawnObjectsFromConfig:
+    // position, origin, velocity, bounds, physics props, type-specific fields
     gameObjects.set(id, object);
-    // ... set up loadTargets for trebuchets
+
+    // Populate loadTargets for trebuchets (targetNode, rootNode, armNode, offsets)
+    if (isTrebuchetName(id) && templateData.targetNode) {
+      loadTargets.set(id, { ... });
+    }
   }
 
   levelDef.setup(spawn);
   createPhysicsBodies();
 
-  return levelDef;
+  // Construct URL for client broadcast
+  const levelUrl = levelDef.arena ? `/assets/${levelDef.arena}` : null;
+
+  return { def: levelDef, url: levelUrl };
 }
 ```
 
@@ -151,7 +173,7 @@ Replaces `rules.js`. Drives the match lifecycle.
 
 State:
 - `activeMode` — the current mode definition
-- `activeLevel` — the current level definition (returned from levelRunner)
+- `activeLevel` — the current level result from levelRunner (`{ def, url }`)
 - `levelIndex` — current position in the mode's level list
 
 Public API:
@@ -162,6 +184,10 @@ Public API:
 
 ```js
 async function startMode(modeDef) {
+  if (!modeDef.levels?.length) {
+    throw new Error(`Mode "${modeDef.name}" has no levels defined`);
+  }
+
   activeMode = modeDef;
   levelIndex = 0;
   gameState.roundNumber = 1;
@@ -170,7 +196,11 @@ async function startMode(modeDef) {
   gameState.paused = false;
 
   activeLevel = await loadLevel(modeDef.levels[0]);
-  activeLevel.hooks?.onRoundStart?.(ctx);
+
+  // Maintain gameState.currentLevel for connections.js welcome message
+  gameState.currentLevel = { url: activeLevel.url };
+
+  await activeLevel.def.hooks?.onRoundStart?.(ctx);
 }
 
 function checkRoundEnd() {
@@ -178,7 +208,9 @@ function checkRoundEnd() {
   // on win: update scores, broadcast roundEnded
   // call activeMode.hooks?.onRoundWon?.(ctx, winner, loser)
   // after delay: load next level or end match
-  // call activeLevel.hooks?.onRoundStart?.(ctx) after new level loads
+  // update gameState.currentLevel with new level URL
+  // await activeLevel.def.hooks?.onRoundStart?.(ctx) after new level loads
+  // include level URL in roundStarted / matchReset broadcast messages
 }
 ```
 
@@ -193,8 +225,15 @@ const ctx = {
   broadcast,       // send messages to all clients
   gameState,       // { tick, roundNumber, scores, paused, matchOver }
   activeMode,      // read the mode config
+  activeLevel,     // current level { def, url }
 }
 ```
+
+### Hook Semantics
+
+All hooks are **fire-and-forget**. Return values are ignored.
+
+**Async support:** `onRoundStart`, `onRoundWon`, `onMatchWon`, and `onMatchReset` are awaited — they may perform async setup. `onMissileFired` is called synchronously within the physics tick and must not be async.
 
 ## Hook Firing Points
 
@@ -223,10 +262,11 @@ const ctx = {
 
 ### Modified
 - `loop.js` — `tryRecordRoundWin()` becomes `modeRunner.checkRoundEnd()`
-- `level.js` — replaced by `levelRunner.js`. Arena loading (`loadArenaGlb`) and `clearScene()` move into `levelRunner.js` directly
 - `server/index.js` — startup: `import classicMode` then `modeRunner.startMode(classicMode)` instead of `discoverLevels() → firstLevel() → loadLevelIfPresent()`
 - `input.js` — `resetMatch()` / `resetGameState()` calls point to `modeRunner`
 - `trebuchet.js` — `releaseLoadedMissileFromTrebuchet()` fires `onMissileFired` hook
+- `connections.js` — welcome message reads `gameState.currentLevel?.url` (no change needed — modeRunner maintains this field)
+- `public/config.js` — remove `roundsToWin`, `kingKnockoutAngle`, `postWinSimulationMs`, `roundEndDelayMs` (migrated to mode)
 
 ### Untouched
 - `templateRegistry.js` — still discovers and caches templates at startup
@@ -255,4 +295,10 @@ These values move from `BARRAGE_CONFIG` (public/config.js) into mode definitions
 | `postWinSimulationMs` | `BARRAGE_CONFIG.postWinSimulationMs` | `mode.postWinDelayMs` |
 | `roundEndDelayMs` | `BARRAGE_CONFIG.roundEndDelayMs` | `mode.roundEndDelayMs` |
 
-All other `BARRAGE_CONFIG` values (physics tuning, trebuchet limits, rendering, drag behavior) stay in `config.js` — they're gameplay mechanics, not mode concerns.
+These four keys are **removed** from `BARRAGE_CONFIG` after migration to avoid a dual source of truth. All other `BARRAGE_CONFIG` values (physics tuning, trebuchet limits, rendering, drag behavior) stay in `config.js` — they're gameplay mechanics, not mode concerns.
+
+## Notes
+
+**Dynamic import caching.** Node caches ESM modules after first `import()`. Level definitions are static objects so this is fine — `setup()` runs fresh each time. But editing a level file won't take effect without a server restart. Acceptable for now; a dev-mode file watcher could be added later if level iteration speed matters.
+
+**Client message contract.** The client depends on level URLs in `welcome`, `roundStarted`, and `matchReset` messages. The modeRunner must include `level: activeLevel.url` in these broadcast payloads. As long as message shapes are preserved, all client code remains untouched.
