@@ -1,7 +1,4 @@
 export const BARRAGE_CONFIG = {
-  // Level asset.
-  levelUrl: "/assets/level1.glb",
-
   // Rendering.
   importedLightIntensityScale: 0.01,
   fallbackLightIntensity: 0.1,
