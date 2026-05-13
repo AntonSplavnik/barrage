@@ -43,12 +43,6 @@ export const BARRAGE_CONFIG = {
   releaseVelocityFrameWindow: 5,
   releaseVelocityMinSampleDistance: 0.05,
 
-  // Zone rules.
-  kingKnockoutAngle: 45,
-  roundsToWin: 3,
-  postWinSimulationMs: 2000,
-  roundEndDelayMs: 2000,
-
   // Missile loading.
   missileLoadRange: 2,
   missilePickColliderScale: 2,
