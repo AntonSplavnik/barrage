@@ -87,7 +87,7 @@ export const BARRAGE_CONFIG = {
   blockAngularDamping: 0.8,              // rotational damping for block physics bodies
   dragPivotMarkerSize: 1.1,               // m, visual hand marker at magnetic drag pivot
   releaseVelocityScale: 1.0,              // multiplier
-  normalReleaseVelocityMax: 8,            // m/s
+  normalReleaseVelocityMax: 11,            // m/s
   releaseVelocitySampleHz: 60,            // Hz
   releaseVelocityFrameWindow: 5,          // frames
   releaseVelocityMinSampleDistance: 0.05, // m
@@ -95,10 +95,10 @@ export const BARRAGE_CONFIG = {
   // Gameplay Rules.
   noMansLandX: 5,                         // m (half-width of centre dead zone)
   kingKnockoutAngle: 45,                  // deg
-  blockMaxHits: 5,                        // hits before fragmentation
+  blockMaxHits: 2,                        // hits before fragmentation
   kingHitVelocityMin: 3,                  // m/s (min speed to register a king hit)
-  blockHitVelocityMin: 10,                 // m/s (min speed to register a hit)
-  blockHitCooldownMs: 83,                // ms — missile can only crack one block per this window
+  blockHitVelocityMin: 7,                 // m/s (min speed to register a hit)
+  blockHitCooldownMs: 100,                // ms — missile can only crack one block per this window
   blockFragmentVelocityMin: 5,           // m/s (min speed to trigger fragmentation)
   fragmentHitVelocityMin: 5,             // m/s (min speed to destroy a fragment)
   fragmentHitSpeedPenalty: 3,            // m/s lost per fragment hit (on top of physics)
