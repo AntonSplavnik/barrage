@@ -41,17 +41,83 @@ export async function enableHavokPhysics() {
   scene.enablePhysics(new Vector3(0, SERVER_CONFIG.gravity, 0), havokPlugin);
 }
 
-export function createGroundBody() {
-  const groundNode = new TransformNode("physics-ground", scene);
-  groundNode.position.set(0, -0.5, 0);
-  groundNode.rotationQuaternion = Quaternion.Identity();
-  const aggregate = new PhysicsAggregate(groundNode, PhysicsShapeType.BOX, {
-    mass: 0,
-    friction: SERVER_CONFIG.dynamicFriction,
-    restitution: SERVER_CONFIG.dynamicRestitution,
-    extents: new Vector3(200, 1, 200),
-  }, scene);
-  aggregate.body.disablePreStep = true;
+const arenaColliders = [];
+
+function childRole(name) {
+  if (name.includes("ColVis")) return "ColVis";
+  if (name.includes("Visual") || name.includes("Vis")) return "Vis";
+  if (name.includes("Collider") || name.includes("Col")) return "Col";
+  return null;
+}
+
+export function createArenaColliders() {
+  disposeArenaColliders();
+
+  const arenaRoots = scene.rootNodes.filter((n) => n.name === "__root__");
+  for (const root of arenaRoots) {
+    const stack = [...root.getChildren()];
+    while (stack.length > 0) {
+      const node = stack.pop();
+      if (typeof node.getChildren === "function") stack.push(...node.getChildren());
+
+      const role = childRole(node.name);
+      if (role !== "Col" && role !== "ColVis") continue;
+
+      node.computeWorldMatrix(true);
+      const bounds = typeof node.getHierarchyBoundingVectors === "function"
+        ? node.getHierarchyBoundingVectors(true)
+        : node.getBoundingInfo?.().boundingBox;
+      if (!bounds) continue;
+
+      const min = bounds.min ?? bounds.minimumWorld;
+      const max = bounds.max ?? bounds.maximumWorld;
+      const sizeX = max.x - min.x;
+      const sizeY = max.y - min.y;
+      const sizeZ = max.z - min.z;
+      if (sizeX < 0.01 && sizeY < 0.01 && sizeZ < 0.01) continue;
+
+      const centerX = (min.x + max.x) / 2;
+      const centerY = (min.y + max.y) / 2;
+      const centerZ = (min.z + max.z) / 2;
+
+      const colNode = new TransformNode(`arena-col-${node.name}`, scene);
+      colNode.position.set(centerX, centerY, centerZ);
+      colNode.rotationQuaternion = Quaternion.Identity();
+
+      const aggregate = new PhysicsAggregate(colNode, PhysicsShapeType.BOX, {
+        mass: 0,
+        friction: SERVER_CONFIG.dynamicFriction,
+        restitution: SERVER_CONFIG.dynamicRestitution,
+        extents: new Vector3(Math.max(sizeX, 0.01), Math.max(sizeY, 0.01), Math.max(sizeZ, 0.01)),
+      }, scene);
+      aggregate.body.disablePreStep = true;
+
+      arenaColliders.push(aggregate);
+      console.log(`Arena collider "${node.name}": center=(${centerX.toFixed(2)}, ${centerY.toFixed(2)}, ${centerZ.toFixed(2)}) size=(${sizeX.toFixed(2)}, ${sizeY.toFixed(2)}, ${sizeZ.toFixed(2)})`);
+    }
+  }
+
+  if (arenaColliders.length === 0) {
+    console.log("No arena colliders found — creating fallback ground body.");
+    const groundNode = new TransformNode("physics-ground", scene);
+    groundNode.position.set(0, -0.5, 0);
+    groundNode.rotationQuaternion = Quaternion.Identity();
+    const aggregate = new PhysicsAggregate(groundNode, PhysicsShapeType.BOX, {
+      mass: 0,
+      friction: SERVER_CONFIG.dynamicFriction,
+      restitution: SERVER_CONFIG.dynamicRestitution,
+      extents: new Vector3(200, 1, 200),
+    }, scene);
+    aggregate.body.disablePreStep = true;
+    arenaColliders.push(aggregate);
+  }
+}
+
+function disposeArenaColliders() {
+  for (const aggregate of arenaColliders) {
+    aggregate.dispose();
+  }
+  arenaColliders.length = 0;
 }
 
 export function createPhysicsBodies() {

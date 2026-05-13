@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import xhr2 from "xhr2";
 import { SceneLoader } from "@babylonjs/core/Loading/sceneLoader.js";
 import "@babylonjs/loaders/glTF/index.js";
-import { scene, physicsAggregates, createPhysicsBodies } from "./physics.js";
+import { scene, physicsAggregates, createPhysicsBodies, createArenaColliders } from "./physics.js";
 import { gameObjects, loadTargets, dragState, gameState } from "./state.js";
 import { PORT } from "../config.js";
 import { SERVER_CONFIG } from "../config.js";
@@ -131,6 +131,7 @@ export async function loadLevelIfPresent(level) {
     await fs.access(arenaPath);
     await SceneLoader.AppendAsync(`http://localhost:${PORT}/assets/`, arenaFile, scene);
     console.log(`Loaded arena: ${arenaFile}`);
+    createArenaColliders();
   } catch {
     console.log(`No arena GLB at public/assets/${arenaFile}; starting with empty scene.`);
   }
