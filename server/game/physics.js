@@ -41,6 +41,19 @@ export async function enableHavokPhysics() {
   scene.enablePhysics(new Vector3(0, SERVER_CONFIG.gravity, 0), havokPlugin);
 }
 
+export function createGroundBody() {
+  const groundNode = new TransformNode("physics-ground", scene);
+  groundNode.position.set(0, -0.5, 0);
+  groundNode.rotationQuaternion = Quaternion.Identity();
+  const aggregate = new PhysicsAggregate(groundNode, PhysicsShapeType.BOX, {
+    mass: 0,
+    friction: SERVER_CONFIG.dynamicFriction,
+    restitution: SERVER_CONFIG.dynamicRestitution,
+    extents: new Vector3(200, 1, 200),
+  }, scene);
+  aggregate.body.disablePreStep = true;
+}
+
 export function createPhysicsBodies() {
   for (const object of gameObjects.values()) {
     const node = new TransformNode(`physics-${object.id}`, scene);
@@ -101,6 +114,7 @@ export function constrainBodyToPlane(object) {
   const linearVelocity = aggregate.body.getLinearVelocity();
   const angularVelocity = aggregate.body.getAngularVelocity();
 
+  const zDrift = Math.abs(node.position.z - object.originZ);
   node.position.z = object.originZ;
   linearVelocity.z = 0;
 
@@ -119,7 +133,7 @@ export function constrainBodyToPlane(object) {
   }
 
   node.computeWorldMatrix(true);
-  if (isTrebuchetName(object.id) || Math.abs(node.position.z - object.originZ) > 0.001) {
+  if (isTrebuchetName(object.id) || zDrift > 0.001) {
     teleportPhysicsBody(aggregate);
   }
   aggregate.body.setLinearVelocity(linearVelocity);

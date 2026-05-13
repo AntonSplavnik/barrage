@@ -22,8 +22,8 @@ export const BARRAGE_CONFIG = {
   staticFriction: 1.0,
 
   // Pointer/camera controls.
-  inputInvertX: true,
-  trebuchetInputInvertX: true,
+  inputInvertX: false,
+  trebuchetInputInvertX: false,
   inputInvertY: false,
   inputInvertZ: false,
   cameraControlsEnabled: false,

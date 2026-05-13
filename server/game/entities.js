@@ -17,6 +17,7 @@ export function toWireObject(object) {
     vx: object.vx,
     vy: object.vy,
     vz: object.vz,
+    ...(object.player != null ? { player: object.player } : {}),
     ...(object.loaded !== undefined ? { loaded: object.loaded } : {}),
     ...(object.loadedInto ? { loadedInto: object.loadedInto } : {}),
     ...(object.armAngle !== undefined ? { armAngle: object.armAngle, fireState: object.fireState } : {}),
@@ -24,33 +25,16 @@ export function toWireObject(object) {
   };
 }
 
-export function isDynamicName(name) {
-  const lowerName = name.toLowerCase();
-  return lowerName.includes("block")
-    || lowerName.includes("trebuche")
-    || lowerName.includes("missile")
-    || lowerName.includes("king");
-}
-
 export function isTrebuchetName(name) {
-  return name.toLowerCase().includes("trebuche");
+  return name.startsWith("trebuchets/");
 }
 
 export function isMissileName(name) {
-  return name.toLowerCase().includes("missile");
+  return name.startsWith("missiles/");
 }
 
 export function isKingName(name) {
-  return name.toLowerCase().includes("king");
-}
-
-export function isLeftSideTrebuchetName(name) {
-  const lowerName = name.toLowerCase();
-  return lowerName.includes("p1") || lowerName.includes("left") || lowerName.includes("1");
-}
-
-export function sideSignForTrebuchet(name) {
-  return isLeftSideTrebuchetName(name) ? 1 : -1;
+  return name.startsWith("kings/");
 }
 
 export function restArmAngleForTrebuchet() {
@@ -110,10 +94,10 @@ export function constrainedPointForObject(object, point, clientId = null) {
     };
   }
 
-  const minX = isLeftSideTrebuchetName(object.id)
+  const minX = object.player === 1
     ? BARRAGE_CONFIG.trebuchetLeftMinX
     : BARRAGE_CONFIG.trebuchetRightMinX;
-  const maxX = isLeftSideTrebuchetName(object.id)
+  const maxX = object.player === 1
     ? BARRAGE_CONFIG.trebuchetLeftMaxX
     : BARRAGE_CONFIG.trebuchetRightMaxX;
 

@@ -1,9 +1,10 @@
-import { connectionEl, playerEl, scoreLeftEl, scoreRightEl, matchEndEl, matchEndTextEl, rematchEl } from "./engine.js";
+import { connectionEl, playerEl, scoreLeftEl, scoreRightEl, matchEndEl, matchEndTextEl, rematchEl, engine, scene } from "./engine.js";
 import { applyState } from "./state.js";
-import { reloadLevel } from "./level.js";
+import { loadLevel, reloadLevel, ensureVisualsForState } from "./level.js";
 
 let seq = 0;
 let displayedScores = { P1: 0, P2: 0 };
+let ready = false;
 
 const socketProtocol = window.location.protocol === "https:" ? "wss" : "ws";
 export const socket = new WebSocket(`${socketProtocol}://${window.location.host}`);
@@ -91,12 +92,20 @@ socket.addEventListener("open", () => {
   connectionEl.textContent = "Connected";
 });
 
-socket.addEventListener("message", (event) => {
+socket.addEventListener("message", async (event) => {
   const message = JSON.parse(event.data);
 
   if (message.type === "welcome") {
     playerEl.textContent = message.playerId;
+    const { initTemplateRegistry } = await import("./templateRegistry.js");
+    await initTemplateRegistry(message.templates ?? []);
+    await loadLevel(message.level);
+    engine.runRenderLoop(() => { scene.render(); });
+    ready = true;
+    return;
   }
+
+  if (!ready) return;
 
   if (message.type === "roundEnded") {
     updateScores(message.scores, true);
@@ -124,6 +133,7 @@ socket.addEventListener("message", (event) => {
 
   if (message.type === "state") {
     updateScores(message.scores, false);
+    ensureVisualsForState(message.objects ?? []);
     applyState(message);
   }
 });

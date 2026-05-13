@@ -1,7 +1,8 @@
 import { engine, scene, canvas, CONFIG } from "./engine.js";
-import { childRole, descendantsOf, isTrebuchetArmRoot, findTrebuchetArmAncestor, isMissileName, colliderNodesFor } from "./utils.js";
+import { childRole, descendantsOf, isTrebuchetArmRoot, isMissileName, colliderNodesFor } from "./utils.js";
 import { visualObjects, visualBaseRotations, trebuchetArmNodes, trebuchetLoadTargets, latestObjectStates, findGameplayRoot } from "./state.js";
 import { createAimArrowMeshes } from "./aim.js";
+import { getTemplateRoot } from "./templateRegistry.js";
 
 const {
   ArcRotateCamera,
@@ -14,98 +15,7 @@ const {
   Vector3,
 } = BABYLON;
 
-let currentLevelUrl = CONFIG.levelUrl ?? "/assets/level1.glb";
-
-function registerVisualRoots() {
-  visualObjects.clear();
-  visualBaseRotations.clear();
-
-  for (const transform of scene.transformNodes) {
-    if (transform.parent && transform.parent.name !== "__root__") continue;
-
-    const descendants = descendantsOf(transform);
-    const visualChild = descendants.find((child) => {
-      const role = childRole(child.name);
-      return role === "Vis" || role === "ColVis";
-    });
-
-    if (!visualChild) continue;
-
-    for (const child of descendants) {
-      if (childRole(child.name) === "Col" && child.setEnabled) {
-        child.setEnabled(false);
-      }
-    }
-
-    visualObjects.set(transform.name, transform);
-    const baseRotation = transform.rotationQuaternion?.toEulerAngles() ?? transform.rotation;
-    visualBaseRotations.set(transform.name, {
-      x: baseRotation.x,
-      y: baseRotation.y,
-      z: baseRotation.z,
-    });
-  }
-}
-
-function registerTrebuchetLoadTargets() {
-  trebuchetLoadTargets.clear();
-
-  for (const transform of scene.transformNodes) {
-    if (!transform.name.toLowerCase().includes("missile-load-target")) continue;
-
-    const root = findGameplayRoot(transform);
-    if (!root) continue;
-
-    trebuchetLoadTargets.set(root.name, {
-      targetNode: transform,
-      rootNode: root,
-      armNode: findTrebuchetArmAncestor(transform),
-    });
-  }
-}
-
-function registerTrebuchetArmNodes() {
-  trebuchetArmNodes.clear();
-
-  for (const transform of scene.transformNodes) {
-    if (!isTrebuchetArmRoot(transform)) continue;
-
-    const root = findGameplayRoot(transform);
-    if (!root) continue;
-
-    trebuchetArmNodes.set(root.name, transform);
-  }
-}
-
-function applyTrebuchetArmRestPose() {
-  for (const transform of scene.transformNodes) {
-    if (!isTrebuchetArmRoot(transform)) continue;
-
-    const degrees = CONFIG.trebuchetArmRestRotationZDegrees ?? 15;
-    const radians = (degrees * Math.PI) / 180;
-
-    transform.rotationQuaternion = null;
-    transform.rotation.z = radians;
-    transform.computeWorldMatrix(true);
-  }
-}
-
-function createFallbackScene() {
-  const ground = MeshBuilder.CreateGround("Ground", { width: 14, height: 7 }, scene);
-  const groundMat = new StandardMaterial("GroundMat", scene);
-  groundMat.diffuseColor = new Color3(0.28, 0.46, 0.32);
-  ground.material = groundMat;
-
-  const block = MeshBuilder.CreateBox("Vis", { width: 1.4, height: 1.4, depth: 0.6 }, scene);
-  const blockMat = new StandardMaterial("BlockMat", scene);
-  blockMat.diffuseColor = new Color3(0.58, 0.36, 0.2);
-  block.material = blockMat;
-  block.position.set(-3, 0.7, 0);
-  visualObjects.set("Block_Wood_P1_01", block);
-
-  const king = MeshBuilder.CreateSphere("King_P1", { diameter: 0.8 }, scene);
-  king.position.set(-5.5, 0.4, 0);
-}
+let activeShadowGenerator = null;
 
 function ensureCameraAndLight() {
   if (scene.cameras.length > 0) {
@@ -207,14 +117,6 @@ export function createMissilePickCollider(root) {
   pickCollider.receiveShadows = false;
 }
 
-function createMissilePickColliders() {
-  for (const root of visualObjects.values()) {
-    if (isMissileName(root.name)) {
-      createMissilePickCollider(root);
-    }
-  }
-}
-
 function isShadowCapableLight(light) {
   return light.getClassName() !== "HemisphericLight";
 }
@@ -225,6 +127,8 @@ function shouldReceiveShadows(mesh) {
 }
 
 function setupShadows() {
+  activeShadowGenerator = null;
+
   if (!CONFIG.shadowsEnabled) return;
 
   const light = scene.lights.find(isShadowCapableLight);
@@ -255,6 +159,8 @@ function setupShadows() {
     }
   }
 
+  activeShadowGenerator = shadowGenerator;
+
   console.info("Shadows enabled", {
     light: light.name,
     casters: shadowGenerator.getShadowMap().renderList.length,
@@ -262,7 +168,89 @@ function setupShadows() {
   });
 }
 
+function templatePathFromId(objectId) {
+  const lastUnderscore = objectId.lastIndexOf("_");
+  if (lastUnderscore < 0) return objectId;
+  return objectId.substring(0, lastUnderscore);
+}
+
+function registerCloneShadows(clone) {
+  if (!activeShadowGenerator) return;
+  const descendants = descendantsOf(clone);
+  for (const node of descendants) {
+    if (!node.getTotalVertices || node.getTotalVertices() === 0) continue;
+    const role = childRole(node.name);
+    if (role === "Vis" || role === "ColVis") {
+      activeShadowGenerator.addShadowCaster(node, true);
+    }
+    if (role === "Col") {
+      if (node.setEnabled) node.setEnabled(false);
+    }
+    node.receiveShadows = shouldReceiveShadows(node);
+  }
+}
+
+export function ensureVisualsForState(objects) {
+  let created = false;
+
+  for (const obj of objects) {
+    if (visualObjects.has(obj.id)) continue;
+
+    const templatePath = templatePathFromId(obj.id);
+    const templateRoot = getTemplateRoot(templatePath);
+    if (!templateRoot) continue;
+
+    const clone = templateRoot.clone(obj.id);
+    clone.name = obj.id;
+    clone.setEnabled(true);
+    clone.position.set(obj.x, obj.y, obj.z);
+
+    visualObjects.set(obj.id, clone);
+    visualBaseRotations.set(obj.id, { x: 0, y: 0, z: 0 });
+
+    const descendants = descendantsOf(clone);
+    for (const node of descendants) {
+      const role = childRole(node.name);
+      if (role === "Col" && node.setEnabled) {
+        node.setEnabled(false);
+      }
+    }
+
+    if (obj.id.startsWith("trebuchets/")) {
+      for (const node of descendants) {
+        if (isTrebuchetArmRoot(node)) {
+          trebuchetArmNodes.set(obj.id, node);
+          break;
+        }
+      }
+      for (const node of descendants) {
+        if (node.name.toLowerCase().includes("missile-load-target")) {
+          trebuchetLoadTargets.set(obj.id, {
+            targetNode: node,
+            rootNode: clone,
+            armNode: trebuchetArmNodes.get(obj.id) ?? null,
+          });
+          break;
+        }
+      }
+    }
+
+    if (obj.id.startsWith("missiles/")) {
+      createMissilePickCollider(clone);
+    }
+
+    registerCloneShadows(clone);
+    created = true;
+  }
+
+  return created;
+}
+
 function clearLevel() {
+  // dispose(false, false): do NOT dispose shared materials/textures — templates reuse them
+  for (const visual of visualObjects.values()) {
+    visual.dispose(false, false);
+  }
   visualObjects.clear();
   visualBaseRotations.clear();
   trebuchetArmNodes.clear();
@@ -272,36 +260,26 @@ function clearLevel() {
   for (const generator of scene.shadowGenerators?.slice() ?? []) {
     generator.dispose();
   }
+  activeShadowGenerator = null;
 
-  const rootNodes = scene.rootNodes.filter((n) => n.name === "__root__");
-  for (const root of rootNodes) {
+  const arenaRoots = scene.rootNodes.filter((n) => n.name === "__root__");
+  for (const root of arenaRoots) {
     root.dispose(false, true);
   }
 }
 
 export async function loadLevel(url) {
-  const levelUrl = url ?? currentLevelUrl;
-  currentLevelUrl = levelUrl;
+  if (!url) return;
 
   try {
-    await SceneLoader.AppendAsync("", levelUrl, scene);
-    applyTrebuchetArmRestPose();
-    registerVisualRoots();
-    createMissilePickColliders();
-    registerTrebuchetArmNodes();
-    registerTrebuchetLoadTargets();
-    createAimArrowMeshes();
-
-    if (visualObjects.size === 0) {
-      createFallbackScene();
-    }
+    await SceneLoader.AppendAsync("", url, scene);
   } catch (error) {
-    console.error("Failed to load level GLB; using fallback scene.", error);
-    createFallbackScene();
+    console.error("Failed to load arena GLB:", error);
   }
 
   ensureCameraAndLight();
   setupShadows();
+  createAimArrowMeshes();
   engine.resize();
 }
 

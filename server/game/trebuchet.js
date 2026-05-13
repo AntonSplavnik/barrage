@@ -3,7 +3,6 @@ import { BARRAGE_CONFIG } from "../../public/config.js";
 import {
   isTrebuchetName,
   isMissileName,
-  sideSignForTrebuchet,
   restArmAngleForTrebuchet,
   releaseVelocityForObject,
   trebuchetFireVelocityMax,
@@ -71,7 +70,7 @@ export function updateTrebuchetFireState(dt) {
 }
 
 export function loadTargetForTrebuchet(trebuchet) {
-  const target = loadTargets.get(trebuchet.id) ?? loadTargets.get("default") ?? null;
+  const target = loadTargets.get(trebuchet.id) ?? null;
   if (!target) return null;
 
   if (target.targetNode && target.rootNode) {
@@ -174,7 +173,7 @@ export function beginTrebuchetRelease(trebuchet) {
   if (!start || !current) return;
 
   const powerScale = BARRAGE_CONFIG.aimPowerScale ?? 8;
-  const shotDirectionX = sideSignForTrebuchet(trebuchet.id);
+  const shotDirectionX = trebuchet.player === 1 ? 1 : -1;
   const velocity = releaseVelocityForObject({ id: "missile" }, {
     x: Math.abs(start.x - current.x) * powerScale * shotDirectionX,
     y: (start.y - current.y) * powerScale,
