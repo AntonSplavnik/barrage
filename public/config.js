@@ -62,6 +62,9 @@ export const BARRAGE_CONFIG = {
   blockMass: 30,                          // kg
   missileMass: 10,                         // kg
   missileLinearDamping: 0.15,             // Havok linear damping for missiles
+  missileReleaseFloorPadding: 0.05,       // m, clearance above ground when dragging/releasing missiles
+  missileReleaseDepenetrationStep: 0.25,  // m, x-step toward centre when dropped inside a collider
+  missileReleaseDepenetrationMaxDistance: 10, // m, max inward correction on release
   blockFriction: 0.9,                     // 0–1
   blockRestitution: 0.15,                 // 0–1 (bounciness)
   staticFriction: 1.0,                    // 0–1

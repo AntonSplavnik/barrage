@@ -4,6 +4,7 @@ import {
   clampVector,
   isBlockName,
   isLeftSideTrebuchetName,
+  isMissileName,
   isTrebuchetName,
   normalReleaseVelocityMax,
   releaseVelocityForObject,
@@ -57,6 +58,10 @@ export function velocityFromDragState(object, point, { dragState, now = Date.now
 }
 
 export function usableReleaseVelocity(object, message, { dragState }) {
+  if (isMissileName(object.id)) {
+    return releaseVelocityForObject(object, velocityFromDragState(object, message.point, { dragState }));
+  }
+
   const clientVelocity = releaseVelocityForObject(object, message.velocity);
   const clientSpeed = Math.hypot(clientVelocity.x, clientVelocity.y, clientVelocity.z);
 
@@ -67,11 +72,18 @@ export function usableReleaseVelocity(object, message, { dragState }) {
   return releaseVelocityForObject(object, velocityFromDragState(object, message.point, { dragState }));
 }
 
-export function constrainedPointForObject(object, point, { config }) {
+export function constrainedPointForObject(object, point, { config, serverConfig = {} }) {
   if (!isTrebuchetName(object.id)) {
+    const y = Number(point.y ?? object.y);
+    const minY = Math.max(
+      typeof serverConfig.worldMinY === "number" ? serverConfig.worldMinY : -Infinity,
+      isMissileName(object.id) && typeof serverConfig.worldMinY === "number"
+        ? serverConfig.worldMinY + (config.missileReleaseFloorPadding ?? 0.05)
+        : -Infinity,
+    );
     return {
       x: Number(point.x),
-      y: Number(point.y ?? object.y),
+      y: Math.max(minY, y),
       z: Number(point.z),
     };
   }
@@ -88,6 +100,68 @@ export function constrainedPointForObject(object, point, { config }) {
     y: object.originY,
     z: object.originZ,
   };
+}
+
+function objectBoundsAt(object, position = object) {
+  return {
+    minX: Number(position.x) + Number(object.offsetX ?? 0) - Number(object.halfX ?? 0),
+    maxX: Number(position.x) + Number(object.offsetX ?? 0) + Number(object.halfX ?? 0),
+    minY: Number(position.y) + Number(object.offsetY ?? 0) - Number(object.halfY ?? object.halfHeight ?? 0),
+    maxY: Number(position.y) + Number(object.offsetY ?? 0) + Number(object.halfY ?? object.halfHeight ?? 0),
+    minZ: Number(position.z) + Number(object.offsetZ ?? 0) - Number(object.halfZ ?? 0),
+    maxZ: Number(position.z) + Number(object.offsetZ ?? 0) + Number(object.halfZ ?? 0),
+  };
+}
+
+function boundsOverlap(a, b) {
+  return a.minX <= b.maxX && a.maxX >= b.minX
+    && a.minY <= b.maxY && a.maxY >= b.minY
+    && a.minZ <= b.maxZ && a.maxZ >= b.minZ;
+}
+
+function overlapsAnyColliderAt(object, position, gameObjects) {
+  const bounds = objectBoundsAt(object, position);
+
+  for (const other of gameObjects.values()) {
+    if (other.id === object.id) continue;
+    if (other.loadedInto) continue;
+
+    if (boundsOverlap(bounds, objectBoundsAt(other))) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+export function moveMissileReleaseTowardOriginUntilClear(object, {
+  config,
+  gameObjects,
+}) {
+  if (!isMissileName(object.id)) return false;
+  if (!gameObjects || !overlapsAnyColliderAt(object, object, gameObjects)) return false;
+
+  const step = Math.max(0.01, config.missileReleaseDepenetrationStep ?? 0.25);
+  const maxDistance = Math.max(0, config.missileReleaseDepenetrationMaxDistance ?? 10);
+  const startX = Number(object.x);
+  const direction = startX > 0 ? -1 : startX < 0 ? 1 : 0;
+  if (direction === 0 || maxDistance <= 0) return false;
+
+  for (let distance = step; distance <= maxDistance + 0.0001; distance += step) {
+    const nextX = Math.abs(distance) >= Math.abs(startX)
+      ? 0
+      : startX + direction * distance;
+    const position = { x: nextX, y: object.y, z: object.z };
+
+    if (!overlapsAnyColliderAt(object, position, gameObjects)) {
+      object.x = nextX;
+      return true;
+    }
+
+    if (nextX === 0) break;
+  }
+
+  return false;
 }
 
 export function applyMagneticDragForce(object, { config, dragState, physicsAggregates }) {

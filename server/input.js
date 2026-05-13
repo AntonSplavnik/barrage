@@ -163,7 +163,7 @@ export function createInputHandler({
       object.vx = 0;
       object.vy = 0;
       object.vz = 0;
-      dragState().set(object.id, { lastTime: now, lastPoint: message.point });
+      dragState().set(object.id, { lastTime: now, lastPoint: next });
     }
 
     if (message.action === "dragEnd") {
@@ -180,7 +180,7 @@ export function createInputHandler({
       object.x = next.x;
       object.y = next.y;
       object.z = next.z;
-      releaseDrag(object, usableReleaseVelocity(object, message));
+      releaseDrag(object, usableReleaseVelocity(object, { ...message, point: next }));
     }
 
     if (message.action === "fire") {

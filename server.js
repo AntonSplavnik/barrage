@@ -33,6 +33,7 @@ import {
   constrainedPointForObject as resolveConstrainedPointForObject,
   constrainWorldBounds as resolveConstrainWorldBounds,
   localPointForObject as resolveLocalPointForObject,
+  moveMissileReleaseTowardOriginUntilClear as resolveMoveMissileReleaseTowardOriginUntilClear,
   usableReleaseVelocity as resolveUsableReleaseVelocity,
   usesMagneticDrag,
 } from "./server/drag.js";
@@ -276,7 +277,17 @@ function usableReleaseVelocity(object, message) {
 }
 
 function constrainedPointForObject(object, point) {
-  return resolveConstrainedPointForObject(object, point, { config: BARRAGE_CONFIG });
+  return resolveConstrainedPointForObject(object, point, {
+    config: BARRAGE_CONFIG,
+    serverConfig: SERVER_CONFIG,
+  });
+}
+
+function moveMissileReleaseTowardOriginUntilClear(object) {
+  return resolveMoveMissileReleaseTowardOriginUntilClear(object, {
+    config: BARRAGE_CONFIG,
+    gameObjects,
+  });
 }
 
 function distance3(a, b) {
@@ -577,6 +588,7 @@ function releaseDrag(object, releaseVelocity) {
 
   constrainWorldBounds(object);
   if (!maybeLoadMissile(object)) {
+    moveMissileReleaseTowardOriginUntilClear(object);
     setPhysicsBodyTrigger(object, false);
     object.vx = releaseVelocity.x;
     object.vy = releaseVelocity.y;
