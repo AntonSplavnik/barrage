@@ -58,7 +58,7 @@ export const BARRAGE_CONFIG = {
   // Physics.
   physicsEnabled: true,
   gravity: -9.81,                         // m/s²
-  physicsTimeScale: 2.2,                  // multiplier (>1 = faster sim)
+  physicsTimeScale: 2,                  // multiplier (>1 = faster sim)
   blockMass: 30,                          // kg
   missileMass: 10,                         // kg
   missileLinearDamping: 0.15,             // Havok linear damping for missiles
