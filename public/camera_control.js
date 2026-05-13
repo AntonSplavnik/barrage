@@ -182,6 +182,11 @@ export function createCameraController(scene, getPlayerId) {
     cancelReturn();
     cancelDragReturn();
     animate(playerDragCamPos, CONFIG.cameraDragViewMs ?? 700);
+  }
+
+  function onDragEnd() {
+    if (!playerCamPos) return;
+    cancelDragReturn();
     camDragTimer = setTimeout(() => {
       camDragTimer = null;
       animate(playerCamPos, CONFIG.cameraDragReturnMs ?? 1200);
@@ -200,5 +205,5 @@ export function createCameraController(scene, getPlayerId) {
     playerDragCamPos  = null;
   }
 
-  return { snapshotAndPan, onAimStart, onAimRelease, onDragStart, dispose };
+  return { snapshotAndPan, onAimStart, onAimRelease, onDragStart, onDragEnd, dispose };
 }

@@ -512,23 +512,23 @@ function isShadowCapableLight(light) {
   return light.getClassName() !== "HemisphericLight";
 }
 
-function lightPositionArray(light) {
-  const position = light.position ?? light.getAbsolutePosition?.();
-  return position?.asArray?.() ?? null;
+function lightWorldPosition(light) {
+  light.computeTransformedInformation?.();
+  return light.getAbsolutePosition?.() ?? light.position ?? null;
 }
 
 function lightDistanceSquaredToOrigin(light) {
-  const position = light.position ?? light.getAbsolutePosition?.();
+  const position = lightWorldPosition(light);
   if (!position) return Number.POSITIVE_INFINITY;
   return (position.x * position.x) + (position.y * position.y) + (position.z * position.z);
 }
 
 function describeLight(light) {
+  const position = lightWorldPosition(light);
   return {
     name: light.name,
-    parentName: light.parent?.name ?? null,
     type: light.getClassName(),
-    position: lightPositionArray(light),
+    position: position?.asArray?.() ?? null,
     intensity: light.intensity,
     distanceToOrigin: Math.sqrt(lightDistanceSquaredToOrigin(light)),
   };
@@ -536,28 +536,25 @@ function describeLight(light) {
 
 function selectShadowLight() {
   const candidates = scene.lights.filter(isShadowCapableLight);
-  const configuredName = CONFIG.shadowLightName;
-
-  if (configuredName) {
-    const exactMatch = candidates.find((light) => light.name === configuredName || light.parent?.name === configuredName);
-    if (exactMatch) return exactMatch;
-
-    console.warn("Configured shadow light not found; using nearest light to origin.", {
-      shadowLightName: configuredName,
-      candidates: candidates.map(describeLight),
-    });
-  }
-
   return candidates.sort((a, b) => lightDistanceSquaredToOrigin(a) - lightDistanceSquaredToOrigin(b))[0] ?? null;
+}
+
+function disposeShadowGeneratorsExcept(selectedLight) {
+  for (const light of scene.lights) {
+    if (light === selectedLight) continue;
+
+    const generators = light.getShadowGenerators?.();
+    if (!generators) continue;
+
+    for (const generator of [...generators.values()]) {
+      generator.dispose();
+    }
+  }
 }
 
 function shouldReceiveShadows(mesh) {
   const name = mesh.name.toLowerCase();
   return name.includes("ground") || name.includes("plane");
-}
-
-function shouldVisibleGameplayMeshReceiveShadows(role) {
-  return Boolean(CONFIG.shadowVisualsReceive ?? true) && (role === "Vis" || role === "ColVis");
 }
 
 function setupShadows() {
@@ -571,6 +568,8 @@ function setupShadows() {
     console.info("Shadows disabled: no shadow-capable light found.");
     return;
   }
+
+  disposeShadowGeneratorsExcept(light);
 
   shadowGenerator = new ShadowGenerator(CONFIG.shadowMapSize ?? 2048, light);
   shadowGenerator.useBlurExponentialShadowMap = CONFIG.shadowBlurEnabled ?? true;
@@ -587,7 +586,7 @@ function setupShadows() {
       continue;
     }
 
-    mesh.receiveShadows = shouldReceiveShadows(mesh) || shouldVisibleGameplayMeshReceiveShadows(role);
+    mesh.receiveShadows = shouldReceiveShadows(mesh);
 
     if (role === "Vis" || role === "ColVis") {
       shadowGenerator.addShadowCaster(mesh, true);
@@ -1477,6 +1476,7 @@ function endDrag() {
     return;
   }
 
+  const shouldReturnFromDragCamera = !isMissileName(selectedEntityId);
   const finalPoint = protocolPointFromWorld(new Vector3(
       point.x,
       Math.max(point.y + (CONFIG.dragHeightOffset ?? 0.2), 0.2),
@@ -1492,6 +1492,10 @@ function endDrag() {
     velocity: releaseVelocity,
     rot: 0,
   });
+
+  if (shouldReturnFromDragCamera) {
+    cameraControl.onDragEnd();
+  }
 
   selectedEntityId = null;
   pointerMode = "drag";

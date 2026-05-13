@@ -46,8 +46,6 @@ export const BARRAGE_CONFIG = {
   importedLightIntensityScale: 0.01,      // multiplier
   fallbackLightIntensity: 0.1,            // multiplier
   shadowsEnabled: true,
-  shadowLightName: "ShadowLight",         // imported light used to cast gameplay shadows
-  shadowVisualsReceive: true,             // allow visible gameplay meshes to receive shadows
   shadowMapSize: 2048,                    // px
   shadowBlurEnabled: true,
   shadowBlurKernel: 16,
