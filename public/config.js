@@ -58,7 +58,7 @@ export const BARRAGE_CONFIG = {
   // Physics.
   physicsEnabled: true,
   gravity: -9.81,                         // m/s²
-  physicsTimeScale: 1.5,                  // multiplier (>1 = faster sim)
+  physicsTimeScale: 2.2,                  // multiplier (>1 = faster sim)
   blockMass: 30,                          // kg
   missileMass: 10,                         // kg
   missileLinearDamping: 0.15,             // Havok linear damping for missiles
@@ -81,7 +81,7 @@ export const BARRAGE_CONFIG = {
 
   // Drag And Release.
   dragHeightOffset: 0.2,                  // m
-  dragRadiusLimit: 20,                     // m, magnetic grip reaches zero force at this distance
+  dragRadiusLimit: 30,                     // m, magnetic grip reaches zero force at this distance
   dragForceMax: 1500,                      // N, magnetic grip force at zero distance
   dragDampingMax: 400,                     // N per m/s, strongest near the magnetic grip point
   blockAngularDamping: 0.8,              // rotational damping for block physics bodies
@@ -100,8 +100,8 @@ export const BARRAGE_CONFIG = {
   blockHitVelocityMin: 7,                 // m/s (min speed to register a hit)
   blockHitCooldownMs: 100,                // ms — missile can only crack one block per this window
   blockFragmentVelocityMin: 5,           // m/s (min speed to trigger fragmentation)
-  fragmentHitVelocityMin: 5,             // m/s (min speed to destroy a fragment)
-  fragmentHitSpeedPenalty: 3,            // m/s lost per fragment hit (on top of physics)
+  fragmentHitVelocityMin: 3,             // m/s (min speed to destroy a fragment)
+  fragmentHitSpeedPenalty: 0.5,            // m/s lost per fragment hit (on top of physics)
   fragmentFriction: 0.02,                 // 0–1 (lower = slides more)
   fragmentSpreadX: 4,                    // m/s max random horizontal scatter
   fragmentSpreadY: 2,                    // m/s max random upward scatter
