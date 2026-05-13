@@ -1,7 +1,4 @@
 export const BARRAGE_CONFIG = {
-  // Level asset.
-  levelUrl: "/assets/level1.glb",
-
   // Rendering.
   importedLightIntensityScale: 0.01,
   fallbackLightIntensity: 0.1,
@@ -42,12 +39,6 @@ export const BARRAGE_CONFIG = {
   releaseVelocitySampleHz: 60,
   releaseVelocityFrameWindow: 5,
   releaseVelocityMinSampleDistance: 0.05,
-
-  // Zone rules.
-  kingKnockoutAngle: 45,
-  roundsToWin: 3,
-  postWinSimulationMs: 2000,
-  roundEndDelayMs: 2000,
 
   // Missile loading.
   missileLoadRange: 2,

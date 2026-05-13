@@ -1,5 +1,5 @@
 import { gameObjects, gameState } from "./state.js";
-import { resetMatch, resetGameState } from "./rules.js";
+import { resetMatch, resetRoundState } from "./modeRunner.js";
 import {
   restArmAngleForTrebuchet,
   ARM_STATE_AIMING,
@@ -16,7 +16,7 @@ export function applyInput(client, message) {
     if (gameState.matchOver) {
       resetMatch();
     } else {
-      resetGameState();
+      resetRoundState();
       broadcast({
         type: "event",
         tick: 0,

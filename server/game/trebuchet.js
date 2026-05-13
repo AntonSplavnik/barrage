@@ -12,6 +12,7 @@ import {
 } from "./entities.js";
 import { clamp, lerp } from "../math.js";
 import { setPhysicsBodyTrigger, syncPhysicsBodyFromObject } from "./physics.js";
+import { getActiveLevel, getHookContext, callHook } from "./modeRunner.js";
 
 export function updateTrebuchetFireState(dt) {
   for (const trebuchet of gameObjects.values()) {
@@ -225,5 +226,8 @@ export function releaseLoadedMissileFromTrebuchet(trebuchet, velocity, armAngle 
   trebuchet.aimedBy = null;
   trebuchet.aimStart = null;
   trebuchet.aimCurrent = null;
+
+  callHook(getActiveLevel()?.def?.hooks?.onMissileFired, getHookContext(), trebuchet, missile);
+
   return true;
 }

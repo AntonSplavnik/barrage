@@ -1,7 +1,7 @@
 import { gameState } from "./state.js";
 import { TICK_MS } from "../config.js";
 import { simulatePhysics } from "./simulation.js";
-import { tryRecordRoundWin } from "./rules.js";
+import { checkRoundEnd } from "./modeRunner.js";
 import { sendState } from "../net/broadcast.js";
 
 let simulationInterval = null;
@@ -11,7 +11,7 @@ export function startGameLoop() {
     if (gameState.paused) return;
     gameState.tick += 1;
     simulatePhysics();
-    tryRecordRoundWin();
+    checkRoundEnd();
     sendState();
   }, TICK_MS);
 }
