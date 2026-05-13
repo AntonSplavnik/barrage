@@ -65,7 +65,7 @@ export const BARRAGE_CONFIG = {
   missileReleaseFloorPadding: 0.05,       // m, clearance above ground when dragging/releasing missiles
   missileReleaseDepenetrationStep: 0.25,  // m, x-step toward centre when dropped inside a collider
   missileReleaseDepenetrationMaxDistance: 10, // m, max inward correction on release
-  blockFriction: 0.9,                     // 0–1
+  blockFriction: 0.6,                     // 0–1
   blockRestitution: 0.15,                 // 0–1 (bounciness)
   staticFriction: 1.0,                    // 0–1
 
@@ -101,15 +101,17 @@ export const BARRAGE_CONFIG = {
   blockMaxHits: 2,                        // hits before fragmentation
   kingHitVelocityMin: 3,                  // m/s (min speed to register a king hit)
   blockHitVelocityMin: 7,                 // m/s (min speed to register a hit)
-  blockHitCooldownMs: 100,                // ms — missile can only crack one block per this window
+  blockHitCooldownMs: 100,                // ms - missile can only crack one block per this window
   blockFragmentVelocityMin: 5,           // m/s (min speed to trigger fragmentation)
   fragmentHitVelocityMin: 3,             // m/s (min speed to destroy a fragment)
   fragmentHitSpeedPenalty: 0.5,            // m/s lost per fragment hit (on top of physics)
-  fragmentFriction: 0.02,                 // 0–1 (lower = slides more)
+  fragmentFriction: 0.6,                 // 0-1 (lower = slides more)
   fragmentSpreadX: 4,                    // m/s max random horizontal scatter
   fragmentSpreadY: 2,                    // m/s max random upward scatter
+  fragmentSlowShrinkMs: 15000,            // ms - fragments shrink away if not hit
+  fragmentColliderShrinkStep: 0.02,       // 0-1 collider scale step while shrinking
   fragmentShrinkMs: 500,                  // ms
-  fragmentImmunityMs: 500,                // ms — newly spawned fragments are immune to hits
+  fragmentImmunityMs: 500,                // ms - newly spawned fragments are immune to hits
   postWinSimulationMs: 5000,              // ms
   roundEndDelayMs: 5000,                  // ms
 

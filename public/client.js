@@ -980,6 +980,52 @@ function applyState(message) {
   updateDragPivotMarker();
 }
 
+function removeFragmentVisualReferences(fragId) {
+  visualObjects.delete(fragId);
+  visualBaseRotations.delete(fragId);
+  latestObjectStates.delete(fragId);
+}
+
+function cancelFragmentShrink(fragId) {
+  const existing = shrinkObservers.get(fragId);
+  if (!existing) return null;
+
+  scene.onBeforeRenderObservable.remove(existing.observer);
+  shrinkObservers.delete(fragId);
+  return existing.mesh;
+}
+
+function startFragmentShrink(fragId, durationMs, { detachFromState = false } = {}) {
+  const existingMesh = cancelFragmentShrink(fragId);
+  const mesh = visualObjects.get(fragId) ?? existingMesh;
+  if (!mesh || mesh.isDisposed()) return;
+
+  if (detachFromState) removeFragmentVisualReferences(fragId);
+
+  const duration = Math.max(1, durationMs);
+  const startScale = mesh.scaling.clone();
+  const startTime = performance.now();
+  const observer = scene.onBeforeRenderObservable.add(() => {
+    if (mesh.isDisposed()) {
+      scene.onBeforeRenderObservable.remove(observer);
+      shrinkObservers.delete(fragId);
+      removeFragmentVisualReferences(fragId);
+      return;
+    }
+
+    const t = Math.min(1, (performance.now() - startTime) / duration);
+    const s = 1 - t;
+    mesh.scaling.set(startScale.x * s, startScale.y * s, startScale.z * s);
+    if (t >= 1) {
+      scene.onBeforeRenderObservable.remove(observer);
+      shrinkObservers.delete(fragId);
+      removeFragmentVisualReferences(fragId);
+      mesh.dispose();
+    }
+  });
+  shrinkObservers.set(fragId, { observer, mesh });
+}
+
 const socketProtocol = window.location.protocol === "https:" ? "wss" : "ws";
 const socket = new WebSocket(`${socketProtocol}://${window.location.host}`);
 
@@ -1117,26 +1163,7 @@ socket.addEventListener("message", (event) => {
       }
 
       if (ev.kind === "fragmentHit") {
-        const mesh = visualObjects.get(ev.fragId);
-        if (mesh) {
-          visualObjects.delete(ev.fragId);
-          visualBaseRotations.delete(ev.fragId);
-          latestObjectStates.delete(ev.fragId);
-          const duration = CONFIG.fragmentShrinkMs ?? 500;
-          const startScale = mesh.scaling.clone();
-          const startTime = performance.now();
-          const observer = scene.onBeforeRenderObservable.add(() => {
-            const t = Math.min(1, (performance.now() - startTime) / duration);
-            const s = 1 - t;
-            mesh.scaling.set(startScale.x * s, startScale.y * s, startScale.z * s);
-            if (t >= 1) {
-              scene.onBeforeRenderObservable.remove(observer);
-              shrinkObservers.delete(ev.fragId);
-              mesh.dispose();
-            }
-          });
-          shrinkObservers.set(ev.fragId, { observer, mesh });
-        }
+        startFragmentShrink(ev.fragId, CONFIG.fragmentShrinkMs ?? 500, { detachFromState: true });
       }
 
       if (ev.kind === "blockBroken") {
@@ -1155,6 +1182,7 @@ socket.addEventListener("message", (event) => {
           clone.isVisible = true;
           visualObjects.set(ev.fragIds[i], clone);
           visualBaseRotations.set(ev.fragIds[i], { x: 0, y: 0, z: 0 });
+          startFragmentShrink(ev.fragIds[i], CONFIG.fragmentSlowShrinkMs ?? 15000);
         }
       }
     }

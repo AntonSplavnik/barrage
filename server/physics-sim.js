@@ -9,6 +9,7 @@ export function runPhysicsSimulationTick({
   physicsContactEvents,
   simulatePhysics,
   tick,
+  updateFragmentColliderShrinks,
   velocityFor,
 }) {
   captureImpactVelocities(gameObjects.values(), {
@@ -19,6 +20,7 @@ export function runPhysicsSimulationTick({
     physicsContactEvents.length = 0;
   }
 
+  updateFragmentColliderShrinks?.(tick);
   simulatePhysics(dt);
   const havokContacts = physicsContactEvents ? [...physicsContactEvents] : [];
   handlePhysicsContacts?.(havokContacts);
@@ -60,6 +62,9 @@ function processPendingPhysicsObjects({
         disposePhysicsAggregate?.(object.id);
         gameObjects.delete(object.id);
       }
+    } else if (object.isFragment && object.expiresOnTick !== undefined && tick >= object.expiresOnTick) {
+      disposePhysicsAggregate?.(object.id);
+      gameObjects.delete(object.id);
     }
   }
 

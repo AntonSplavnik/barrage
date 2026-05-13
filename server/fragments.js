@@ -3,6 +3,7 @@ import { TransformNode } from "@babylonjs/core/Meshes/transformNode.js";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData.js";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
 import { PhysicsAggregate } from "@babylonjs/core/Physics/v2/physicsAggregate.js";
+import { PhysicsShape } from "@babylonjs/core/Physics/v2/physicsShape.js";
 import { PhysicsShapeType } from "@babylonjs/core/Physics/v2/IPhysicsEnginePlugin.js";
 import { collisionPointFor } from "./collision-events.js";
 import { impactPositionFor, impactSpeedFor } from "./server-events.js";
@@ -27,6 +28,7 @@ export function createFragmentSystem({
   teleportPhysicsBody,
   tickMs,
 }) {
+  const MIN_FRAGMENT_COLLIDER_SCALE = 0.05;
   let fragmentTemplateData = null;
 
   async function loadFragmentTemplates() {
@@ -72,6 +74,7 @@ export function createFragmentSystem({
       const spreadY = Math.random() * (config.fragmentSpreadY ?? 2) + 0.5;
       const vx = (missile.vx ?? 0) * 0.5 + spreadX;
       const vy = (missile.vy ?? 0) * 0.3 + spreadY;
+      const slowShrinkTicks = Math.ceil((config.fragmentSlowShrinkMs ?? 15000) / tickMs);
 
       const fragObj = {
         id: fragId,
@@ -93,6 +96,7 @@ export function createFragmentSystem({
         isFragment: true,
         parentBlockId: block.id,
         createdTick: tick,
+        expiresOnTick: tick + slowShrinkTicks,
         draggedBy: null,
         offsetX: tmpl.offsetX,
         offsetY: tmpl.offsetY,
@@ -101,6 +105,14 @@ export function createFragmentSystem({
         halfY: tmpl.halfY,
         halfZ: tmpl.halfZ,
         halfHeight: tmpl.halfY,
+        baseOffsetX: tmpl.offsetX,
+        baseOffsetY: tmpl.offsetY,
+        baseOffsetZ: tmpl.offsetZ,
+        baseHalfX: tmpl.halfX,
+        baseHalfY: tmpl.halfY,
+        baseHalfZ: tmpl.halfZ,
+        colliderShrinkScale: 1,
+        colliderShapeType: null,
         mass: (config.blockMass ?? serverConfig.dynamicMass) / 8,
         friction: config.fragmentFriction ?? serverConfig.dynamicFriction,
         restitution: serverConfig.dynamicRestitution,
@@ -147,6 +159,7 @@ export function createFragmentSystem({
         shapeOptions.extents = new Vector3(tmpl.halfX * 2, tmpl.halfY * 2, tmpl.halfZ * 2);
       }
 
+      fragObj.colliderShapeType = shapeType;
       const aggregate = new PhysicsAggregate(physNode, shapeType, shapeOptions, scene);
 
       aggregate.body.disablePreStep = true;
@@ -175,6 +188,71 @@ export function createFragmentSystem({
       tick,
       events: [{ kind: "blockBroken", blockId: block.id, fragIds }],
     });
+  }
+
+  function fragmentShrinkScale(fragment, tick = getTick()) {
+    const startTick = fragment.createdTick ?? tick;
+    const endTick = fragment.expiresOnTick;
+    if (endTick === undefined || endTick <= startTick) return 1;
+
+    return Math.max(0, Math.min(1, (endTick - tick) / (endTick - startTick)));
+  }
+
+  function quantizeFragmentColliderScale(scale) {
+    const step = config.fragmentColliderShrinkStep ?? 0.02;
+    if (step <= 0) return Math.max(MIN_FRAGMENT_COLLIDER_SCALE, scale);
+
+    return Math.max(MIN_FRAGMENT_COLLIDER_SCALE, Math.ceil(scale / step) * step);
+  }
+
+  function updateFragmentColliderShrink(fragment, tick = getTick()) {
+    if (!fragment.isFragment || fragment.pendingRemove || fragment.expiresOnTick === undefined) return;
+
+    const scale = quantizeFragmentColliderScale(fragmentShrinkScale(fragment, tick));
+    if (Math.abs((fragment.colliderShrinkScale ?? 1) - scale) < 0.0001) return;
+
+    const aggregate = physicsAggregates().get(fragment.id);
+    const scene = getScene();
+    if (!aggregate || !scene) return;
+
+    fragment.colliderShrinkScale = scale;
+    fragment.offsetX = (fragment.baseOffsetX ?? fragment.offsetX ?? 0) * scale;
+    fragment.offsetY = (fragment.baseOffsetY ?? fragment.offsetY ?? 0) * scale;
+    fragment.offsetZ = (fragment.baseOffsetZ ?? fragment.offsetZ ?? 0) * scale;
+    fragment.halfX = (fragment.baseHalfX ?? fragment.halfX ?? 0) * scale;
+    fragment.halfY = (fragment.baseHalfY ?? fragment.halfY ?? 0) * scale;
+    fragment.halfZ = (fragment.baseHalfZ ?? fragment.halfZ ?? 0) * scale;
+    fragment.halfHeight = fragment.halfY;
+
+    const shapeType = fragment.colliderShapeType ?? aggregate.type;
+    const shapeOptions = {
+      mass: fragment.mass,
+      friction: fragment.friction,
+      restitution: fragment.restitution,
+    };
+
+    if (shapeType === PhysicsShapeType.CONVEX_HULL) {
+      aggregate.transformNode.scaling.setAll(scale);
+      aggregate.transformNode.computeWorldMatrix(true);
+      shapeOptions.mesh = aggregate.transformNode;
+    } else {
+      aggregate.transformNode.scaling.setAll(1);
+      shapeOptions.center = new Vector3(fragment.offsetX, fragment.offsetY, fragment.offsetZ);
+      shapeOptions.extents = new Vector3(fragment.halfX * 2, fragment.halfY * 2, fragment.halfZ * 2);
+    }
+
+    const previousShape = aggregate.shape;
+    const nextShape = new PhysicsShape({ type: shapeType, parameters: shapeOptions }, scene);
+    aggregate.shape = nextShape;
+    aggregate.body.shape = nextShape;
+    nextShape.material = { friction: fragment.friction, restitution: fragment.restitution };
+    previousShape?.dispose?.();
+  }
+
+  function updateFragmentColliderShrinks(tick = getTick()) {
+    for (const fragment of gameObjects().values()) {
+      updateFragmentColliderShrink(fragment, tick);
+    }
   }
 
   function maybeRecordBlockHit(object, other, hitPosition = null) {
@@ -261,5 +339,6 @@ export function createFragmentSystem({
     loadFragmentTemplates,
     maybeRecordBlockHit,
     maybeRecordFragmentHit,
+    updateFragmentColliderShrinks,
   };
 }

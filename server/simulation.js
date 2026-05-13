@@ -21,6 +21,7 @@ export function createSimulationRunner({
   sendState,
   simulatePhysics,
   tickMs,
+  updateFragmentColliderShrinks,
 }) {
   function handlePhysicsSimulationResults(results) {
     for (const { object, error } of results.fragmentationErrors) {
@@ -55,6 +56,7 @@ export function createSimulationRunner({
       physicsContactEvents: getPhysicsContactEvents(),
       simulatePhysics,
       tick,
+      updateFragmentColliderShrinks,
       velocityFor: physicsVelocityForObject,
     });
     handlePhysicsSimulationResults(physicsResults);

@@ -386,6 +386,7 @@ const {
   loadFragmentTemplates,
   maybeRecordBlockHit,
   maybeRecordFragmentHit,
+  updateFragmentColliderShrinks,
 } = createFragmentSystem({
   assetsDir,
   broadcast,
@@ -430,6 +431,7 @@ const { runRoomSimulationTick } = createSimulationRunner({
   sendState,
   simulatePhysics,
   tickMs: TICK_MS,
+  updateFragmentColliderShrinks,
 });
 
 function sendState() {
