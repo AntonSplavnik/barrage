@@ -89,9 +89,9 @@ export function findTrebuchetArmAncestor(node) {
 
 export function isForwardPullPoint(trebuchetState, point, releasePoint) {
   if (trebuchetState.player === 1) {
-    return point.x > releasePoint.x;
+    return point.x < releasePoint.x;
   }
-  return point.x < releasePoint.x;
+  return point.x > releasePoint.x;
 }
 
 export function clampAimTailPoint(headPoint, tailPoint, config) {
