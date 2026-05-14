@@ -2,10 +2,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import xhr2 from "xhr2";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
+import { Vector3, Matrix } from "@babylonjs/core/Maths/math.vector.js";
 import { SceneLoader } from "@babylonjs/core/Loading/sceneLoader.js";
 import "@babylonjs/loaders/glTF/index.js";
 import { scene } from "./physics.js";
+import { VertexBuffer } from "@babylonjs/core/Buffers/buffer.js";
 import { PORT } from "../config.js";
 import { BARRAGE_CONFIG } from "../../public/config.js";
 
@@ -102,6 +103,97 @@ function colliderBoundsFor(root) {
   }
 }
 
+function extractConvexPositions(root) {
+  const descendants = descendantsOf(root);
+  const colliderMeshes = descendants.filter((child) => {
+    const role = childRole(child.name);
+    return (role === "Col" || role === "ColVis")
+      && typeof child.getVerticesData === "function"
+      && child.getTotalVertices?.() > 0;
+  });
+
+  const fallbackNodes = [root, ...descendants].filter(
+    (node) => typeof node.getVerticesData === "function" && node.getTotalVertices?.() > 0,
+  );
+  const meshes = colliderMeshes.length > 0 ? colliderMeshes : fallbackNodes;
+  if (meshes.length === 0) return null;
+
+  root.computeWorldMatrix(true);
+  const rootWorldInverse = root.getWorldMatrix().clone().invert();
+  const allPositions = [];
+
+  for (const mesh of meshes) {
+    mesh.computeWorldMatrix(true);
+    const positions = mesh.getVerticesData(VertexBuffer.PositionKind);
+    if (!positions) continue;
+
+    const localMatrix = mesh.getWorldMatrix().multiply(rootWorldInverse);
+
+    for (let i = 0; i < positions.length; i += 3) {
+      const v = Vector3.TransformCoordinates(
+        new Vector3(positions[i], positions[i + 1], positions[i + 2]),
+        localMatrix,
+      );
+      allPositions.push(v.x, v.y, v.z);
+    }
+  }
+
+  return allPositions.length > 0 ? new Float32Array(allPositions) : null;
+}
+
+function detectHitStages(root) {
+  const descendants = descendantsOf(root);
+  const hitPattern = /hit(\d+)-Visual/;
+  const stages = [];
+
+  for (const child of descendants) {
+    const match = child.name.match(hitPattern);
+    if (match) {
+      stages.push({ index: parseInt(match[1], 10), name: child.name });
+    }
+  }
+
+  stages.sort((a, b) => a.index - b.index);
+  return stages.map((s) => s.name);
+}
+
+function detectFragments(root) {
+  const descendants = descendantsOf(root);
+  const fragPattern = /Frag\.(\d+)/;
+  const pieces = [];
+
+  for (const child of descendants) {
+    const match = child.name.match(fragPattern);
+    if (!match) continue;
+
+    const pieceNum = parseInt(match[1], 10);
+    child.computeWorldMatrix(true);
+
+    const localPos = child.getAbsolutePosition().subtract(root.getAbsolutePosition());
+    const bounds = colliderBoundsFor(child);
+    const convexPositions = extractConvexPositions(child);
+
+    pieces.push({
+      pieceNum,
+      pieceIndex: 0,
+      localX: localPos.x,
+      localY: localPos.y,
+      localZ: localPos.z,
+      halfX: bounds.halfX,
+      halfY: bounds.halfY,
+      halfZ: bounds.halfZ,
+      offsetX: bounds.offsetX,
+      offsetY: bounds.offsetY,
+      offsetZ: bounds.offsetZ,
+      convexPositions,
+    });
+  }
+
+  pieces.sort((a, b) => a.pieceNum - b.pieceNum);
+  pieces.forEach((p, i) => { p.pieceIndex = i; });
+  return pieces;
+}
+
 function extractTrebuchetNodes(root) {
   const descendants = descendantsOf(root);
   let armNode = null;
@@ -174,15 +266,27 @@ export async function initTemplateRegistry() {
     newRoot.name = `__template_${templatePath}__`;
 
     const bounds = colliderBoundsFor(newRoot);
+    const convexPositions = extractConvexPositions(newRoot);
     const isTrebuchet = templatePath.startsWith("trebuchets/");
     const trebuchetNodes = isTrebuchet ? extractTrebuchetNodes(newRoot) : null;
 
+    const hitStages = detectHitStages(newRoot);
+    const fragments = detectFragments(newRoot);
+    const isDestructible = hitStages.length > 0 || fragments.length > 0;
+
     templateCache.set(templatePath, {
       bounds,
+      convexPositions,
+      ...(isDestructible ? { hitStages, fragments } : {}),
       ...(trebuchetNodes ?? {}),
     });
 
-    console.log(`Template "${templatePath}": half=(${bounds.halfX.toFixed(2)}, ${bounds.halfY.toFixed(2)}, ${bounds.halfZ.toFixed(2)})`);
+    console.log(
+      `Template "${templatePath}": half=(${bounds.halfX.toFixed(2)}, ${bounds.halfY.toFixed(2)}, ${bounds.halfZ.toFixed(2)})`
+      + (convexPositions ? ` vertices=${convexPositions.length / 3}` : "")
+      + (hitStages.length > 0 ? ` hitStages=${hitStages.length}` : "")
+      + (fragments.length > 0 ? ` fragments=${fragments.length}` : ""),
+    );
   }
 
   console.log(`Loaded ${templateCache.size} template(s).`);
