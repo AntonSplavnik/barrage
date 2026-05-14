@@ -42,12 +42,12 @@ export const BARRAGE_CONFIG = {
   vfxMissileHitBlockSize: 0.5,
   vfxMissileHitBlockMinScale: 0.1,
 
-  missileBombTriggerSpeed: 11,              // m/s, min impact speed to trigger detonation + VFX
-  missileBombBlastRadius: 2.7,              // m, blast radius for fragmentation and VFX
-  vfxMissileBombExplodeCount: 60,         // max particle count
+  missileBombTriggerSpeed: 10,              // m/s, min impact speed to trigger detonation + VFX
+  missileBombBlastRadius: 2.99,              // m, blast radius for fragmentation and VFX
+  vfxMissileBombExplodeCount: 100,         // max particle count
   vfxMissileBombExplodeDurationMs: 500,   // ms, max particle lifetime
   vfxMissileBombExplodeSpeed: 14,         // m/s, max particle speed
-  vfxMissileBombExplodeSize: 1.8,         // m, max particle size
+  vfxMissileBombExplodeSize: 3,         // m, max particle size
   vfxMissileBombExplodeGravity: -4,       // m/s², particle gravity
 
   // Rendering.
@@ -116,7 +116,7 @@ export const BARRAGE_CONFIG = {
   fragmentFriction: 0.6,                 // 0-1 (lower = slides more)
   fragmentSpreadX: 4,                    // m/s max random horizontal scatter
   fragmentSpreadY: 2,                    // m/s max random upward scatter
-  fragmentSlowShrinkMs: 15000,            // ms - fragments shrink away if not hit
+  fragmentSlowShrinkMs: 10000,            // ms - fragments shrink away if not hit
   fragmentColliderShrinkStep: 0.02,       // 0-1 collider scale step while shrinking
   fragmentShrinkMs: 500,                  // ms
   fragmentImmunityMs: 500,                // ms - newly spawned fragments are immune to hits
