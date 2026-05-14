@@ -8,7 +8,7 @@ Additionally, the fragment GLBs (e.g., `fragmented-L.glb`) contain both crack pr
 
 ## GLB Structure (confirmed from `fragmented-L.glb`)
 
-A fragment-capable block template contains two types of meshes:
+A fragment-capable block template contains two types of meshes, distinguished by naming convention:
 
 **Crack stage meshes** — named `hit{N}-Visual` (one shown at a time as damage progresses):
 - `blockL-hit1-Visual` — first hit cracks
@@ -16,8 +16,10 @@ A fragment-capable block template contains two types of meshes:
 - `blockL-hit3-Visual` — third hit cracks
 - `blockL-hit4-Visual` — fourth hit cracks
 
-**Fragment pieces** — named `ColVis.{N}` (each becomes a separate physics object on final shatter):
-- `blockL-ColVis.001` through `blockL-ColVis.008` — each with its own translation offset and mesh geometry
+**Fragment pieces** — named `Frag.{N}` (each becomes a separate physics object on final shatter):
+- `blockL-Frag.001` through `blockL-Frag.008` — each with its own translation offset and mesh geometry
+
+> **Naming convention**: Fragment pieces use the `Frag` prefix, NOT `ColVis`. This distinguishes breakable pieces from compound colliders. A king with multiple `ColVis` children (crown + base) is a single compound collider, not a destructible template. Only `Frag`-prefixed nodes are treated as fragment pieces. The existing GLBs need to be updated to rename `ColVis.{N}` → `Frag.{N}` on fragment pieces.
 
 ## Design
 
@@ -25,7 +27,7 @@ A fragment-capable block template contains two types of meshes:
 
 At startup, `templateRegistry.js` loads each template GLB and caches:
 
-**Regular template** (single Col/ColVis child or multiple that merge into one shape):
+**Regular template** (e.g., blocks, trebuchets, missiles):
 
 ```js
 {
@@ -35,7 +37,7 @@ At startup, `templateRegistry.js` loads each template GLB and caches:
 }
 ```
 
-**Destructible template** (auto-detected from GLB contents):
+**Destructible template** (detected by presence of `Frag` or `hit{N}-Visual` nodes):
 
 ```js
 {
@@ -49,19 +51,22 @@ At startup, `templateRegistry.js` loads each template GLB and caches:
       halfX, halfY, halfZ,
       offsetX, offsetY, offsetZ,
       convexPositions: Float32Array,
+      precomputedShape: PhysicsShape,  // convex hull shape built at startup
     },
-    // one entry per ColVis child
+    // one entry per Frag child
   ],
 }
 ```
 
-**Auto-detection**: The registry scans each template's children for two patterns:
+**Detection rules**:
 - Nodes matching `hit{N}-Visual` → collected into `hitStages` array, sorted by N
-- Multiple `ColVis` nodes → collected into `fragments` array with per-piece vertex data
-
-If either pattern is found, the template is marked as destructible. `hitStages` drives the crack progression; `fragments` drives the final shatter. A template may have stages without fragments (just cracks, then disappears) or fragments without stages (shatters immediately on final hit).
+- Nodes with `Frag` in their name → collected into `fragments` array with per-piece vertex data
+- `ColVis` nodes are always compound colliders (merged into one shape), never fragment pieces
+- A template may have stages without fragments (just cracks, then disappears) or fragments without stages (shatters immediately on final hit)
 
 **Vertex extraction**: For every template, `convexPositions` is extracted using the same approach as `main`'s `extractConvexPositions()` — reads vertex positions from collider meshes, transforms into root-local space, stores as `Float32Array`. This is cheap at startup. Whether it is used depends on the `shape` param at spawn time.
+
+**Pre-computed convex hull shapes**: For each fragment piece, the registry builds a `PhysicsShape` (convex hull) from the cached vertex data at startup. At shatter time, fragment bodies are instantiated with the pre-built shape — no hull computation on the hot path. This avoids a spike when multiple blocks shatter simultaneously (worst case: 5 blocks × 8 fragments = 40 hull computations in one tick).
 
 ### 2. spawn() — Explicit Shape Selection
 
@@ -86,7 +91,7 @@ The shape string is stored on the game object and passed through to `physics.js`
 - `"sphere"` → `TransformNode`, `PhysicsAggregate` with `SPHERE` (radius from max half-extent).
 - `"box"` (default) → `TransformNode`, `PhysicsAggregate` with `BOX` (extents + center from cached bounds).
 
-Convex hull mesh creation follows `main`'s pattern: create `Mesh`, apply `VertexData` with positions + fan triangle indices, compute world matrix, pass to `PhysicsAggregate`.
+Convex hull mesh creation follows `main`'s pattern: create `Mesh`, apply `VertexData` with positions + fan triangle indices, compute world matrix, pass to `PhysicsAggregate`. The fan indices are only needed so Babylon considers it valid geometry (`getTotalVertices() > 0`); Havok computes the actual convex hull from vertex positions regardless of index winding.
 
 A shared helper is exposed for reuse:
 
@@ -94,7 +99,7 @@ A shared helper is exposed for reuse:
 export function createConvexHullBody(id, positions, position, rotation, physicsOptions)
 ```
 
-Used by both `createPhysicsBodies()` (for kings, etc.) and `fragmentation.js` (for fragment pieces).
+This creates a `Mesh` internally, applies `VertexData`, and returns the `PhysicsAggregate`. Used by both `createPhysicsBodies()` (for kings, etc.) and `fragmentation.js` (for fragment pieces).
 
 Arena colliders are unchanged — AABB boxes via `createArenaColliders()`.
 
@@ -136,33 +141,52 @@ The game loop detects "block reached maxHits with sufficient missile speed" and 
 
 **shatterBlock() flow**:
 
-1. Look up the block's fragment template in the registry (derive template path from object ID, or a configured `fragmentTemplate` field on the block).
+1. Look up the block's fragment template via the `fragmentTemplate` field on the game object. This is the only way to link a block to its fragment source — no ID-based derivation.
 2. Check if template has a `fragments` array — if not, just delete the block.
 3. For each fragment piece in the cached array:
    - Calculate world position: block position + piece's `localX/Y/Z` rotated by block's current rotation.
    - Calculate spread velocity: missile impact velocity (scaled) + random scatter.
    - Create a game object with `isFragment: true`, `parentBlockId`, `createdTick`, `pieceIndex`.
-   - Create a `CONVEX_HULL` physics body via `createConvexHullBody()` using piece's cached `convexPositions`.
+   - Create a physics body using the piece's `precomputedShape` (convex hull built at startup). No hull computation at runtime.
    - Apply linear velocity + random angular velocity.
 4. Delete the original block (game object + physics body).
 5. Broadcast `blockBroken` event with `fragIds` to clients.
 
-**Fragment lifecycle**:
+Fragment physics aggregates are stored in the same `physicsAggregates` Map as all other objects. This ensures `clearScene()` on round transitions or resets correctly disposes them.
 
-- Fragments are live physics objects that collide with everything.
-- After `fragmentLifetimeMs` (configurable), server marks them for removal.
-- Two-phase removal: broadcast removal event on tick N, dispose physics on tick N+1.
-- Client plays shrink animation on receiving the event.
+#### 4c. Fragment-Missile Collisions
+
+After the immunity period (`fragmentImmunityMs`), missiles can hit fragments:
+
+- Detection uses the same collision check as block hits (AABB overlap or Havok contact).
+- On hit: fragment is marked `removing: true`, missile receives a speed penalty (`fragmentHitSpeedPenalty`).
+- Impact position is stored for sound effects (`missile_hits_fragment`).
+
+Fragments also collide with each other, arena walls, and all other physics objects — Havok handles this automatically since fragments are regular dynamic bodies.
+
+#### 4d. Fragment Lifecycle & Removal
+
+Fragments are removed either by missile hit or by lifetime expiry (`fragmentLifetimeMs`).
+
+**Time-based removal** (not tick-based): When a fragment is marked for removal, the server sets `removing: true` and `removeAfterMs` (current time + `fragmentShrinkMs`). During this window:
+
+- The fragment remains in `gameObjects` and continues to be sent in state updates.
+- The server broadcasts a `fragmentRemoving` event so the client starts the shrink animation.
+- Havok continues simulating the fragment (it can still collide).
+- After `fragmentShrinkMs` elapses, the server disposes the physics body and removes from `gameObjects`.
+
+This ensures clients have enough time to receive the event and play the animation, even with network jitter. At 60Hz with 500ms shrink, that's ~30 ticks of continued position updates.
 
 **Config values** (exposed in `BARRAGE_CONFIG` for tweaking):
 
-| Key | Description | Default (from main) |
-|-----|-------------|---------------------|
-| `fragmentLifetimeMs` | How long fragments live as physics objects | new, needs tuning |
+| Key | Description | Default |
+|-----|-------------|---------|
+| `fragmentLifetimeMs` | How long fragments live as physics objects | needs tuning |
 | `fragmentSpreadX` | Max horizontal velocity scatter | 4 |
 | `fragmentSpreadY` | Max vertical velocity scatter | 2 |
-| `fragmentShrinkMs` | Client shrink animation duration | 500 |
+| `fragmentShrinkMs` | Shrink animation + removal grace period | 500 |
 | `fragmentImmunityMs` | Protection period before fragments can be hit | 500 |
+| `fragmentHitSpeedPenalty` | Speed reduction on missile when hitting a fragment | 3 |
 
 ### 5. Client-Side Handling
 
@@ -177,14 +201,15 @@ The client does not need shape awareness — that is server-only physics.
 
 1. Hide the block visual (including any active crack stage mesh).
 2. Fragment objects appear in regular state updates (position, rotation).
-3. Client creates visuals by cloning the fragment template (single GLB with all pieces).
-4. Each fragment's `pieceIndex` (sent by server) tells the client which ColVis child mesh to show — all other children (other ColVis pieces + all hit-Visual stages) are hidden.
+3. For each fragment, clone only the specific `Frag` child mesh from the template — NOT the entire template. This avoids creating 12 nodes per fragment (8 fragments × 12 children = 96 nodes) when only 8 are needed.
+4. Each fragment's `pieceIndex` (sent by server) identifies which `Frag` child to clone.
 5. Fragment positions sync from server each frame like any other object.
 
-**Shrink and dispose**: When server broadcasts fragment removal:
+**Shrink and dispose**: When client receives `fragmentRemoving` event:
 
 1. Client plays shrink animation over `fragmentShrinkMs`.
 2. Disposes the visual mesh after animation completes.
+3. Fragment continues receiving position updates during the shrink (server keeps sending them).
 
 ### 6. Linking Block to Fragment Template
 
@@ -196,16 +221,40 @@ spawn("blocks/defarult-L", { x: -12, y: 1, fragmentTemplate: "blocks/fragmented-
 
 If `fragmentTemplate` is not set, the block is not destructible (no crack stages, no shattering). The `hitStages` and `fragments` data come from the fragment template, not the block's own template.
 
-This keeps the block mesh (clean geometry) separate from the damage/fragment mesh (cracks + pieces), which matches the current GLB organization.
+This is the only way to link a block to its fragment source. No ID-based derivation (e.g., the old `block.id.includes("blockl") ? "L" : "R"` pattern) — that approach is fragile and doesn't survive renaming.
+
+### 7. Wire Format
+
+**Per-tick state updates** (`toWireObject`): Add `hitStage` for blocks that have one. Fragments are sent as regular objects with their own `id`, `x`, `y`, `z`, `rot`. No extra fragment-specific fields needed per-tick — `pieceIndex` and `parentBlockId` are sent once via the `blockBroken` event.
+
+**Events**:
+
+| Event | Payload | When |
+|-------|---------|------|
+| `blockHit` | `{ blockId, hitStage }` | Each non-fatal hit |
+| `blockBroken` | `{ blockId, fragIds: [{ id, pieceIndex }] }` | Final hit triggers shatter |
+| `fragmentRemoving` | `{ fragId }` | Fragment hit by missile or lifetime expired |
+
+### 8. Game Reset & Round Transitions
+
+`clearScene()` disposes all entries in the `physicsAggregates` Map and clears `gameObjects`. Since fragment aggregates are stored in the same map, they are cleaned up automatically on:
+
+- Round transitions (`evaluateWinCondition()` triggers next round)
+- Manual reset
+- Level reload
+
+No special-case fragment cleanup is needed.
 
 ## Files Affected
 
 | File | Change |
 |------|--------|
-| `server/game/templateRegistry.js` | Add `convexPositions` extraction, auto-detect `hitStages` and `fragments` from GLB node names, cache per-piece vertex data |
+| `server/game/templateRegistry.js` | Add `convexPositions` extraction, detect `Frag` and `hit{N}-Visual` nodes, cache per-piece vertex data, pre-compute convex hull `PhysicsShape` objects at startup |
 | `server/game/physics.js` | Shape-aware body creation, expose `createConvexHullBody` helper |
-| `server/game/fragmentation.js` | New module: `shatterBlock()` capability, fragment lifecycle management |
+| `server/game/fragmentation.js` | New module: `shatterBlock()` capability, fragment lifecycle, fragment-missile collision, time-based removal |
 | `server/game/level.js` | Pass `shape` and `fragmentTemplate` from spawn config to game object, wire up level hooks |
 | `server/game/levels/level1.js` | Add `shape` params, `fragmentTemplate` links, `onBlockDestroyed` hook |
+| `server/game/entities.js` | Add `hitStage`, `isFragment`, `pieceIndex` to `toWireObject()` |
 | `public/config.js` | Add fragment config values |
-| `public/client/level.js` | Handle crack stage swapping, `blockBroken` event, `pieceIndex`-based child visibility, shrink animation |
+| `public/client/level.js` | Handle crack stage swapping, `blockBroken` event, per-piece child cloning, shrink animation |
+| GLB files | Rename `ColVis.{N}` → `Frag.{N}` on fragment pieces in `fragmented-L.glb` and `fragmented-R.glb` |
