@@ -100,7 +100,7 @@ export const BARRAGE_CONFIG = {
   kingKnockoutAngle: 45,                  // deg
   blockMaxHits: 2,                        // hits before fragmentation
   kingHitVelocityMin: 3,                  // m/s (min speed to register a king hit)
-  blockHitVelocityMin: 7,                 // m/s (min speed to register a hit)
+  blockHitVelocityMin: 6,                 // m/s (min speed to register a hit)
   blockHitCooldownMs: 100,                // ms - missile can only crack one block per this window
   blockFragmentVelocityMin: 5,           // m/s (min speed to trigger fragmentation)
   fragmentHitVelocityMin: 3,             // m/s (min speed to destroy a fragment)
