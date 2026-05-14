@@ -1,7 +1,7 @@
 import { scene, physicsAggregates } from "./physics.js";
 import { gameObjects, gameState } from "./state.js";
-import { isMissileName, isBlockName, isKingName, isFragmentName } from "./entities.js";
-import { getActiveLevel, getHookContext, callHook } from "./modeRunner.js";
+import { isMissileName, isBlockName, isFragmentName } from "./entities.js";
+import { getActiveLevel, getHookContext } from "./modeRunner.js";
 import { broadcast } from "../net/broadcast.js";
 import { BARRAGE_CONFIG } from "../../public/config.js";
 
@@ -33,7 +33,9 @@ function handleMissileBlockHit(missile, block) {
       events: [{ kind: "blockHit", blockId: block.id, hitStage: block.hitStage }],
     });
   } else {
-    callHook(getActiveLevel()?.def.hooks?.onBlockDestroyed, block, missile, getHookContext());
+    // Called synchronously — collision hooks must not be async.
+    const hook = getActiveLevel()?.def.hooks?.onBlockDestroyed;
+    if (hook) hook(block, missile, getHookContext());
   }
 }
 

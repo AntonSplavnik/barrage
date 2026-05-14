@@ -286,6 +286,14 @@ export function shrinkAndDisposeFragment(fragId) {
   const startScale = visual.scaling?.clone() ?? new BABYLON.Vector3(1, 1, 1);
 
   const observer = scene.onBeforeRenderObservable.add(() => {
+    if (visual.isDisposed()) {
+      scene.onBeforeRenderObservable.remove(observer);
+      fragmentVisuals.delete(fragId);
+      visualObjects.delete(fragId);
+      visualBaseRotations.delete(fragId);
+      return;
+    }
+
     const elapsed = performance.now() - startTime;
     const t = Math.min(elapsed / shrinkMs, 1);
     const s = 1 - t;
@@ -363,6 +371,18 @@ export function ensureVisualsForState(objects) {
   }
 
   return created;
+}
+
+export function clearDestructionVisuals() {
+  for (const visual of crackStageVisuals.values()) {
+    visual.dispose(false, false);
+  }
+  crackStageVisuals.clear();
+
+  for (const visual of fragmentVisuals.values()) {
+    if (!visual.isDisposed()) visual.dispose(false, false);
+  }
+  fragmentVisuals.clear();
 }
 
 function clearLevel() {

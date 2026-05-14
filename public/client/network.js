@@ -1,6 +1,6 @@
 import { connectionEl, playerEl, scoreLeftEl, scoreRightEl, matchEndEl, matchEndTextEl, rematchEl, engine, scene } from "./engine.js";
 import { applyState } from "./state.js";
-import { loadLevel, reloadLevel, ensureVisualsForState, hideBlockVisual, shrinkAndDisposeFragment } from "./level.js";
+import { loadLevel, reloadLevel, ensureVisualsForState, hideBlockVisual, shrinkAndDisposeFragment, clearDestructionVisuals } from "./level.js";
 
 let seq = 0;
 let displayedScores = { P1: 0, P2: 0 };
@@ -112,6 +112,7 @@ socket.addEventListener("message", async (event) => {
   }
 
   if (message.type === "roundStarted") {
+    clearDestructionVisuals();
     if (message.level) reloadLevel(message.level);
   }
 
