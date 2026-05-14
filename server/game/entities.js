@@ -22,6 +22,9 @@ export function toWireObject(object) {
     ...(object.loadedInto ? { loadedInto: object.loadedInto } : {}),
     ...(object.armAngle !== undefined ? { armAngle: object.armAngle, fireState: object.fireState } : {}),
     ...(object.hits !== undefined ? { hits: object.hits, maxHits: object.maxHits } : {}),
+    ...(object.hitStage !== undefined ? { hitStage: object.hitStage } : {}),
+    ...(!object.isFragment && object.fragmentTemplate ? { fragmentTemplate: object.fragmentTemplate } : {}),
+    ...(object.isFragment ? { isFragment: true, pieceIndex: object.pieceIndex, fragmentTemplate: object.fragmentTemplate } : {}),
   };
 }
 
@@ -35,6 +38,14 @@ export function isMissileName(name) {
 
 export function isKingName(name) {
   return name.startsWith("kings/");
+}
+
+export function isBlockName(name) {
+  return name.startsWith("blocks/");
+}
+
+export function isFragmentName(name) {
+  return name.startsWith("blocks/") && name.includes("_frag_");
 }
 
 export function restArmAngleForTrebuchet() {

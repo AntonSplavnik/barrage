@@ -19,6 +19,7 @@ const templateCache = new Map();
 let allPaths = [];
 
 function childRole(name) {
+  if (name.includes("Frag")) return "Frag";
   if (name.includes("ColVis")) return "ColVis";
   if (name.includes("Visual") || name.includes("Vis")) return "Vis";
   if (name.includes("Collider") || name.includes("Col")) return "Col";
