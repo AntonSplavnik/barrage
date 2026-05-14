@@ -42,6 +42,14 @@ export const BARRAGE_CONFIG = {
   vfxMissileHitBlockSize: 0.5,
   vfxMissileHitBlockMinScale: 0.1,
 
+  missileBombTriggerSpeed: 10,              // m/s, min impact speed to trigger detonation + VFX
+  missileBombBlastRadius: 2.99,              // m, blast radius for fragmentation and VFX
+  vfxMissileBombExplodeCount: 100,         // max particle count
+  vfxMissileBombExplodeDurationMs: 500,   // ms, max particle lifetime
+  vfxMissileBombExplodeSpeed: 14,         // m/s, max particle speed
+  vfxMissileBombExplodeSize: 3,         // m, max particle size
+  vfxMissileBombExplodeGravity: -4,       // m/s², particle gravity
+
   // Rendering.
   importedLightIntensityScale: 0.01,      // multiplier
   fallbackLightIntensity: 0.1,            // multiplier
@@ -97,18 +105,18 @@ export const BARRAGE_CONFIG = {
 
   // Gameplay Rules.
   noMansLandX: 5,                         // m (half-width of centre dead zone)
-  kingKnockoutAngle: 45,                  // deg
-  blockMaxHits: 2,                        // hits before fragmentation
-  kingHitVelocityMin: 3,                  // m/s (min speed to register a king hit)
-  blockHitVelocityMin: 6,                 // m/s (min speed to register a hit)
+  kingKnockoutAngle: 50,                  // deg
+  blockMaxHits: 3,                        // hits before fragmentation
+  kingHitVelocityMin: 5,                  // m/s (min speed to register a king hit)
+  blockHitVelocityMin: 7,                 // m/s (min speed to register a hit)
   blockHitCooldownMs: 100,                // ms - missile can only crack one block per this window
-  blockFragmentVelocityMin: 5,           // m/s (min speed to trigger fragmentation)
+  blockFragmentVelocityMin: 7,           // m/s (min speed to trigger fragmentation)
   fragmentHitVelocityMin: 3,             // m/s (min speed to destroy a fragment)
   fragmentHitSpeedPenalty: 0.5,            // m/s lost per fragment hit (on top of physics)
   fragmentFriction: 0.6,                 // 0-1 (lower = slides more)
   fragmentSpreadX: 4,                    // m/s max random horizontal scatter
   fragmentSpreadY: 2,                    // m/s max random upward scatter
-  fragmentSlowShrinkMs: 15000,            // ms - fragments shrink away if not hit
+  fragmentSlowShrinkMs: 10000,            // ms - fragments shrink away if not hit
   fragmentColliderShrinkStep: 0.02,       // 0-1 collider scale step while shrinking
   fragmentShrinkMs: 500,                  // ms
   fragmentImmunityMs: 500,                // ms - newly spawned fragments are immune to hits
@@ -142,7 +150,7 @@ export const BARRAGE_CONFIG = {
   aimArrowHeadWidthScale: 1,           // multiplier of arrow length
 
   // Shot Arc Prediction.
-  shotArcFraction: 0.67,                  // fraction of predicted flight path to draw
+  shotArcFraction: 0.5,                  // fraction of predicted flight path to draw
   shotArcDotCount: 34,                    // number of dotted trajectory points
   shotArcDotSize: 0.25,                   // m
   shotArcMaxDuration: 4,                  // s

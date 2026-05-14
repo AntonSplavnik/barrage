@@ -1,8 +1,9 @@
 import { BARRAGE_CONFIG } from "./config.js";
 
 const CONFIG = BARRAGE_CONFIG;
-const { Color3, Mesh, StandardMaterial, Vector3, VertexData } = BABYLON;
+const { Color3, Color4, DynamicTexture, Mesh, ParticleSystem, StandardMaterial, Vector3, VertexData } = BABYLON;
 const MISSILE_BLOCK_VFX_EVENTS = new Set(["missile_hit_block", "missile_fragments_block"]);
+const MISSILE_BOMB_HIT_EVENTS = new Set(["missile_bomb_hit"]);
 
 function randomBetween(min, max) {
   return min + Math.random() * (max - min);
@@ -47,8 +48,27 @@ function createTetrahedron(name, size, scene) {
   return mesh;
 }
 
+function createExplosionTexture(scene) {
+  const size = 64;
+  const tex = new DynamicTexture("vfxExplosionTex", { width: size, height: size }, scene, false);
+  tex.hasAlpha = true;
+  const ctx = tex.getContext();
+  const c = size / 2;
+  const gradient = ctx.createRadialGradient(c, c, 0, c, c, c);
+  gradient.addColorStop(0.0, "rgba(255,255,255,1.0)");
+  gradient.addColorStop(0.2, "rgba(255,220,80,0.95)");
+  gradient.addColorStop(0.5, "rgba(255,100,20,0.6)");
+  gradient.addColorStop(1.0, "rgba(0,0,0,0)");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, size, size);
+  tex.update();
+  return tex;
+}
+
 export function createVfxManager(scene) {
   const activeBursts = new Map();
+  const activeExplosions = new Set();
+  const explosionTexture = createExplosionTexture(scene);
   const fragmentMaterial = new StandardMaterial("VfxGreyFragmentMaterial", scene);
   fragmentMaterial.diffuseColor = new Color3(0.35, 0.35, 0.34);
   fragmentMaterial.emissiveColor = new Color3(0.18, 0.18, 0.17);
@@ -113,12 +133,62 @@ export function createVfxManager(scene) {
     activeBursts.set(observer, fragments);
   }
 
-  function handleEvent(ev) {
-    if (ev.kind !== "soundEffect" || !MISSILE_BLOCK_VFX_EVENTS.has(ev.effect)) return;
-    spawnMissileHitBlock(vfxPositionFromEvent(ev), impactFactorForEvent(ev));
+  function spawnMissileExplode(position) {
+    const origin = new Vector3(position.x ?? 0, position.y ?? 0, 0);
+    const blastRadius = CONFIG.missileBombBlastRadius ?? 5;
+    const count = CONFIG.vfxMissileBombExplodeCount ?? 60;
+    const lifetimeSec = (CONFIG.vfxMissileBombExplodeDurationMs ?? 500) / 1000;
+    const speed = CONFIG.vfxMissileBombExplodeSpeed ?? 14;
+    const size = CONFIG.vfxMissileBombExplodeSize ?? 1.8;
+
+    const ps = new ParticleSystem("vfxMissileExplode", count, scene);
+    ps.particleTexture = explosionTexture;
+    ps.emitter = origin.clone();
+    ps.createSphereEmitter(blastRadius * 0.06, 1);
+
+    ps.color1 = new Color4(1, 0.95, 0.4, 1);
+    ps.color2 = new Color4(1, 0.5, 0.1, 1);
+    ps.colorDead = new Color4(0.3, 0.1, 0.0, 0);
+
+    ps.minSize = size * 0.3;
+    ps.maxSize = size;
+    ps.minLifeTime = lifetimeSec * 0.4;
+    ps.maxLifeTime = lifetimeSec;
+    ps.minEmitPower = speed * 0.3;
+    ps.maxEmitPower = speed;
+
+    ps.gravity = new Vector3(0, CONFIG.vfxMissileBombExplodeGravity ?? -4, 0);
+    ps.minAngularSpeed = 0;
+    ps.maxAngularSpeed = Math.PI;
+    ps.blendMode = ParticleSystem.BLENDMODE_ADD;
+    ps.renderingGroupId = 2;
+
+    ps.emitRate = count / 0.05;
+    ps.targetStopDuration = 0.05;
+
+    activeExplosions.add(ps);
+    ps.onStoppedObservable.addOnce(() => {
+      setTimeout(() => {
+        if (!ps.isDisposed) ps.dispose(false);
+        activeExplosions.delete(ps);
+      }, lifetimeSec * 1000 + 100);
+    });
+
+    ps.start();
+    spawnMissileHitBlock(position, 1);
   }
 
-  function dispose() {
+  function handleEvent(ev) {
+    if (ev.kind !== "soundEffect") return;
+    if (MISSILE_BLOCK_VFX_EVENTS.has(ev.effect)) {
+      spawnMissileHitBlock(vfxPositionFromEvent(ev), impactFactorForEvent(ev));
+    }
+    if (MISSILE_BOMB_HIT_EVENTS.has(ev.effect)) {
+      spawnMissileExplode(vfxPositionFromEvent(ev));
+    }
+  }
+
+  function clearEffects() {
     for (const [observer, fragments] of activeBursts) {
       scene.onBeforeRenderObservable.remove(observer);
       for (const fragment of fragments) {
@@ -126,9 +196,19 @@ export function createVfxManager(scene) {
       }
     }
     activeBursts.clear();
+    for (const ps of activeExplosions) {
+      if (!ps.isDisposed) ps.dispose(false);
+    }
+    activeExplosions.clear();
+  }
+
+  function dispose() {
+    clearEffects();
+    explosionTexture.dispose();
   }
 
   return {
+    clearEffects,
     dispose,
     handleEvent,
   };

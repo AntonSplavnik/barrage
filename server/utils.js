@@ -30,6 +30,11 @@ export function isMissileName(name) {
   return name.toLowerCase().includes("missile");
 }
 
+export function isMissileBombName(name) {
+  const lower = name.toLowerCase();
+  return lower.includes("missile") && lower.includes("bomb");
+}
+
 export function isKingName(name) {
   return name.toLowerCase().includes("king");
 }

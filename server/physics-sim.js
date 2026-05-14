@@ -7,6 +7,7 @@ export function runPhysicsSimulationTick({
   gameObjects,
   handlePhysicsContacts,
   physicsContactEvents,
+  processBombDetonations,
   simulatePhysics,
   tick,
   updateFragmentColliderShrinks,
@@ -24,6 +25,7 @@ export function runPhysicsSimulationTick({
   simulatePhysics(dt);
   const havokContacts = physicsContactEvents ? [...physicsContactEvents] : [];
   handlePhysicsContacts?.(havokContacts);
+  processBombDetonations?.(tick);
 
   return processPendingPhysicsObjects({
     fragmentBlock,
@@ -43,6 +45,7 @@ function processPendingPhysicsObjects({
 }) {
   const fragmentHits = [];
   const fragmentationErrors = [];
+  const removedObjectIds = [];
 
   for (const object of [...gameObjects.values()]) {
     if (object.pendingFragment) {
@@ -52,6 +55,13 @@ function processPendingPhysicsObjects({
         object.pendingFragment = null;
         fragmentationErrors.push({ object, error: err });
       }
+    }
+
+    if (object.pendingDispose !== undefined && tick >= object.pendingDispose) {
+      removedObjectIds.push(object.id);
+      disposePhysicsAggregate?.(object.id);
+      gameObjects.delete(object.id);
+      continue;
     }
 
     if (object.pendingRemove && object.isFragment) {
@@ -72,5 +82,6 @@ function processPendingPhysicsObjects({
     fragmentationErrors,
     fragmentHits,
     havokContacts,
+    removedObjectIds,
   };
 }
