@@ -24,7 +24,7 @@ globalThis.XMLHttpRequest = XMLHttpRequest;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const assetsDir = path.join(__dirname, "../../public/assets");
 
-function clearScene() {
+export function clearScene() {
   for (const [, aggregate] of physicsAggregates) {
     aggregate.dispose();
   }
@@ -85,6 +85,19 @@ function createSpawnFunction() {
       friction: SERVER_CONFIG.dynamicFriction,
       restitution: SERVER_CONFIG.dynamicRestitution,
       player: opts.player ?? null,
+      ...(opts.shape ? { shape: opts.shape } : {}),
+      ...(opts.fragmentTemplate ? (() => {
+        const fragTemplate = getTemplate(opts.fragmentTemplate);
+        if (!fragTemplate) {
+          console.warn(`Fragment template "${opts.fragmentTemplate}" not found for ${id}`);
+        }
+        const hitStages = fragTemplate?.hitStages ?? [];
+        return {
+          fragmentTemplate: opts.fragmentTemplate,
+          hitStage: 0,
+          maxHits: hitStages.length + 1,
+        };
+      })() : {}),
       ...(isTrebuchetName(id) ? {
         loaded: false,
         loadedMissileId: null,
