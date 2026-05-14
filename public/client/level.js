@@ -242,11 +242,75 @@ export function updateCrackStage(objectId, hitStage, fragmentTemplate) {
   crackStageVisuals.set(objectId, clone);
 }
 
+function findFragMesh(templatePath, pieceIndex) {
+  const templateRoot = getTemplateRoot(templatePath);
+  if (!templateRoot) return null;
+
+  const suffix = String(pieceIndex + 1).padStart(3, "0");
+  const descendants = descendantsOf(templateRoot);
+  return descendants.find((d) => d.name.includes(`Frag.${suffix}`)) ?? null;
+}
+
+export function createFragmentVisual(fragId, pieceIndex, fragmentTemplate) {
+  if (fragmentVisuals.has(fragId)) return;
+
+  const sourceMesh = findFragMesh(fragmentTemplate, pieceIndex);
+  if (!sourceMesh) return;
+
+  const clone = sourceMesh.clone(fragId);
+  clone.parent = null;
+  clone.setEnabled(true);
+  registerCloneShadows(clone);
+  fragmentVisuals.set(fragId, clone);
+  visualObjects.set(fragId, clone);
+  visualBaseRotations.set(fragId, { x: 0, y: 0, z: 0 });
+}
+
+export function hideBlockVisual(blockId) {
+  const visual = visualObjects.get(blockId);
+  if (visual) visual.setEnabled(false);
+
+  const crack = crackStageVisuals.get(blockId);
+  if (crack) {
+    crack.dispose(false, false);
+    crackStageVisuals.delete(blockId);
+  }
+}
+
+export function shrinkAndDisposeFragment(fragId) {
+  const visual = fragmentVisuals.get(fragId);
+  if (!visual) return;
+
+  const shrinkMs = (window.BARRAGE_CONFIG?.fragmentShrinkMs ?? 500);
+  const startTime = performance.now();
+  const startScale = visual.scaling?.clone() ?? new BABYLON.Vector3(1, 1, 1);
+
+  const observer = scene.onBeforeRenderObservable.add(() => {
+    const elapsed = performance.now() - startTime;
+    const t = Math.min(elapsed / shrinkMs, 1);
+    const s = 1 - t;
+    visual.scaling.set(startScale.x * s, startScale.y * s, startScale.z * s);
+
+    if (t >= 1) {
+      scene.onBeforeRenderObservable.remove(observer);
+      visual.dispose(false, false);
+      fragmentVisuals.delete(fragId);
+      visualObjects.delete(fragId);
+      visualBaseRotations.delete(fragId);
+    }
+  });
+}
+
 export function ensureVisualsForState(objects) {
   let created = false;
 
   for (const obj of objects) {
     if (visualObjects.has(obj.id)) continue;
+
+    if (obj.isFragment) {
+      createFragmentVisual(obj.id, obj.pieceIndex, obj.fragmentTemplate);
+      continue;
+    }
 
     const templatePath = templatePathFromId(obj.id);
     const templateRoot = getTemplateRoot(templatePath);
@@ -264,6 +328,9 @@ export function ensureVisualsForState(objects) {
     for (const node of descendants) {
       const role = childRole(node.name);
       if (role === "Col" && node.setEnabled) {
+        node.setEnabled(false);
+      }
+      if (/hit\d+-Visual/.test(node.name) && node.setEnabled) {
         node.setEnabled(false);
       }
     }

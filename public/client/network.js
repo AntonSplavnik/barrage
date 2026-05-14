@@ -1,6 +1,6 @@
 import { connectionEl, playerEl, scoreLeftEl, scoreRightEl, matchEndEl, matchEndTextEl, rematchEl, engine, scene } from "./engine.js";
 import { applyState } from "./state.js";
-import { loadLevel, reloadLevel, ensureVisualsForState } from "./level.js";
+import { loadLevel, reloadLevel, ensureVisualsForState, hideBlockVisual, shrinkAndDisposeFragment } from "./level.js";
 
 let seq = 0;
 let displayedScores = { P1: 0, P2: 0 };
@@ -129,6 +129,17 @@ socket.addEventListener("message", async (event) => {
     scoreRightEl.innerHTML = "";
     displayedScores = { P1: 0, P2: 0 };
     if (message.level) reloadLevel(message.level);
+  }
+
+  if (message.type === "event") {
+    for (const evt of message.events ?? []) {
+      if (evt.kind === "blockBroken") {
+        hideBlockVisual(evt.blockId);
+      }
+      if (evt.kind === "fragmentRemoving") {
+        shrinkAndDisposeFragment(evt.fragId);
+      }
+    }
   }
 
   if (message.type === "state") {
