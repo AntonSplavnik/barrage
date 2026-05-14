@@ -619,11 +619,11 @@ function releaseDrag(object, releaseVelocity) {
   constrainWorldBounds(object);
   if (!maybeLoadMissile(object)) {
     moveMissileReleaseTowardOriginUntilClear(object);
-    setPhysicsBodyTrigger(object, false);
     object.vx = releaseVelocity.x;
     object.vy = releaseVelocity.y;
     object.vz = releaseVelocity.z;
     syncPhysicsBodyFromObject(object, releaseVelocity);
+    setPhysicsBodyTrigger(object, false);
   } else {
     setPhysicsBodyTrigger(object, true);
     syncPhysicsBodyFromObject(object, { x: 0, y: 0, z: 0 });

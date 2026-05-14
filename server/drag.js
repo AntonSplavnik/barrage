@@ -144,14 +144,25 @@ export function moveMissileReleaseTowardOriginUntilClear(object, {
   const step = Math.max(0.01, config.missileReleaseDepenetrationStep ?? 0.25);
   const maxDistance = Math.max(0, config.missileReleaseDepenetrationMaxDistance ?? 60);
   const startX = Number(object.x);
-  const direction = startX >= 0 ? -1 : 1;
+  const startY = Number(object.y);
 
+  // Try inward (toward center) then outward, interleaving so nearest clear wins.
+  const inDir = startX >= 0 ? -1 : 1;
   for (let distance = step; distance <= maxDistance + 0.0001; distance += step) {
-    const nextX = startX + direction * distance;
-    const position = { x: nextX, y: object.y, z: object.z };
+    for (const dir of [inDir, -inDir]) {
+      const pos = { x: startX + dir * distance, y: startY, z: object.z };
+      if (!overlapsAnyColliderAt(object, pos, gameObjects)) {
+        object.x = pos.x;
+        return true;
+      }
+    }
+  }
 
-    if (!overlapsAnyColliderAt(object, position, gameObjects)) {
-      object.x = nextX;
+  // Horizontal search failed — try upward.
+  for (let distance = step; distance <= maxDistance + 0.0001; distance += step) {
+    const pos = { x: startX, y: startY + distance, z: object.z };
+    if (!overlapsAnyColliderAt(object, pos, gameObjects)) {
+      object.y = pos.y;
       return true;
     }
   }
