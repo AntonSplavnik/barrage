@@ -6,7 +6,9 @@ import {
 } from "./entities.js";
 import { gameObjects, gameState, dragState } from "./state.js";
 import { broadcast } from "../net/broadcast.js";
-import { syncPhysicsBodyFromObject, setPhysicsBodyTrigger } from "./physics.js";
+import { syncPhysicsBodyFromObject, setPhysicsBodyTrigger, physicsAggregates } from "./physics.js";
+import { shatterBlock } from "./fragmentation.js";
+import { clearCollisionState } from "./collisions.js";
 import { loadLevel } from "./levelRunner.js";
 
 let activeMode = null;
@@ -27,6 +29,7 @@ export function getHookContext() {
     gameState,
     activeMode,
     activeLevel,
+    shatterBlock,
   };
 }
 
@@ -41,6 +44,16 @@ export async function callHook(fn, ...args) {
 
 export function resetRoundState() {
   dragState.clear();
+
+  clearCollisionState();
+
+  for (const [id, obj] of gameObjects) {
+    if (obj.isFragment) {
+      physicsAggregates.get(id)?.dispose();
+      physicsAggregates.delete(id);
+      gameObjects.delete(id);
+    }
+  }
 
   for (const object of gameObjects.values()) {
     object.x = object.originX;
@@ -73,6 +86,10 @@ export function resetRoundState() {
 
     if (object.hits !== undefined) {
       object.hits = 0;
+    }
+
+    if (object.hitStage !== undefined) {
+      object.hitStage = 0;
     }
 
     syncPhysicsBodyFromObject(object, { x: 0, y: 0, z: 0 });
