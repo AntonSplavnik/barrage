@@ -169,7 +169,7 @@ export function createVfxManager(scene) {
     activeExplosions.add(ps);
     ps.onStoppedObservable.addOnce(() => {
       setTimeout(() => {
-        if (!ps.isDisposed()) ps.dispose(false);
+        if (!ps.isDisposed) ps.dispose(false);
         activeExplosions.delete(ps);
       }, lifetimeSec * 1000 + 100);
     });
@@ -197,7 +197,7 @@ export function createVfxManager(scene) {
     }
     activeBursts.clear();
     for (const ps of activeExplosions) {
-      if (!ps.isDisposed()) ps.dispose(false);
+      if (!ps.isDisposed) ps.dispose(false);
     }
     activeExplosions.clear();
   }
