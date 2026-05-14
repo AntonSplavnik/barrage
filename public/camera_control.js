@@ -159,10 +159,15 @@ export function createCameraController(scene, getPlayerId) {
     }
   }
 
+  function onMissileLoaded() {
+    cancelReturn();
+    cancelDragReturn();
+    animate(battlefieldCamPos, CONFIG.cameraMissileLoadZoomMs ?? 300);
+  }
+
   function onAimStart() {
     cancelReturn();
     cancelDragReturn();
-    animate(battlefieldCamPos, CONFIG.cameraAimZoomOutMs ?? 250);
   }
 
   function onAimRelease() {
@@ -205,5 +210,5 @@ export function createCameraController(scene, getPlayerId) {
     playerDragCamPos  = null;
   }
 
-  return { snapshotAndPan, onAimStart, onAimRelease, onDragStart, onDragEnd, dispose };
+  return { snapshotAndPan, onAimStart, onAimRelease, onDragStart, onDragEnd, onMissileLoaded, dispose };
 }

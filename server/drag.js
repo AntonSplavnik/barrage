@@ -142,23 +142,18 @@ export function moveMissileReleaseTowardOriginUntilClear(object, {
   if (!gameObjects || !overlapsAnyColliderAt(object, object, gameObjects)) return false;
 
   const step = Math.max(0.01, config.missileReleaseDepenetrationStep ?? 0.25);
-  const maxDistance = Math.max(0, config.missileReleaseDepenetrationMaxDistance ?? 10);
+  const maxDistance = Math.max(0, config.missileReleaseDepenetrationMaxDistance ?? 60);
   const startX = Number(object.x);
-  const direction = startX > 0 ? -1 : startX < 0 ? 1 : 0;
-  if (direction === 0 || maxDistance <= 0) return false;
+  const direction = startX >= 0 ? -1 : 1;
 
   for (let distance = step; distance <= maxDistance + 0.0001; distance += step) {
-    const nextX = Math.abs(distance) >= Math.abs(startX)
-      ? 0
-      : startX + direction * distance;
+    const nextX = startX + direction * distance;
     const position = { x: nextX, y: object.y, z: object.z };
 
     if (!overlapsAnyColliderAt(object, position, gameObjects)) {
       object.x = nextX;
       return true;
     }
-
-    if (nextX === 0) break;
   }
 
   return false;

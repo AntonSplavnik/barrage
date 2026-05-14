@@ -55,6 +55,7 @@ const visualBaseRotations = new Map();
 const latestObjectStates = new Map();
 const initialBlockVisuals = new Map();
 const shrinkObservers = new Map();
+const missileSeenUnloaded = new Set();
 const trebuchetArmNodes = new Map();
 const trebuchetLoadTargets = new Map();
 let seq = 0;
@@ -882,6 +883,7 @@ function disposeLevelScene() {
   visualBaseRotations.clear();
   latestObjectStates.clear();
   trebuchetArmNodes.clear();
+  missileSeenUnloaded.clear();
   trebuchetLoadTargets.clear();
   cameraControl.dispose();
   initialBlockVisuals.clear();
@@ -952,6 +954,14 @@ function applyTrebuchetArmRestPose() {
 
 function applyState(message) {
   for (const object of message.objects || []) {
+    if (isMissileName(object.id)) {
+      if (!object.loadedInto) {
+        missileSeenUnloaded.add(object.id);
+      } else if (missileSeenUnloaded.has(object.id)) {
+        missileSeenUnloaded.delete(object.id);
+        cameraControl.onMissileLoaded();
+      }
+    }
     latestObjectStates.set(object.id, object);
 
     const visual = visualObjects.get(object.id);

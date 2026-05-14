@@ -35,7 +35,7 @@ export const BARRAGE_CONFIG = {
 
   // VFX.
   vfxInvertX: true,
-  vfxMissileHitBlockCount: 3,
+  vfxMissileHitBlockCount: 5,
   vfxMissileHitBlockDurationMs: 1200,
   vfxMissileHitBlockParticleSpeed: 15.0,
   vfxMissileHitBlockGravity: -7.5,
@@ -43,11 +43,11 @@ export const BARRAGE_CONFIG = {
   vfxMissileHitBlockMinScale: 0.1,
 
   missileBombTriggerSpeed: 10,              // m/s, min impact speed to trigger detonation + VFX
-  missileBombBlastRadius: 2.99,              // m, blast radius for fragmentation and VFX
-  vfxMissileBombExplodeCount: 100,         // max particle count
+  missileBombBlastRadius: 3.4,              // m, blast radius for fragmentation and VFX
+  vfxMissileBombExplodeCount: 200,         // max particle count
   vfxMissileBombExplodeDurationMs: 500,   // ms, max particle lifetime
-  vfxMissileBombExplodeSpeed: 14,         // m/s, max particle speed
-  vfxMissileBombExplodeSize: 3,         // m, max particle size
+  vfxMissileBombExplodeSpeed: 2,         // m/s, max particle speed
+  vfxMissileBombExplodeSize: 8,         // m, max particle size
   vfxMissileBombExplodeGravity: -4,       // m/s², particle gravity
 
   // Rendering.
@@ -106,7 +106,7 @@ export const BARRAGE_CONFIG = {
   // Gameplay Rules.
   noMansLandX: 5,                         // m (half-width of centre dead zone)
   kingKnockoutAngle: 50,                  // deg
-  blockMaxHits: 3,                        // hits before fragmentation
+  blockMaxHits: 2,                        // hits before fragmentation
   kingHitVelocityMin: 5,                  // m/s (min speed to register a king hit)
   blockHitVelocityMin: 7,                 // m/s (min speed to register a hit)
   blockHitCooldownMs: 100,                // ms - missile can only crack one block per this window
@@ -114,9 +114,9 @@ export const BARRAGE_CONFIG = {
   fragmentHitVelocityMin: 3,             // m/s (min speed to destroy a fragment)
   fragmentHitSpeedPenalty: 0.5,            // m/s lost per fragment hit (on top of physics)
   fragmentFriction: 0.6,                 // 0-1 (lower = slides more)
-  fragmentSpreadX: 4,                    // m/s max random horizontal scatter
+  fragmentSpreadX: 1,                    // m/s max random horizontal scatter
   fragmentSpreadY: 2,                    // m/s max random upward scatter
-  fragmentSlowShrinkMs: 10000,            // ms - fragments shrink away if not hit
+  fragmentSlowShrinkMs: 8000,            // ms - fragments shrink away if not hit
   fragmentColliderShrinkStep: 0.02,       // 0-1 collider scale step while shrinking
   fragmentShrinkMs: 500,                  // ms
   fragmentImmunityMs: 500,                // ms - newly spawned fragments are immune to hits
