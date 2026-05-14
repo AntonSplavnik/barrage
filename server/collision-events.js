@@ -54,6 +54,22 @@ function objectPairFromContact(gameObjects, contact) {
   return object && other ? [object, other] : null;
 }
 
+function maybeTriggerBombDetonate(missile, impactSpeed, position, deps) {
+  if (!deps.isMissileBombName?.(missile.id)) return;
+  if (missile.pendingBombDetonate) return;
+  // Use the missile's own pre-physics speed as a reliable fallback — impactSpeedFor can
+  // return a low value when the relative-velocity capture missed the missile this tick.
+  const missileOwnSpeed = Math.hypot(
+    missile.impactVx ?? missile.vx ?? 0,
+    missile.impactVy ?? missile.vy ?? 0,
+    missile.impactVz ?? missile.vz ?? 0,
+  );
+  const effectiveSpeed = Math.max(impactSpeed, missileOwnSpeed);
+  if (effectiveSpeed < (deps.missileBombMinSpeed ?? 3)) return;
+  missile.pendingBombDetonate = position;
+  deps.maybeBroadcastObjectImpactSound("missile_bomb_hit", missile, missile, effectiveSpeed, position);
+}
+
 function handlePhysicsContact(contact, deps) {
   const pair = objectPairFromContact(deps.gameObjects, contact);
   if (!pair) return;
@@ -72,7 +88,9 @@ function handlePhysicsContact(contact, deps) {
   }
 
   if (ground && missile) {
-    deps.maybeBroadcastGroundImpactSound("missile_hit_ground", missile, ground, contactPositionFor(contact, missile, ground));
+    const groundPos = contactPositionFor(contact, missile, ground);
+    deps.maybeBroadcastGroundImpactSound("missile_hit_ground", missile, ground, groundPos);
+    maybeTriggerBombDetonate(missile, deps.impactSpeedFor(missile, ground), groundPos, deps);
     return;
   }
 
@@ -89,6 +107,7 @@ function handlePhysicsContact(contact, deps) {
     } else {
       deps.maybeBroadcastObjectImpactSound("missile_hit_block", missile, block, deps.impactSpeedFor(missile, block), position);
     }
+    maybeTriggerBombDetonate(missile, deps.impactSpeedFor(missile, block), position, deps);
     return;
   }
 
@@ -98,13 +117,10 @@ function handlePhysicsContact(contact, deps) {
   }
 
   if (missile && trebuchet) {
-    deps.maybeBroadcastObjectImpactSound(
-      "missile_hit_trebuchet",
-      missile,
-      trebuchet,
-      deps.impactSpeedFor(missile, trebuchet),
-      contactPositionFor(contact, missile, trebuchet),
-    );
+    const trebPos = contactPositionFor(contact, missile, trebuchet);
+    const trebSpeed = deps.impactSpeedFor(missile, trebuchet);
+    deps.maybeBroadcastObjectImpactSound("missile_hit_trebuchet", missile, trebuchet, trebSpeed, trebPos);
+    maybeTriggerBombDetonate(missile, trebSpeed, trebPos, deps);
     return;
   }
 

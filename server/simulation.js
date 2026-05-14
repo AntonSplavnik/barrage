@@ -16,6 +16,7 @@ export function createSimulationRunner({
   incrementTick,
   physicsVelocityForObject,
   playerIdForKing,
+  processBombDetonations,
   recordRoundWin,
   saveActiveRoomTick,
   sendState,
@@ -41,6 +42,15 @@ export function createSimulationRunner({
         events: [{ kind: "fragmentHit", fragId: object.id }],
       });
     }
+
+    for (const objectId of results.removedObjectIds ?? []) {
+      broadcast({
+        type: "event",
+        roomId: getActiveRoom().id,
+        tick: getTick(),
+        events: [{ kind: "objectRemoved", objectId }],
+      });
+    }
   }
 
   function runRoomSimulationTick(room) {
@@ -54,6 +64,7 @@ export function createSimulationRunner({
       gameObjects,
       handlePhysicsContacts,
       physicsContactEvents: getPhysicsContactEvents(),
+      processBombDetonations,
       simulatePhysics,
       tick,
       updateFragmentColliderShrinks,

@@ -52,6 +52,7 @@ import {
   isGroundName,
   isKingName,
   isLeftSideKingName,
+  isMissileBombName,
   isMissileName,
   isTrebuchetName,
   lerp,
@@ -386,6 +387,7 @@ const {
   loadFragmentTemplates,
   maybeRecordBlockHit,
   maybeRecordFragmentHit,
+  processBombDetonations,
   updateFragmentColliderShrinks,
 } = createFragmentSystem({
   assetsDir,
@@ -426,6 +428,7 @@ const { runRoomSimulationTick } = createSimulationRunner({
   },
   physicsVelocityForObject,
   playerIdForKing,
+  processBombDetonations,
   recordRoundWin,
   saveActiveRoomTick,
   sendState,
@@ -499,6 +502,29 @@ function recordRoundWin(loserPlayerId) {
   }, BARRAGE_CONFIG.roundEndDelayMs ?? 5000);
 }
 
+async function reloadRoom() {
+  const room = activeRoom;
+  if (!room || !roomManager.isMatched(room)) return;
+  room.paused = true;
+  room.roundWinner = null;
+  createRoomRuntime(room);
+  bindRoom(room);
+  await enableHavokPhysics();
+  await loadLevelIfPresent();
+  await loadFragmentTemplates();
+  room.paused = false;
+  saveActiveRoomTick();
+  broadcast({
+    type: "levelChanged",
+    roomId: room.id,
+    level: room.level.url,
+    roundNumber: room.roundNumber,
+    scores: room.scores,
+    forceReload: true,
+  });
+  sendState();
+}
+
 async function advanceRoomAfterRound(room) {
   if (!roomManager.isMatched(room)) {
     room.paused = false;
@@ -568,8 +594,10 @@ function handlePhysicsContacts(contacts) {
     isBlockName,
     isGroundName,
     isKingName,
+    isMissileBombName,
     isMissileName,
     isTrebuchetName,
+    missileBombMinSpeed: BARRAGE_CONFIG.missileBombTriggerSpeed ?? 2,
     maybeBroadcastGroundImpactSound,
     maybeBroadcastObjectImpactSound,
     maybeRecordBlockHit,
@@ -629,7 +657,7 @@ const applyInput = createInputHandler({
   physicsAggregates: () => physicsAggregates,
   playerSide,
   releaseDrag,
-  resetGameState,
+  reloadRoom,
   restArmAngleForTrebuchet,
   setPhysicsBodyTrigger,
   stopTrebuchetStretchSound,
@@ -898,6 +926,11 @@ function resetGameState() {
     if (object.pendingFragmentHitPosition !== undefined) object.pendingFragmentHitPosition = null;
     if (object.usedToFragment !== undefined) object.usedToFragment = false;
     if (object.lastBlockHitTick !== undefined) object.lastBlockHitTick = null;
+    if (object.pendingBombDetonate !== undefined) object.pendingBombDetonate = null;
+    if (object.pendingDispose !== undefined) object.pendingDispose = undefined;
+    if (object.hitBlockIds !== undefined) object.hitBlockIds = new Set();
+    if (object.hitFragIds !== undefined) object.hitFragIds = new Set();
+    if (object.hitKingIds !== undefined) object.hitKingIds = new Set();
 
     syncPhysicsBodyFromObject(object, { x: 0, y: 0, z: 0 });
   }

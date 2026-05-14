@@ -144,17 +144,22 @@ async function loadFragmentTemplates() {
   });
 }
 
-function switchLevelIfNeeded(levelUrl) {
-  if (!levelUrl || levelUrl === loadedLevelUrl) return levelSwitchPromise;
-  if (levelUrl === loadingLevelUrl) return levelSwitchPromise;
+function switchLevelIfNeeded(levelUrl, { force = false } = {}) {
+  if (!levelUrl) return levelSwitchPromise;
+  if (!force && levelUrl === loadedLevelUrl) return levelSwitchPromise;
+  if (!force && levelUrl === loadingLevelUrl) return levelSwitchPromise;
 
   currentLevelUrl = levelUrl;
   const requestedLevelUrl = levelUrl;
   loadingLevelUrl = requestedLevelUrl;
   levelSwitchPromise = levelSwitchPromise
+    .catch(() => {})
     .then(async () => {
-      if (loadedLevelUrl === requestedLevelUrl) return;
-      await loadLevel(requestedLevelUrl, { replace: Boolean(loadedLevelUrl) });
+      if (!force && loadedLevelUrl === requestedLevelUrl) return;
+      await loadLevel(requestedLevelUrl, { replace: Boolean(loadedLevelUrl) || force });
+    })
+    .catch((err) => {
+      console.error("Level switch failed:", err);
     })
     .finally(() => {
       if (loadingLevelUrl === requestedLevelUrl) {
@@ -842,7 +847,7 @@ function updateAimArrow() {
 }
 
 function disposeLevelScene() {
-  vfxManager.dispose();
+  vfxManager.clearEffects();
   shotArcPrediction?.dispose();
   shotArcPrediction = null;
   hideDragPivotMarker();
@@ -1093,8 +1098,8 @@ socket.addEventListener("message", (event) => {
     isMatched = false;
     updateRoundCounter(message.roundNumber);
     updateCrowns(message.scores ?? {});
-    setLobbyStatus("Loading next level...");
-    switchLevelIfNeeded(currentLevelUrl).then(() => {
+    setLobbyStatus(message.forceReload ? "Reloading..." : "Loading next level...");
+    switchLevelIfNeeded(currentLevelUrl, { force: Boolean(message.forceReload) }).then(() => {
       isMatched = true;
       setLobbyStatus("", false);
     });
@@ -1107,39 +1112,7 @@ socket.addEventListener("message", (event) => {
       playSoundEffectEvent(ev);
       vfxManager.handleEvent(ev);
 
-      if (ev.kind === "reset") {
-        vfxManager.dispose();
-        hideDragPivotMarker();
-        shotArcPrediction.hide();
-        // Cancel any in-progress shrink animations
-        for (const { observer, mesh } of shrinkObservers.values()) {
-          scene.onBeforeRenderObservable.remove(observer);
-          if (!mesh.isDisposed()) mesh.dispose();
-        }
-        shrinkObservers.clear();
 
-        // Restore original block visuals; dispose clones and fragments
-        const toDelete = [];
-        for (const [id, mesh] of visualObjects) {
-          if (!id.toLowerCase().includes("block")) continue;
-          const initial = initialBlockVisuals.get(id);
-          if (initial) {
-            if (mesh !== initial.mesh && !mesh.isDisposed()) mesh.dispose();
-            initial.mesh.setEnabled(true);
-            initial.mesh.scaling.setAll(1);
-            visualObjects.set(id, initial.mesh);
-            visualBaseRotations.set(id, { ...initial.baseRotation });
-          } else {
-            if (!mesh.isDisposed()) mesh.dispose();
-            toDelete.push(id);
-          }
-        }
-        for (const id of toDelete) {
-          visualObjects.delete(id);
-          visualBaseRotations.delete(id);
-          latestObjectStates.delete(id);
-        }
-      }
 
       if (ev.kind === "blockHit") {
         const side = ev.blockId.toLowerCase().includes("blockl") ? "L" : "R";
@@ -1164,6 +1137,13 @@ socket.addEventListener("message", (event) => {
 
       if (ev.kind === "fragmentHit") {
         startFragmentShrink(ev.fragId, CONFIG.fragmentShrinkMs ?? 500, { detachFromState: true });
+      }
+
+      if (ev.kind === "objectRemoved") {
+        const mesh = visualObjects.get(ev.objectId);
+        if (mesh) mesh.setEnabled(false);
+        visualObjects.delete(ev.objectId);
+        latestObjectStates.delete(ev.objectId);
       }
 
       if (ev.kind === "blockBroken") {

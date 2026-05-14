@@ -20,7 +20,7 @@ export function createInputHandler({
   physicsAggregates,
   playerSide,
   releaseDrag,
-  resetGameState,
+  reloadRoom,
   restArmAngleForTrebuchet,
   setPhysicsBodyTrigger,
   stopTrebuchetStretchSound,
@@ -34,13 +34,7 @@ export function createInputHandler({
     if (message.type !== "input") return;
 
     if (message.action === "reset") {
-      resetGameState();
-      broadcast({
-        type: "event",
-        roomId: getActiveRoom()?.id,
-        tick: getTick(),
-        events: [{ kind: "reset", playerId: client.playerId }],
-      });
+      reloadRoom?.().catch((err) => console.error("Room reload failed:", err));
       return;
     }
 
