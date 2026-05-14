@@ -3,6 +3,7 @@ import { TICK_MS } from "../config.js";
 import { simulatePhysics } from "./simulation.js";
 import { checkRoundEnd } from "./modeRunner.js";
 import { sendState } from "../net/broadcast.js";
+import { processFragmentLifecycle } from "./fragmentation.js";
 
 let simulationInterval = null;
 
@@ -11,6 +12,7 @@ export function startGameLoop() {
     if (gameState.paused) return;
     gameState.tick += 1;
     simulatePhysics();
+    processFragmentLifecycle();
     checkRoundEnd();
     sendState();
   }, TICK_MS);

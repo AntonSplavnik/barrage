@@ -11,6 +11,7 @@ import classicMode from "./game/modes/classic.js";
 import { initTemplateRegistry } from "./game/templateRegistry.js";
 import { setupWebSocket } from "./net/connections.js";
 import { startGameLoop, stopGameLoop } from "./game/loop.js";
+import { initCollisions } from "./game/collisions.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -116,5 +117,6 @@ await new Promise((resolve) => {
 await enableHavokPhysics();
 await initTemplateRegistry();
 await startMode(classicMode);
+initCollisions();
 
 startGameLoop();
