@@ -27,6 +27,7 @@ export function findGameplayRoot(node) {
 
 export function applyState(message) {
   for (const object of message.objects || []) {
+    const prev = latestObjectStates.get(object.id);
     latestObjectStates.set(object.id, object);
 
     const visual = visualObjects.get(object.id);
@@ -53,7 +54,6 @@ export function applyState(message) {
     }
 
     if (object.hitStage !== undefined && object.hitStage > 0) {
-      const prev = latestObjectStates.get(object.id);
       if (!prev || prev.hitStage !== object.hitStage) {
         updateCrackStage(object.id, object.hitStage, object.fragmentTemplate);
       }
