@@ -6,11 +6,11 @@ export default {
     spawn("trebuchets/basic", { x: -25, y: 1, player: 1 });
     spawn("trebuchets/basic", { x: 25, y: 1, player: 2 });
 
-    spawn("kings/default-L", { x: -37, y: 1.05, player: 1 });
-    spawn("kings/default-R", { x: 37, y: 1.05, player: 2 });
+    spawn("kings/default-L", { x: -37, y: 1.05, player: 1, shape: "convex_hull" });
+    spawn("kings/default-R", { x: 37, y: 1.05, player: 2, shape: "convex_hull" });
 
-    spawn("blocks/defarult-L", { x: -12, y: 1 });
-    spawn("blocks/defarult-L", { x: -12, y: 9, rotation: 45 });
+    spawn("blocks/defarult-L", { x: -12, y: 1, fragmentTemplate: "blocks/fragmented-L" });
+    spawn("blocks/defarult-L", { x: -12, y: 9, rotation: 45, fragmentTemplate: "blocks/fragmented-L" });
     spawn("blocks/fragmented-L", { x: 12, y: 1 });
     spawn("blocks/fragmented-R", { x: 12, y: 9, rotation: -45 });
 
@@ -18,5 +18,9 @@ export default {
     spawn("missiles/basic", { x: 0, y: 6 });
   },
 
-  hooks: {},
+  hooks: {
+    onBlockDestroyed(block, missile, ctx) {
+      ctx.shatterBlock(block, missile);
+    },
+  },
 };
