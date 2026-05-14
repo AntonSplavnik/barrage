@@ -1,5 +1,6 @@
 import { scene } from "./engine.js";
 import { protocolToBabylonRotation, degreesToRadians } from "./utils.js";
+import { updateCrackStage } from "./level.js";
 
 export const visualObjects = new Map();
 export const visualBaseRotations = new Map();
@@ -49,6 +50,13 @@ export function applyState(message) {
       arm.rotationQuaternion = null;
       arm.rotation.z = degreesToRadians(object.armAngle);
       arm.computeWorldMatrix(true);
+    }
+
+    if (object.hitStage !== undefined && object.hitStage > 0) {
+      const prev = latestObjectStates.get(object.id);
+      if (!prev || prev.hitStage !== object.hitStage) {
+        updateCrackStage(object.id, object.hitStage, object.fragmentTemplate);
+      }
     }
   }
 

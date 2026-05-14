@@ -4,6 +4,9 @@ import { visualObjects, visualBaseRotations, trebuchetArmNodes, trebuchetLoadTar
 import { createAimArrowMeshes } from "./aim.js";
 import { getTemplateRoot } from "./templateRegistry.js";
 
+const crackStageVisuals = new Map();
+const fragmentVisuals = new Map();
+
 const {
   ArcRotateCamera,
   Color3,
@@ -190,6 +193,55 @@ function registerCloneShadows(clone) {
   }
 }
 
+function findHitStageMesh(templatePath, hitStage) {
+  const templateRoot = getTemplateRoot(templatePath);
+  if (!templateRoot) return null;
+
+  const stageName = `hit${hitStage}-Visual`;
+  const descendants = descendantsOf(templateRoot);
+  return descendants.find((d) => d.name.includes(stageName)) ?? null;
+}
+
+export function updateCrackStage(objectId, hitStage, fragmentTemplate) {
+  const visual = visualObjects.get(objectId);
+  if (!visual || !fragmentTemplate) return;
+
+  const prev = crackStageVisuals.get(objectId);
+  if (prev) {
+    prev.dispose(false, false);
+    crackStageVisuals.delete(objectId);
+  }
+
+  if (!hitStage || hitStage <= 0) {
+    const descendants = descendantsOf(visual);
+    for (const node of descendants) {
+      const role = childRole(node.name);
+      if (role === "Vis" || role === "ColVis") {
+        if (node.setEnabled) node.setEnabled(true);
+      }
+    }
+    return;
+  }
+
+  const descendants = descendantsOf(visual);
+  for (const node of descendants) {
+    const role = childRole(node.name);
+    if (role === "Vis" || role === "ColVis") {
+      if (node.setEnabled) node.setEnabled(false);
+    }
+  }
+
+  const sourceMesh = findHitStageMesh(fragmentTemplate, hitStage);
+  if (!sourceMesh) return;
+
+  const clone = sourceMesh.clone(`${objectId}-crack-${hitStage}`);
+  clone.parent = visual;
+  clone.position.set(0, 0, 0);
+  clone.setEnabled(true);
+  registerCloneShadows(clone);
+  crackStageVisuals.set(objectId, clone);
+}
+
 export function ensureVisualsForState(objects) {
   let created = false;
 
@@ -252,6 +304,17 @@ function clearLevel() {
     visual.dispose(false, false);
   }
   visualObjects.clear();
+
+  for (const visual of crackStageVisuals.values()) {
+    visual.dispose(false, false);
+  }
+  crackStageVisuals.clear();
+
+  for (const visual of fragmentVisuals.values()) {
+    visual.dispose(false, false);
+  }
+  fragmentVisuals.clear();
+
   visualBaseRotations.clear();
   trebuchetArmNodes.clear();
   trebuchetLoadTargets.clear();
