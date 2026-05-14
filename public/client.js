@@ -1,4 +1,6 @@
 import { createMusicController } from "./music.js";
+
+const isMobile = window.matchMedia?.("(pointer: coarse)").matches ?? false;
 import { createSoundEffectsController } from "./sound_manager.js";
 import { createCameraController } from "./camera_control.js";
 import { applyRenderResolutionLimit } from "./render-effects.js";
@@ -94,7 +96,7 @@ const soundEffectsController = createSoundEffectsController(sfxToggleEl, scene, 
 });
 let shotArcPrediction = createTrebuchetShotArcPrediction(scene, CONFIG);
 const vfxManager = createVfxManager(scene);
-const cameraControl = createCameraController(scene, () => myPlayerId);
+const cameraControl = createCameraController(scene, () => myPlayerId, { mobile: isMobile });
 
 applyRenderResolutionLimit(engine, CONFIG);
 
@@ -490,11 +492,7 @@ function ensureCameraAndLight() {
   cam.rotation.y = Math.PI;                  // face along -Z toward the action plane
   scene.activeCamera = cam;
 
-  if (CONFIG.cameraControlsEnabled) {
-    scene.activeCamera.attachControl(canvas, true);
-  } else {
-    scene.activeCamera.detachControl();
-  }
+  scene.activeCamera.detachControl();
 
   if (scene.lights.length === 0) {
     const fallbackLight = new HemisphericLight("FallbackLight", new Vector3(0, 1, 0), scene);
@@ -508,7 +506,7 @@ function ensureCameraAndLight() {
 
   console.info("Scene setup", {
     activeCamera: scene.activeCamera.name,
-    cameraControlsEnabled: Boolean(CONFIG.cameraControlsEnabled),
+    cameraControlsEnabled: Boolean(isMobile),
     cameras: scene.cameras.map((camera) => camera.name),
     lights: scene.lights.map((light) => ({ name: light.name, intensity: light.intensity })),
   });
@@ -1100,6 +1098,7 @@ socket.addEventListener("message", (event) => {
     isMatched = false;
     updateCrowns(message.scores ?? {});
     setLobbyStatus(`${message.winner} won round ${message.roundNumber}`, true, message.winner);
+    cameraControl.onRoundWin(message.winner);
   }
 
   if (message.type === "levelChanged") {
@@ -1193,11 +1192,23 @@ socket.addEventListener("message", (event) => {
   }
 });
 
+let idleDisconnected = false;
+socket.addEventListener("message", (event) => {
+  try {
+    const msg = JSON.parse(event.data);
+    if (msg.type === "idleDisconnect") idleDisconnected = true;
+  } catch { /* handled by main message listener */ }
+}, { capture: true });
+
 socket.addEventListener("close", () => {
   setStatus("Disconnected");
   isMatched = false;
   hudOpponentEl.style.display = "none";
-  setLobbyStatus("Disconnected");
+  if (idleDisconnected) {
+    setLobbyStatus("Disconnected due to inactivity. Refresh to reconnect.");
+  } else {
+    setLobbyStatus("Disconnected");
+  }
 });
 
 function sendInput(action, payload) {
@@ -1525,13 +1536,11 @@ function endDrag() {
   shotArcPrediction.hide();
   hideAimArrow();
 
-  if (CONFIG.cameraControlsEnabled) {
-    scene.activeCamera.attachControl(canvas, true);
-  }
 }
 
 scene.onPointerObservable.add((pointerInfo) => {
   if (pointerInfo.type === BABYLON.PointerEventTypes.POINTERDOWN) {
+    cameraControl.onFirstInput();
     beginDrag();
   }
 

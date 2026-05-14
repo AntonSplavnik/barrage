@@ -122,6 +122,7 @@ export const BARRAGE_CONFIG = {
   fragmentImmunityMs: 500,                // ms - newly spawned fragments are immune to hits
   postWinSimulationMs: 5000,              // ms
   roundEndDelayMs: 5000,                  // ms
+  idleTimeoutMs: 2 * 60 * 1000,          // ms — disconnect client after this long with no input
 
   // Missile Loading.
   missileLoadRange: 3,                    // m
@@ -181,8 +182,10 @@ export const BARRAGE_CONFIG = {
   cameraDragViewMs: 1000,                // ms — player → drag view when dragging
   cameraDragReturnDelayMs: 5000,        // ms — wait at drag view before returning to player
   cameraDragReturnMs: 1200,             // ms — drag view → player after dragging
+  cameraMissileLoadZoomMs: 1200,         // ms — player → battlefield on first input / missile load
   cameraReturnDelayMs: 4000,            // ms — wait after shot fires before panning back
   cameraReturnMs: 2000,                 // ms — battlefield → player after shot
+  cameraWinZoomMs: 3000,                 // ms — animate to winner's side on round end
 };
 
 if (typeof window !== "undefined") {

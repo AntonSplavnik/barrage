@@ -2,7 +2,7 @@ import { BARRAGE_CONFIG } from "./config.js";
 
 const { Vector3 } = BABYLON;
 
-export function createCameraController(scene, getPlayerId) {
+export function createCameraController(scene, getPlayerId, { mobile = false } = {}) {
   const CONFIG = BARRAGE_CONFIG;
 
   // Camera only ever translates — setTarget is never called because it fights
@@ -14,6 +14,8 @@ export function createCameraController(scene, getPlayerId) {
   let camAnimObserver   = null;
   let camReturnTimer    = null;
   let camDragTimer      = null;
+  let desktopLocked     = false;
+  let storedBottomY     = CONFIG.viewportBottomY ?? -8;
 
   function isLeftSidePlayer() {
     const id = getPlayerId();
@@ -83,6 +85,7 @@ export function createCameraController(scene, getPlayerId) {
       console.log("[cam] vertical_boundary Y=" + bottomY.toFixed(2) + " (from config, node not found)");
     }
 
+    storedBottomY = bottomY;
     battlefieldCamPos = computeCamPos(CONFIG.viewportBfXMin, CONFIG.viewportBfXMax, bottomY);
 
     // P1 = odd player numbers (left side, negative X in world space)
@@ -150,6 +153,7 @@ export function createCameraController(scene, getPlayerId) {
 
   function snapshotAndPan() {
     initCameraPositions();
+    desktopLocked = false;
     const cam = scene.activeCamera;
     if (cam && battlefieldCamPos) {
       cam.position.copyFrom(battlefieldCamPos);
@@ -159,19 +163,29 @@ export function createCameraController(scene, getPlayerId) {
     }
   }
 
+  function onFirstInput() {
+    if (mobile || desktopLocked) return;
+    desktopLocked = true;
+    cancelReturn();
+    cancelDragReturn();
+    animate(battlefieldCamPos, CONFIG.cameraMissileLoadZoomMs ?? 300);
+  }
+
   function onMissileLoaded() {
+    if (!mobile || desktopLocked) return;
     cancelReturn();
     cancelDragReturn();
     animate(battlefieldCamPos, CONFIG.cameraMissileLoadZoomMs ?? 300);
   }
 
   function onAimStart() {
+    if (!mobile || desktopLocked) return;
     cancelReturn();
     cancelDragReturn();
   }
 
   function onAimRelease() {
-    if (!playerCamPos) return;
+    if (!mobile || desktopLocked || !playerCamPos) return;
     cancelDragReturn();
     const delay    = CONFIG.cameraReturnDelayMs ?? 1200;
     const duration = CONFIG.cameraReturnMs ?? 900;
@@ -183,19 +197,31 @@ export function createCameraController(scene, getPlayerId) {
   }
 
   function onDragStart() {
-    if (!playerDragCamPos || !playerCamPos) return;
+    if (!mobile || desktopLocked || !playerDragCamPos || !playerCamPos) return;
     cancelReturn();
     cancelDragReturn();
     animate(playerDragCamPos, CONFIG.cameraDragViewMs ?? 700);
   }
 
   function onDragEnd() {
-    if (!playerCamPos) return;
+    if (!mobile || desktopLocked || !playerCamPos) return;
     cancelDragReturn();
     camDragTimer = setTimeout(() => {
       camDragTimer = null;
       animate(playerCamPos, CONFIG.cameraDragReturnMs ?? 1200);
     }, CONFIG.cameraDragReturnDelayMs ?? 5000);
+  }
+
+  function onRoundWin(winnerId) {
+    cancelReturn();
+    cancelDragReturn();
+    const num = parseInt((winnerId ?? "").split("_")[1], 10);
+    const winnerIsLeft = Number.isFinite(num) ? num % 2 === 1 : null;
+    if (winnerIsLeft === null) return;
+    const winnerCamPos = winnerIsLeft
+      ? computeCamPos(CONFIG.viewportP2XMin, CONFIG.viewportP2XMax, storedBottomY)
+      : computeCamPos(CONFIG.viewportP1XMin, CONFIG.viewportP1XMax, storedBottomY);
+    animate(winnerCamPos, CONFIG.cameraWinZoomMs ?? 800);
   }
 
   function dispose() {
@@ -210,5 +236,5 @@ export function createCameraController(scene, getPlayerId) {
     playerDragCamPos  = null;
   }
 
-  return { snapshotAndPan, onAimStart, onAimRelease, onDragStart, onDragEnd, onMissileLoaded, dispose };
+  return { snapshotAndPan, onFirstInput, onAimStart, onAimRelease, onDragStart, onDragEnd, onMissileLoaded, onRoundWin, dispose };
 }

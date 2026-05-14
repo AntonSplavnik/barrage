@@ -1158,7 +1158,7 @@ async function enableHavokPhysics() {
 
 wss.on("connection", (socket) => {
   const clientId = nextClientId++;
-  const client = { id: clientId, playerId: null, room: null, socket };
+  const client = { id: clientId, playerId: null, room: null, socket, lastInputAt: Date.now() };
   clients.set(clientId, client);
 
   roomManager.assignClient(client).then(({ room, becameMatched, spectator }) => {
@@ -1172,6 +1172,7 @@ wss.on("connection", (socket) => {
     }
 
     socket.on("message", (raw) => {
+      client.lastInputAt = Date.now();
       try {
         if (!client.room || !roomManager.isMatched(client.room)) return;
         bindRoom(client.room);
@@ -1213,6 +1214,20 @@ async function startServer() {
       runRoomSimulationTick(room);
     }
   }, TICK_MS);
+
+  const idleTimeoutMs = BARRAGE_CONFIG.idleTimeoutMs ?? 2 * 60 * 1000;
+  setInterval(() => {
+    const now = Date.now();
+    for (const client of clients.values()) {
+      if (now - client.lastInputAt > idleTimeoutMs) {
+        console.log(`Disconnecting idle client ${client.id} (no input for ${idleTimeoutMs / 1000}s)`);
+        try {
+          client.socket.send(JSON.stringify({ type: "idleDisconnect" }));
+        } catch { /* ignore */ }
+        closeSocket(client.socket);
+      }
+    }
+  }, 30_000);
 }
 
 startServer().catch((error) => {
