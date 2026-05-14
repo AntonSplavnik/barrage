@@ -1,6 +1,5 @@
 import { scene } from "./engine.js";
 import { protocolToBabylonRotation, degreesToRadians } from "./utils.js";
-import { updateCrackStage } from "./level.js";
 
 export const visualObjects = new Map();
 export const visualBaseRotations = new Map();
@@ -27,7 +26,6 @@ export function findGameplayRoot(node) {
 
 export function applyState(message) {
   for (const object of message.objects || []) {
-    const prev = latestObjectStates.get(object.id);
     latestObjectStates.set(object.id, object);
 
     const visual = visualObjects.get(object.id);
@@ -53,11 +51,6 @@ export function applyState(message) {
       arm.computeWorldMatrix(true);
     }
 
-    if (object.hitStage !== undefined && object.hitStage > 0) {
-      if (!prev || prev.hitStage !== object.hitStage) {
-        updateCrackStage(object.id, object.hitStage, object.fragmentTemplate);
-      }
-    }
   }
 
   if (onAimUpdate) onAimUpdate();
