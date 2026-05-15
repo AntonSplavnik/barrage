@@ -46,8 +46,9 @@ export function applyState(message) {
 
     const arm = trebuchetArmNodes.get(object.id);
     if (arm && typeof object.armAngle === "number") {
+      const armSign = object.player === 2 ? -1 : 1;
       arm.rotationQuaternion = null;
-      arm.rotation.z = degreesToRadians(object.armAngle);
+      arm.rotation.z = armSign * degreesToRadians(object.armAngle);
       arm.computeWorldMatrix(true);
     }
 

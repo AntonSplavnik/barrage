@@ -98,9 +98,11 @@ function releasePointForTrebuchet(trebuchetId) {
   const restRadians = degreesToRadians(CONFIG.trebuchetArmRestRotationZDegrees ?? 15);
 
   if (target.armNode) {
+    const trebState = latestObjectStates.get(trebuchetId);
+    const armSign = trebState?.player === 2 ? -1 : 1;
     const originalZ = target.armNode.rotationQuaternion?.toEulerAngles().z ?? target.armNode.rotation.z;
     target.armNode.rotationQuaternion = null;
-    target.armNode.rotation.z = restRadians;
+    target.armNode.rotation.z = armSign * restRadians;
     target.rootNode?.computeWorldMatrix(true);
     target.armNode.computeWorldMatrix(true);
     target.targetNode.computeWorldMatrix(true);

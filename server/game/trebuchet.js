@@ -80,8 +80,9 @@ export function loadTargetForTrebuchet(trebuchet) {
     target.rootNode.position.z = trebuchet.z;
 
     if (target.armNode && typeof trebuchet.armAngle === "number") {
+      const armSign = trebuchet.player === 2 ? -1 : 1;
       target.armNode.rotationQuaternion = null;
-      target.armNode.rotation.z = (trebuchet.armAngle * Math.PI) / 180;
+      target.armNode.rotation.z = armSign * (trebuchet.armAngle * Math.PI) / 180;
     }
 
     target.rootNode.computeWorldMatrix(true);
