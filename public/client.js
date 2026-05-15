@@ -48,6 +48,9 @@ const opponentPlayerEl = document.getElementById("opponent-player");
 
 const engine = new Engine(canvas, true, { audioEngine: true });
 const scene = new Scene(engine);
+window.addEventListener("keydown", (e) => {
+  if (e.key === "I" && e.shiftKey) scene.debugLayer.isVisible() ? scene.debugLayer.hide() : scene.debugLayer.show();
+});
 scene.clearColor.set(0.62, 0.72, 0.78, 1);
 scene.imageProcessingConfiguration.exposure = CONFIG.exposure ?? 1.0;
 scene.imageProcessingConfiguration.contrast = CONFIG.contrast ?? 1.0;

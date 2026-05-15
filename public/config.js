@@ -122,7 +122,7 @@ export const BARRAGE_CONFIG = {
   fragmentImmunityMs: 500,                // ms - newly spawned fragments are immune to hits
   postWinSimulationMs: 5000,              // ms
   roundEndDelayMs: 5000,                  // ms
-  idleTimeoutMs: 2 * 60 * 1000,          // ms — disconnect client after this long with no input
+  idleTimeoutMs: 20 * 60 * 1000,          // ms — disconnect client after this long with no input
 
   // Missile Loading.
   missileLoadRange: 3,                    // m

@@ -40,3 +40,6 @@ depenetrator is not iterating long enough for many colliders horizontally
 
 
 please take a look at this game.  I have introduced a new type of missile its called missle-bomb, it currentlt behaves exactly as a missile should but it want to change what it does visually when it hits something.  When it hits with greater than a given velocity (put in cofig)  i want it to create a particle effect. in vfx-manager we have one particle effect, i want another in there as it will be applied on client only.   you can call it spawnMissileExplode.  i want to have an explosive effect so with an effect radius.. i am not familiar with babylon effects, is there an appropriate one? do we need to make custom sprites, or is there a standard effect for this?
+
+
+plyers touches other treb

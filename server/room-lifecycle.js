@@ -41,7 +41,7 @@ export function createRoomLifecycle({
     }
   }
 
-  function compactAndNotifyWaitingRooms() {
+  async function compactAndNotifyWaitingRooms() {
     const moves = compactWaitingRooms();
     if (moves.length === 0) return false;
 
@@ -52,6 +52,9 @@ export function createRoomLifecycle({
     }
 
     for (const room of touchedRooms) {
+      if (isMatched(room)) {
+        await resetRoomToFirstLevel(room);
+      }
       notifyRoomStatus(room);
     }
 
@@ -69,7 +72,7 @@ export function createRoomLifecycle({
       return;
     }
 
-    if (!compactAndNotifyWaitingRooms()) {
+    if (!await compactAndNotifyWaitingRooms()) {
       notifyRoomStatus(room);
     }
   }

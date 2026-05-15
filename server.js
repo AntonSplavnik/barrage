@@ -1187,9 +1187,12 @@ wss.on("connection", (socket) => {
       clients.delete(clientId);
       const removal = roomManager.removeClient(client);
       if (removal?.room) {
-        handlePlayerVacancy(removal).catch((error) => {
-          console.error("Failed to handle player vacancy.", error);
-        });
+        const delay = removal.room.roundWinner ? (BARRAGE_CONFIG.roundEndDelayMs ?? 5000) : 0;
+        setTimeout(() => {
+          handlePlayerVacancy(removal).catch((error) => {
+            console.error("Failed to handle player vacancy.", error);
+          });
+        }, delay);
       } else if (removal?.spectatorRenames) {
         notifySpectatorRenames(removal.spectatorRenames);
       }
