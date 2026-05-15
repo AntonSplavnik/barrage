@@ -1221,6 +1221,10 @@ async function startServer() {
     for (const client of clients.values()) {
       if (now - client.lastInputAt > idleTimeoutMs) {
         console.log(`Disconnecting idle client ${client.id} (no input for ${idleTimeoutMs / 1000}s)`);
+        if (client.room && roomManager.isMatched(client.room) && !client.room.roundWinner) {
+          bindRoom(client.room);
+          recordRoundWin(client.id);
+        }
         try {
           client.socket.send(JSON.stringify({ type: "idleDisconnect" }));
         } catch { /* ignore */ }
