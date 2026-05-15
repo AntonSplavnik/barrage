@@ -226,6 +226,45 @@ function createSphereBody(object) {
   }, scene);
 }
 
+export function createPhysicsBodyForObject(object) {
+  const shape = object.shape ?? (isMissileName(object.id) ? "sphere" : "box");
+  let aggregate;
+
+  if (shape === "convex_hull") {
+    const template = getTemplate(templatePathFromId(object.id));
+    if (template?.convexPositions) {
+      aggregate = createConvexHullBody(
+        object.id,
+        template.convexPositions,
+        new Vector3(object.x, object.y, object.z),
+        rotationQuaternionForObject(object),
+        {
+          mass: object.dynamic ? object.mass : 0,
+          friction: object.friction,
+          restitution: object.restitution,
+        },
+      );
+    } else {
+      aggregate = createBoxBody(object);
+    }
+  } else if (shape === "sphere") {
+    aggregate = createSphereBody(object);
+  } else {
+    aggregate = createBoxBody(object);
+  }
+
+  aggregate.body.disablePreStep = true;
+  aggregate.body.setLinearDamping(isTrebuchetName(object.id) ? 2.2 : 0.15);
+  aggregate.body.setAngularDamping(isTrebuchetName(object.id) ? 10 : 0.55);
+
+  if (isMissileName(object.id) || isBlockName(object.id)) {
+    aggregate.body.setCollisionCallbackEnabled(true);
+  }
+
+  physicsAggregates.set(object.id, aggregate);
+  return aggregate;
+}
+
 export function syncPhysicsBodyFromObject(object, velocity = null) {
   const aggregate = physicsAggregates.get(object.id);
   if (!aggregate) return;

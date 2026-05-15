@@ -4,9 +4,9 @@ import {
   restArmAngleForTrebuchet,
   ARM_STATE_IDLE,
 } from "./entities.js";
-import { gameObjects, gameState, dragState } from "./state.js";
+import { gameObjects, gameState, dragState, destroyedBlocks } from "./state.js";
 import { broadcast } from "../net/broadcast.js";
-import { syncPhysicsBodyFromObject, setPhysicsBodyTrigger, physicsAggregates } from "./physics.js";
+import { syncPhysicsBodyFromObject, setPhysicsBodyTrigger, physicsAggregates, createPhysicsBodyForObject } from "./physics.js";
 import { shatterBlock } from "./fragmentation.js";
 import { clearCollisionState } from "./collisions.js";
 import { loadLevel } from "./levelRunner.js";
@@ -54,6 +54,12 @@ export function resetRoundState() {
       gameObjects.delete(id);
     }
   }
+
+  for (const [id, saved] of destroyedBlocks) {
+    gameObjects.set(id, saved);
+    createPhysicsBodyForObject(saved);
+  }
+  destroyedBlocks.clear();
 
   for (const object of gameObjects.values()) {
     object.x = object.originX;

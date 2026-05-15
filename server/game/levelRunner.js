@@ -6,7 +6,7 @@ import xhr2 from "xhr2";
 import { SceneLoader } from "@babylonjs/core/Loading/sceneLoader.js";
 import "@babylonjs/loaders/glTF/index.js";
 import { scene, physicsAggregates, createPhysicsBodies, createArenaColliders } from "./physics.js";
-import { gameObjects, loadTargets, dragState } from "./state.js";
+import { gameObjects, loadTargets, dragState, destroyedBlocks } from "./state.js";
 import { PORT } from "../config.js";
 import { SERVER_CONFIG } from "../config.js";
 import {
@@ -32,6 +32,7 @@ export function clearScene() {
   gameObjects.clear();
   loadTargets.clear();
   dragState.clear();
+  destroyedBlocks.clear();
 
   const arenaRoots = scene.rootNodes.filter((n) => n.name === "__root__");
   for (const root of arenaRoots) {

@@ -237,7 +237,10 @@ export function updateCrackStage(objectId, hitStage, fragmentTemplate) {
   const clone = sourceMesh.clone(`${objectId}-crack-${hitStage}`);
   clone.parent = visual;
   clone.position.set(0, 0, 0);
+  clone.rotationQuaternion = null;
+  clone.rotation.set(0, Math.PI, 0);
   clone.setEnabled(true);
+  if (clone.material) clone.material.backFaceCulling = false;
   registerCloneShadows(clone);
   crackStageVisuals.set(objectId, clone);
 }
@@ -381,8 +384,24 @@ export function clearDestructionVisuals() {
 
   for (const visual of fragmentVisuals.values()) {
     if (!visual.isDisposed()) visual.dispose(false, false);
+    visualObjects.delete(visual.name);
+    visualBaseRotations.delete(visual.name);
   }
   fragmentVisuals.clear();
+
+  for (const visual of visualObjects.values()) {
+    if (visual.setEnabled) visual.setEnabled(true);
+    const descendants = descendantsOf(visual);
+    for (const node of descendants) {
+      const role = childRole(node.name);
+      if (role === "Vis" || role === "ColVis") {
+        if (node.setEnabled) node.setEnabled(true);
+      }
+      if (/hit\d+-Visual/.test(node.name) && node.setEnabled) {
+        node.setEnabled(false);
+      }
+    }
+  }
 }
 
 function clearLevel() {

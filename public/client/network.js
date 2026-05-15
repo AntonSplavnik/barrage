@@ -140,6 +140,9 @@ socket.addEventListener("message", async (event) => {
       if (evt.kind === "fragmentRemoving") {
         shrinkAndDisposeFragment(evt.fragId);
       }
+      if (evt.kind === "reset") {
+        clearDestructionVisuals();
+      }
     }
   }
 

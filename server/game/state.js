@@ -2,6 +2,7 @@ export const clients = new Map();
 export const gameObjects = new Map();
 export const dragState = new Map();
 export const loadTargets = new Map();
+export const destroyedBlocks = new Map();
 
 export const gameState = {
   tick: 0,

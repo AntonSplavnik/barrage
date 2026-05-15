@@ -11,8 +11,8 @@ export default {
 
     spawn("blocks/defarult-L", { x: -12, y: 1, fragmentTemplate: "blocks/fragmented-L" });
     spawn("blocks/defarult-L", { x: -12, y: 9, rotation: 45, fragmentTemplate: "blocks/fragmented-L" });
-    spawn("blocks/fragmented-L", { x: 12, y: 1 });
-    spawn("blocks/fragmented-R", { x: 12, y: 9, rotation: -45 });
+    spawn("blocks/defarult-R", { x: 12, y: 1, fragmentTemplate: "blocks/fragmented-R" });
+    spawn("blocks/defarult-R", { x: 12, y: 9, rotation: -45, fragmentTemplate: "blocks/fragmented-R" });
 
     spawn("missiles/basic", { x: 0, y: 0.5 });
     spawn("missiles/basic", { x: 0, y: 6 });

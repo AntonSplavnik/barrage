@@ -1,6 +1,6 @@
 import { Vector3, Quaternion } from "@babylonjs/core/Maths/math.vector.js";
 import { physicsAggregates, createConvexHullBody } from "./physics.js";
-import { gameObjects, gameState } from "./state.js";
+import { gameObjects, gameState, destroyedBlocks } from "./state.js";
 import { getTemplate } from "./templateRegistry.js";
 import { broadcast } from "../net/broadcast.js";
 import { BARRAGE_CONFIG } from "../../public/config.js";
@@ -127,6 +127,7 @@ export function shatterBlock(block, missile) {
 }
 
 function deleteBlock(block) {
+  destroyedBlocks.set(block.id, { ...block });
   const aggregate = physicsAggregates.get(block.id);
   if (aggregate) {
     aggregate.dispose();
