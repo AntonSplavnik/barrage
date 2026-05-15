@@ -153,18 +153,17 @@ New collision flow:
 ```
 missile hits block
   → guard checks (loaded, removing, dedup)
-  → check for onBlockDestroyed hook on level
-  → if hook defined: run hook INSTEAD of default behavior
-  → if no hook:
-      → read getConfig("crackSystem")
-      → if crackSystem ON and hitStage < maxHits:
-          increment hitStage, broadcast "blockHit"
-      → else (final hit or crackSystem OFF):
-          if getConfig("fragmentation"): shatterBlock(block, missile)
-          else: deleteBlock(block)
+  → hitStage++
+  → if getConfig("crackSystem") ON and hitStage < maxHits:
+      broadcast "blockHit" (always — hooks don't intercept cracking)
+  → else (final hit, or crackSystem OFF):
+      → if onBlockDestroyed hook defined: run hook
+      → if no hook: config-driven default
+          → if getConfig("fragmentation"): shatterBlock(block, missile)
+          → else: deleteBlock(block)
 ```
 
-Priority: **hook defined → run hook, skip default. No hook → config drives behavior.**
+Crack stages always run as a system-level behavior driven by config. The `onBlockDestroyed` hook only intercepts the destruction step — it does not replace hit-stage tracking.
 
 `level1.js` no longer needs `onBlockDestroyed` — config handles it. Hooks remain available for custom per-level logic (e.g., spawn extra missiles on block death).
 
