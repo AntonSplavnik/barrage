@@ -7,6 +7,8 @@ import { Vector3, Quaternion } from "@babylonjs/core/Maths/math.vector.js";
 import { Scene } from "@babylonjs/core/scene.js";
 import "@babylonjs/core/Physics/v2/physicsEngineComponent.js";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode.js";
+import { Mesh } from "@babylonjs/core/Meshes/mesh.js";
+import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData.js";
 import { HavokPlugin } from "@babylonjs/core/Physics/v2/Plugins/havokPlugin.js";
 import { PhysicsAggregate } from "@babylonjs/core/Physics/v2/physicsAggregate.js";
 import { PhysicsPrestepType, PhysicsShapeType } from "@babylonjs/core/Physics/v2/IPhysicsEnginePlugin.js";
@@ -14,7 +16,8 @@ import HavokPhysics from "@babylonjs/havok";
 import { SERVER_CONFIG } from "../config.js";
 import { BARRAGE_CONFIG } from "../../public/config.js";
 import { gameObjects } from "./state.js";
-import { isTrebuchetName, isMissileName } from "./entities.js";
+import { isTrebuchetName, isMissileName, isBlockName } from "./entities.js";
+import { getTemplate } from "./templateRegistry.js";
 import { rotationQuaternionForObject, clamp, lerpAngleDegrees } from "../math.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -44,6 +47,7 @@ export async function enableHavokPhysics() {
 const arenaColliders = [];
 
 function childRole(name) {
+  if (name.includes("Frag")) return "Frag";
   if (name.includes("ColVis")) return "ColVis";
   if (name.includes("Visual") || name.includes("Vis")) return "Vis";
   if (name.includes("Collider") || name.includes("Col")) return "Col";
@@ -120,28 +124,145 @@ function disposeArenaColliders() {
   arenaColliders.length = 0;
 }
 
+function fanIndices(vertexCount) {
+  const indices = [];
+  for (let i = 1; i < vertexCount - 1; i++) {
+    indices.push(0, i, i + 1);
+  }
+  return indices;
+}
+
+export function createConvexHullBody(id, positions, position, rotation, physicsOptions) {
+  const mesh = new Mesh(`physics-${id}`, scene);
+  const vertexData = new VertexData();
+  vertexData.positions = positions;
+  vertexData.indices = fanIndices(positions.length / 3);
+  vertexData.applyToMesh(mesh);
+
+  mesh.position.copyFrom(position);
+  mesh.rotationQuaternion = rotation;
+  mesh.computeWorldMatrix(true);
+
+  const aggregate = new PhysicsAggregate(mesh, PhysicsShapeType.CONVEX_HULL, {
+    mass: physicsOptions.mass ?? 0,
+    friction: physicsOptions.friction ?? SERVER_CONFIG.dynamicFriction,
+    restitution: physicsOptions.restitution ?? SERVER_CONFIG.dynamicRestitution,
+  }, scene);
+
+  return aggregate;
+}
+
+function templatePathFromId(objectId) {
+  const lastUnderscore = objectId.lastIndexOf("_");
+  if (lastUnderscore < 0) return objectId;
+  return objectId.substring(0, lastUnderscore);
+}
+
 export function createPhysicsBodies() {
   for (const object of gameObjects.values()) {
-    const node = new TransformNode(`physics-${object.id}`, scene);
-    node.position.set(object.x, object.y, object.z);
-    node.rotationQuaternion = rotationQuaternionForObject(object);
+    const shape = object.shape ?? (isMissileName(object.id) ? "sphere" : "box");
+    let aggregate;
 
-    const shapeType = isMissileName(object.id) ? PhysicsShapeType.SPHERE : PhysicsShapeType.BOX;
-    const options = {
-      mass: object.dynamic ? object.mass : 0,
-      friction: object.friction,
-      restitution: object.restitution,
-      center: new Vector3(object.offsetX, object.offsetY, object.offsetZ),
-      extents: new Vector3(object.halfX * 2, object.halfY * 2, object.halfZ * 2),
-      radius: Math.max(object.halfX, object.halfY, object.halfZ),
-    };
+    if (shape === "convex_hull") {
+      const template = getTemplate(templatePathFromId(object.id));
+      if (template?.convexPositions) {
+        aggregate = createConvexHullBody(
+          object.id,
+          template.convexPositions,
+          new Vector3(object.x, object.y, object.z),
+          rotationQuaternionForObject(object),
+          {
+            mass: object.dynamic ? object.mass : 0,
+            friction: object.friction,
+            restitution: object.restitution,
+          },
+        );
+      } else {
+        console.warn(`No convex positions for "${object.id}", falling back to BOX`);
+        aggregate = createBoxBody(object);
+      }
+    } else if (shape === "sphere") {
+      aggregate = createSphereBody(object);
+    } else {
+      aggregate = createBoxBody(object);
+    }
 
-    const aggregate = new PhysicsAggregate(node, shapeType, options, scene);
     aggregate.body.disablePreStep = true;
     aggregate.body.setLinearDamping(isTrebuchetName(object.id) ? 2.2 : 0.15);
     aggregate.body.setAngularDamping(isTrebuchetName(object.id) ? 10 : 0.55);
+
+    if (isMissileName(object.id) || isBlockName(object.id)) {
+      aggregate.body.setCollisionCallbackEnabled(true);
+    }
+
     physicsAggregates.set(object.id, aggregate);
   }
+}
+
+function createBoxBody(object) {
+  const node = new TransformNode(`physics-${object.id}`, scene);
+  node.position.set(object.x, object.y, object.z);
+  node.rotationQuaternion = rotationQuaternionForObject(object);
+
+  return new PhysicsAggregate(node, PhysicsShapeType.BOX, {
+    mass: object.dynamic ? object.mass : 0,
+    friction: object.friction,
+    restitution: object.restitution,
+    center: new Vector3(object.offsetX, object.offsetY, object.offsetZ),
+    extents: new Vector3(object.halfX * 2, object.halfY * 2, object.halfZ * 2),
+  }, scene);
+}
+
+function createSphereBody(object) {
+  const node = new TransformNode(`physics-${object.id}`, scene);
+  node.position.set(object.x, object.y, object.z);
+  node.rotationQuaternion = rotationQuaternionForObject(object);
+
+  return new PhysicsAggregate(node, PhysicsShapeType.SPHERE, {
+    mass: object.dynamic ? object.mass : 0,
+    friction: object.friction,
+    restitution: object.restitution,
+    radius: Math.max(object.halfX, object.halfY, object.halfZ),
+  }, scene);
+}
+
+export function createPhysicsBodyForObject(object) {
+  const shape = object.shape ?? (isMissileName(object.id) ? "sphere" : "box");
+  let aggregate;
+
+  if (shape === "convex_hull") {
+    const template = getTemplate(templatePathFromId(object.id));
+    if (template?.convexPositions) {
+      aggregate = createConvexHullBody(
+        object.id,
+        template.convexPositions,
+        new Vector3(object.x, object.y, object.z),
+        rotationQuaternionForObject(object),
+        {
+          mass: object.dynamic ? object.mass : 0,
+          friction: object.friction,
+          restitution: object.restitution,
+        },
+      );
+    } else {
+      aggregate = createBoxBody(object);
+    }
+  } else if (shape === "sphere") {
+    aggregate = createSphereBody(object);
+  } else {
+    aggregate = createBoxBody(object);
+  }
+
+  aggregate.body.disablePreStep = true;
+  aggregate.body.setLinearDamping(isTrebuchetName(object.id) ? 2.2 : 0.15);
+  aggregate.body.setAngularDamping(isTrebuchetName(object.id) ? 10 : 0.55);
+
+  if (isMissileName(object.id) || isBlockName(object.id)) {
+    aggregate.body.setCollisionCallbackEnabled(true);
+  }
+
+  physicsAggregates.set(object.id, aggregate);
+  return aggregate;
 }
 
 export function syncPhysicsBodyFromObject(object, velocity = null) {

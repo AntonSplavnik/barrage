@@ -50,6 +50,7 @@ export function applyState(message) {
       arm.rotation.z = degreesToRadians(object.armAngle);
       arm.computeWorldMatrix(true);
     }
+
   }
 
   if (onAimUpdate) onAimUpdate();

@@ -63,6 +63,14 @@ export const BARRAGE_CONFIG = {
   aimArrowHeadLengthScale: 0.18,
   aimArrowHeadWidth: 0.12,
   aimArrowHeadWidthScale: 0.45,
+
+  // Fragment / destruction.
+  fragmentLifetimeMs: 5000,
+  fragmentSpreadX: 4,
+  fragmentSpreadY: 2,
+  fragmentShrinkMs: 500,
+  fragmentImmunityMs: 500,
+  fragmentHitSpeedPenalty: 3,
 };
 
 if (typeof window !== "undefined") {

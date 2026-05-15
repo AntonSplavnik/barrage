@@ -1,6 +1,6 @@
 import { connectionEl, playerEl, scoreLeftEl, scoreRightEl, matchEndEl, matchEndTextEl, rematchEl, engine, scene } from "./engine.js";
-import { applyState } from "./state.js";
-import { loadLevel, reloadLevel, ensureVisualsForState } from "./level.js";
+import { applyState, latestObjectStates } from "./state.js";
+import { loadLevel, reloadLevel, ensureVisualsForState, hideBlockVisual, shrinkAndDisposeFragment, clearDestructionVisuals, updateCrackStage } from "./level.js";
 
 let seq = 0;
 let displayedScores = { P1: 0, P2: 0 };
@@ -112,6 +112,7 @@ socket.addEventListener("message", async (event) => {
   }
 
   if (message.type === "roundStarted") {
+    clearDestructionVisuals();
     if (message.level) reloadLevel(message.level);
   }
 
@@ -131,10 +132,34 @@ socket.addEventListener("message", async (event) => {
     if (message.level) reloadLevel(message.level);
   }
 
+  if (message.type === "event") {
+    for (const evt of message.events ?? []) {
+      if (evt.kind === "blockBroken") {
+        hideBlockVisual(evt.blockId);
+      }
+      if (evt.kind === "fragmentRemoving") {
+        shrinkAndDisposeFragment(evt.fragId);
+      }
+      if (evt.kind === "reset") {
+        clearDestructionVisuals();
+      }
+    }
+  }
+
   if (message.type === "state") {
     updateScores(message.scores, false);
+    const prevStates = new Map(latestObjectStates);
     ensureVisualsForState(message.objects ?? []);
     applyState(message);
+
+    for (const object of message.objects ?? []) {
+      if (object.hitStage !== undefined && object.hitStage > 0) {
+        const prev = prevStates.get(object.id);
+        if (!prev || prev.hitStage !== object.hitStage) {
+          updateCrackStage(object.id, object.hitStage, object.fragmentTemplate);
+        }
+      }
+    }
   }
 });
 
