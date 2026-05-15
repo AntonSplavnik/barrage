@@ -180,7 +180,7 @@ Crack stages always run as a system-level behavior driven by config. The `onBloc
 
 `level1.js` no longer needs `onBlockDestroyed` — config handles it. Hooks remain available for custom per-level logic (e.g., spawn extra missiles on block death).
 
-`deleteBlock()` exists in `fragmentation.js:129` but is not currently exported. It must be exported for the `fragmentation: false` path in `collisions.js`.
+`deleteBlock()` exists in `fragmentation.js:129` (also called internally at `fragmentation.js:18` as a fallback). It must be exported for the `fragmentation: false` path. This introduces a new dependency: `collisions.js` will import `{ shatterBlock, deleteBlock }` from `fragmentation.js`. No circular risk — `fragmentation.js` does not import `collisions.js`.
 
 ### 4. Sending Config to Client
 
@@ -243,18 +243,18 @@ Client code replaces `CONFIG.trebuchetArmRestRotationZDegrees` → `getServerCon
 | `public/client/level.js` | Use `CLIENT_CONFIG` for rendering, `getServerConfig()` for `fragmentShrinkMs` (replaces `window.BARRAGE_CONFIG`) |
 | `public/client/network.js` | Add `serverConfig` state and `getServerConfig()` export |
 | `server/config.js` | Expand `SERVER_CONFIG`, add `setActiveLevelConfig()`, `getConfig()`, `getClientRelevantConfig()` |
-| `server/game/collisions.js` | Use `getConfig()`, implement config-driven crack/fragmentation logic |
+| `server/game/collisions.js` | Use `getConfig()`, implement config-driven crack/fragmentation logic, new import `{ shatterBlock, deleteBlock }` from `fragmentation.js` |
 | `server/game/fragmentation.js` | Use `getConfig()` instead of `BARRAGE_CONFIG`, export `deleteBlock()` |
 | `server/game/simulation.js` | Use `getConfig()` instead of `BARRAGE_CONFIG` |
 | `server/game/entities.js` | Use `getConfig()` instead of `BARRAGE_CONFIG` |
 | `server/game/trebuchet.js` | Use `getConfig()` instead of `BARRAGE_CONFIG`, remove dead `aimArmMaxExtraDegrees` reference |
 | `server/game/physics.js` | Use `getConfig()` instead of `BARRAGE_CONFIG` |
 | `server/game/templateRegistry.js` | Use `getConfig()` instead of `BARRAGE_CONFIG` |
-| `server/game/levelRunner.js` | Use `getConfig()` instead of `SERVER_CONFIG`, call `setActiveLevelConfig()` after `loadLevel()` resolves |
+| `server/game/levelRunner.js` | Use `getConfig()` instead of `SERVER_CONFIG`, call `setActiveLevelConfig()` inside `loadLevel()` before returning |
 | `server/game/modeRunner.js` | Include config in `roundStarted` and `matchReset` broadcasts |
 | `server/game/levels/level1.js` | Add `config` block, remove `onBlockDestroyed` hook |
-| `server/net/connections.js` | Include config in `welcome` message |
+| `server/net/connections.js` | Include config in `welcome` message, new import `getClientRelevantConfig` from `server/config.js` |
 
 ## Circular Import Note
 
-`getConfig()` needs access to the active level's config, but importing `getActiveLevel()` from `modeRunner.js` would create a circular dependency (since `modeRunner.js` imports from `server/config.js`). Instead, `server/config.js` exposes `setActiveLevelConfig(config)` — a setter called by `levelRunner.js` right after `loadLevel()` resolves. Before the first level loads, `getConfig()` falls back to `SERVER_CONFIG` defaults.
+`getConfig()` needs access to the active level's config, but importing `getActiveLevel()` from `modeRunner.js` would create a circular dependency (since `modeRunner.js` imports from `server/config.js`). Instead, `server/config.js` exposes `setActiveLevelConfig(config)` — a setter called inside `loadLevel()` in `levelRunner.js`, right before it returns. This is cleaner than having the caller do it — `loadLevel()` is called from two places in `modeRunner.js` (`startMode` and `checkRoundEnd`/`resetMatch`), and putting the setter inside `loadLevel()` covers both automatically. Before the first level loads, `getConfig()` falls back to `SERVER_CONFIG` defaults.
