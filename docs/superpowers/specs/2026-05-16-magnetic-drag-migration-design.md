@@ -79,8 +79,8 @@ if distance > maxDistance:
 return point
 ```
 
-**Add `moveMissileReleaseTowardOriginUntilClear(object)`:**
-Depenetration search on missile release. Check AABB overlap with all static/dynamic non-fragment objects. Search outward toward world origin in steps of `depenetrationStep` (0.25m), then upward, up to `depenetrationMaxDistance` (60m). If clear spot found, move missile there. If not, release at current position (physics will resolve).
+**Add `moveMissileReleaseUntilClear(object, clientId)`:**
+Depenetration search on missile release. Check AABB overlap with all static/dynamic non-fragment objects. Search upward first (Y+) in steps of `depenetrationStep` (0.25m) up to `depenetrationMaxDistance` (60m) — the field is horizontal so up is always a clear escape. If upward fails, fall back to searching toward the player's half-field (X- for player 1, X+ for player 2). If neither finds a clear spot, release at current position (physics will resolve).
 
 **Modify `handleDragStart`:**
 - Early return if `object.draggedBy` is already set — prevents a second player from stealing the drag and leaking the first player's `dragState` entry (never cleaned up since `handleDragEnd` won't fire for the original owner)
