@@ -65,6 +65,7 @@ pointVelocity = linearVelocity + cross(angularVelocity, grabWorldPoint - centerO
 dampingForce = -pointVelocity * dragDampingMax
 
 totalForce = magneticForce + dampingForce
+totalForce.z = 0  // zero Z component — constrainBodyToPlane will snap Z after the step anyway, so Z forces waste energy and cause micro-jitter
 physicsBody.applyForce(totalForce, grabWorldPoint)
 ```
 
@@ -83,6 +84,7 @@ return point
 Depenetration search on missile release. Check AABB overlap with all static/dynamic non-fragment objects. Search outward toward world origin in steps of `depenetrationStep` (0.25m), then upward, up to `depenetrationMaxDistance` (60m). If clear spot found, move missile there. If not, release at current position (physics will resolve).
 
 **Modify `handleDragStart`:**
+- Early return if `object.draggedBy` is already set — prevents a second player from stealing the drag and leaking the first player's `dragState` entry (never cleaned up since `handleDragEnd` won't fire for the original owner)
 - After setting `dragState`, also store `grabLocalPoint` via `localPointForObject` if `usesMagneticDrag(object)` is true
 - Remove `returnDraggedObjectUpright(object)` call for magnetic objects (they rotate freely)
 - Keep upright lerp for missiles only
@@ -101,12 +103,11 @@ Replace with `velocityFromDragState` only. Client velocity is no longer trusted.
 
 ### server/game/simulation.js
 
-**Modify the `object.draggedBy` block:**
+**Modify the pre-step `object.draggedBy` block:**
 ```
 if (object.draggedBy) {
   if (usesMagneticDrag(object)) {
     applyMagneticDragForce(object);
-    // no sync, no upright — forces handle everything
   } else {
     // missile: keep current behavior
     returnDraggedObjectUpright(object);
@@ -114,6 +115,18 @@ if (object.draggedBy) {
   }
   continue;
 }
+```
+
+**Modify the post-step readback skip:**
+The current post-step loop has `if (object.draggedBy || object.loadedInto) continue;` which skips all dragged objects. This is correct for direct drag (the game object IS the source of truth) but wrong for magnetic drag (the physics body is the source of truth — forces moved it, and the game object hasn't been updated).
+
+Change the skip condition:
+```
+if (object.loadedInto) continue;
+if (object.draggedBy && !usesMagneticDrag(object)) continue;
+```
+
+Magnetically dragged objects now participate in the post-step readback: position, rotation, and velocity are read from the physics body back into the game object, same as any free-flying object. Without this, forces apply and the physics body moves, but `object.x/y/rot` never update and the client never sees movement.
 ```
 
 ### server/game/entities.js
@@ -147,6 +160,25 @@ These keys are server-only — no need to add them to `CLIENT_RELEVANT_KEYS`. Al
 ### server/game/physics.js
 
 No new exports needed. `applyMagneticDragForce` will access the physics aggregate via the existing `physicsAggregates` map (imported from physics.js). Havok bodies already support `applyForce(force, worldPoint)` — confirm this is available on the aggregate's body, or use the lower-level Havok plugin API if needed.
+
+## Edge cases
+
+### Block-block collision during magnetic drag
+
+With direct positioning blocks teleport through everything. With magnetic drag, blocks move through physics and will collide with other blocks mid-drag. The collision callbacks are active (`physics.js`).
+
+Rules:
+- A magnetically dragged block does NOT deal or receive fragmentation damage during drag. The collision system should skip pairs where either object has `draggedBy` set.
+- This prevents jitter from the attraction force pushing a block persistently into another block (Havok resolves penetration each step while the force re-creates it). Without this, a player could weaponize dragging by ramming blocks into the opponent's structure.
+- On release, normal collision rules resume immediately.
+
+Implementation: add a guard at the top of the collision callback — if either collider's game object has `draggedBy` set, return early.
+
+### Player disconnect while dragging
+
+If a player disconnects mid-drag, `draggedBy` and `dragState` must be cleaned up or the object stays in a phantom-drag state with forces applied toward a stale pointer position.
+
+The disconnect handler must call `releaseDragForClient(clientId)` — a new helper that iterates `gameObjects`, finds any object where `draggedBy === clientId`, clears `draggedBy`, deletes the `dragState` entry, and (for missiles) restores the physics body from trigger to solid. The object then falls under normal physics with whatever velocity the physics body had at disconnect. No release velocity calculation needed — momentum is already there for magnetic objects, and for missiles the velocity was zeroed during drag so it just drops.
 
 ## What does NOT change
 
