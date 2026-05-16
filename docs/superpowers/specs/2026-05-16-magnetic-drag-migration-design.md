@@ -87,6 +87,7 @@ Depenetration search on missile release. Check AABB overlap with all static/dyna
 **Modify `handleDragStart`:**
 - Early return if `object.draggedBy` is already set — prevents a second player from stealing the drag and leaking the first player's `dragState` entry (never cleaned up since `handleDragEnd` won't fire for the original owner)
 - Zero `vx/vy/vz` (already done) — kept for magnetic drag so objects start from rest
+- For magnetic objects: also zero the physics body's linear and angular velocity (`setLinearVelocity(Vector3.Zero())`, `setAngularVelocity(Vector3.Zero())`). Without this, the physics body retains pre-grab momentum — grabbing a falling block wouldn't stop it, just layer magnetic force on top of existing velocity.
 - After setting `dragState`, also store `grabLocalPoint` via `localPointForObject` if `usesMagneticDrag(object)` is true
 - For magnetic objects: store the body's current `angularDamping` in `dragState.originalAngularDamping`, then set it to 0. The spec's velocity-based damping at the grab point already handles damping; keeping the body-level value (0.55 for blocks, 10 for trebuchets) on top double-damps rotation and makes it feel sluggish.
 - Remove `returnDraggedObjectUpright(object)` call for magnetic objects (they rotate freely)
@@ -187,6 +188,7 @@ The client no longer computes release velocity — the server owns that entirely
 **Remove release velocity computation** (dead code after migration):
 - `sampleReleasePoint`, `startReleaseVelocitySampling`, `stopReleaseVelocitySampling`, `updateReleasePoint`, `averageReleaseVelocity`
 - Associated state: `releaseSamples`, `releaseSampleTimer`, `releaseVelocity`, `latestDragPoint`
+- The `window.addEventListener("blur", () => { stopReleaseVelocitySampling(); })` listener — becomes an empty callback after removal
 
 **Simplify `dragEnd` message format:**
 ```javascript
