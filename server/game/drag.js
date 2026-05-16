@@ -93,10 +93,7 @@ export function applyMagneticDragForce(object) {
   const magneticForce = displacement.normalize().scale(forceMagnitude);
 
   const linearVelocity = aggregate.body.getLinearVelocity();
-  const angularVelocity = aggregate.body.getAngularVelocity();
-  const r = grabWorldPoint.subtract(node.position);
-  const pointVelocity = linearVelocity.add(Vector3.Cross(angularVelocity, r));
-  const dampingForce = pointVelocity.scale(-getConfig("dragDampingMax"));
+  const dampingForce = linearVelocity.scale(-getConfig("dragDampingMax"));
 
   const totalForce = magneticForce.add(dampingForce);
   totalForce.z = 0;
