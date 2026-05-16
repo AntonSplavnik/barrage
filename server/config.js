@@ -40,6 +40,19 @@ export const SERVER_CONFIG = {
   releaseVelocityMax: 80,
   dragUprightLerp: 0.25,
 
+  // Magnetic drag
+  dragForceMax: 1500,
+  dragRadiusLimit: 30,
+  dragDampingMax: 400,
+
+  // Drag speed validation
+  maxDragSpeed: 5000,
+
+  // Missile release depenetration
+  depenetrationStep: 0.25,
+  depenetrationMaxDistance: 60,
+  missileReleaseFloorPadding: 0.05,
+
   // Fragments
   fragmentLifetimeMs: 5000,
   fragmentSpreadX: 4,
@@ -65,7 +78,6 @@ export function getConfig(key) {
 
 const CLIENT_RELEVANT_KEYS = [
   "trebuchetArmRestRotationZDegrees",
-  "normalReleaseVelocityMax",
   "aimMaxPullDistance",
   "fragmentShrinkMs",
 ];
