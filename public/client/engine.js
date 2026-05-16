@@ -1,6 +1,6 @@
-import { BARRAGE_CONFIG } from "../config.js";
+import { CLIENT_CONFIG } from "./clientConfig.js";
 
-export const CONFIG = BARRAGE_CONFIG;
+export const CONFIG = CLIENT_CONFIG;
 
 const {
   Engine,

@@ -1,5 +1,4 @@
-import { BARRAGE_CONFIG } from "../../public/config.js";
-import { SERVER_CONFIG } from "../config.js";
+import { getConfig } from "../config.js";
 import { clamp, clampVector } from "../math.js";
 
 export const ARM_STATE_IDLE = "idle";
@@ -49,18 +48,15 @@ export function isFragmentName(name) {
 }
 
 export function restArmAngleForTrebuchet() {
-  return BARRAGE_CONFIG.trebuchetArmRestRotationZDegrees ?? 15;
+  return getConfig("trebuchetArmRestRotationZDegrees");
 }
 
 export function normalReleaseVelocityMax() {
-  return BARRAGE_CONFIG.normalReleaseVelocityMax
-    ?? BARRAGE_CONFIG.releaseVelocityMax
-    ?? SERVER_CONFIG.releaseVelocityMax;
+  return getConfig("normalReleaseVelocityMax");
 }
 
 export function trebuchetFireVelocityMax() {
-  return BARRAGE_CONFIG.trebuchetFireVelocityMax
-    ?? SERVER_CONFIG.releaseVelocityMax;
+  return getConfig("trebuchetFireVelocityMax");
 }
 
 export function releaseVelocityForObject(object, velocity = {}, maxVelocity = normalReleaseVelocityMax()) {
@@ -78,19 +74,19 @@ export function releaseVelocityForObject(object, velocity = {}, maxVelocity = no
 }
 
 export function constrainWorldBounds(object) {
-  object.x = clamp(object.x, SERVER_CONFIG.worldMinX, SERVER_CONFIG.worldMaxX);
-  object.z = clamp(object.z, SERVER_CONFIG.worldMinZ, SERVER_CONFIG.worldMaxZ);
+  object.x = clamp(object.x, getConfig("worldMinX"), getConfig("worldMaxX"));
+  object.z = clamp(object.z, getConfig("worldMinZ"), getConfig("worldMaxZ"));
 
-  const floorY = SERVER_CONFIG.groundY + object.halfY - (object.offsetY ?? 0);
+  const floorY = getConfig("groundY") + object.halfY - (object.offsetY ?? 0);
   if (object.y < floorY) {
     object.y = floorY;
     if (object.vy < 0) object.vy = 0;
   }
 
-  if (object.x === SERVER_CONFIG.worldMinX && object.vx < 0) object.vx = 0;
-  if (object.x === SERVER_CONFIG.worldMaxX && object.vx > 0) object.vx = 0;
-  if (object.z === SERVER_CONFIG.worldMinZ && object.vz < 0) object.vz = 0;
-  if (object.z === SERVER_CONFIG.worldMaxZ && object.vz > 0) object.vz = 0;
+  if (object.x === getConfig("worldMinX") && object.vx < 0) object.vx = 0;
+  if (object.x === getConfig("worldMaxX") && object.vx > 0) object.vx = 0;
+  if (object.z === getConfig("worldMinZ") && object.vz < 0) object.vz = 0;
+  if (object.z === getConfig("worldMaxZ") && object.vz > 0) object.vz = 0;
 }
 
 export function constrainedPointForObject(object, point, clientId = null) {
@@ -106,11 +102,11 @@ export function constrainedPointForObject(object, point, clientId = null) {
   }
 
   const minX = object.player === 1
-    ? BARRAGE_CONFIG.trebuchetLeftMinX
-    : BARRAGE_CONFIG.trebuchetRightMinX;
+    ? getConfig("trebuchetLeftMinX")
+    : getConfig("trebuchetRightMinX");
   const maxX = object.player === 1
-    ? BARRAGE_CONFIG.trebuchetLeftMaxX
-    : BARRAGE_CONFIG.trebuchetRightMaxX;
+    ? getConfig("trebuchetLeftMaxX")
+    : getConfig("trebuchetRightMaxX");
 
   return {
     x: clamp(Number(point.x), minX, maxX),

@@ -13,8 +13,7 @@ import { HavokPlugin } from "@babylonjs/core/Physics/v2/Plugins/havokPlugin.js";
 import { PhysicsAggregate } from "@babylonjs/core/Physics/v2/physicsAggregate.js";
 import { PhysicsPrestepType, PhysicsShapeType } from "@babylonjs/core/Physics/v2/IPhysicsEnginePlugin.js";
 import HavokPhysics from "@babylonjs/havok";
-import { SERVER_CONFIG } from "../config.js";
-import { BARRAGE_CONFIG } from "../../public/config.js";
+import { SERVER_CONFIG, getConfig } from "../config.js";
 import { gameObjects } from "./state.js";
 import { isTrebuchetName, isMissileName, isBlockName } from "./entities.js";
 import { getTemplate } from "./templateRegistry.js";
@@ -330,7 +329,7 @@ export function constrainBodyToPlane(object) {
 export function returnDraggedObjectUpright(object) {
   if (!object.dynamic || isTrebuchetName(object.id) || isMissileName(object.id) || object.loadedInto) return;
 
-  const amount = clamp(BARRAGE_CONFIG.dragUprightLerp ?? 0.25, 0, 1);
+  const amount = clamp(getConfig("dragUprightLerp"), 0, 1);
   object.rot = lerpAngleDegrees(object.rot ?? 0, 0, amount);
 
   const aggregate = physicsAggregates.get(object.id);

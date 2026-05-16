@@ -7,8 +7,7 @@ import { SceneLoader } from "@babylonjs/core/Loading/sceneLoader.js";
 import "@babylonjs/loaders/glTF/index.js";
 import { scene, physicsAggregates, createPhysicsBodies, createArenaColliders } from "./physics.js";
 import { gameObjects, loadTargets, dragState, destroyedBlocks } from "./state.js";
-import { PORT } from "../config.js";
-import { SERVER_CONFIG } from "../config.js";
+import { PORT, SERVER_CONFIG, setActiveLevelConfig, getConfig } from "../config.js";
 import {
   isTrebuchetName,
   isMissileName,
@@ -82,9 +81,9 @@ function createSpawnFunction() {
       halfY: bounds.halfY,
       halfZ: bounds.halfZ,
       halfHeight: bounds.halfY,
-      mass: SERVER_CONFIG.dynamicMass,
-      friction: SERVER_CONFIG.dynamicFriction,
-      restitution: SERVER_CONFIG.dynamicRestitution,
+      mass: getConfig("dynamicMass"),
+      friction: getConfig("dynamicFriction"),
+      restitution: getConfig("dynamicRestitution"),
       player: opts.player ?? null,
       ...(opts.shape ? { shape: opts.shape } : {}),
       ...(opts.fragmentTemplate ? (() => {
@@ -165,6 +164,8 @@ export async function loadLevel(levelId) {
       `  ${object.id}: pos=(${object.x.toFixed(2)}, ${object.y.toFixed(2)}, ${object.z.toFixed(2)}) half=(${object.halfX.toFixed(2)}, ${object.halfY.toFixed(2)}, ${object.halfZ.toFixed(2)}) player=${object.player}`,
     );
   }
+
+  setActiveLevelConfig(levelDef.config ?? null);
 
   return { def: levelDef, url: levelUrl, spawn };
 }

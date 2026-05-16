@@ -7,8 +7,7 @@ import { SceneLoader } from "@babylonjs/core/Loading/sceneLoader.js";
 import "@babylonjs/loaders/glTF/index.js";
 import { scene } from "./physics.js";
 import { VertexBuffer } from "@babylonjs/core/Buffers/buffer.js";
-import { PORT } from "../config.js";
-import { BARRAGE_CONFIG } from "../../public/config.js";
+import { PORT, getConfig } from "../config.js";
 
 const { XMLHttpRequest } = xhr2;
 globalThis.XMLHttpRequest = XMLHttpRequest;
@@ -206,7 +205,7 @@ function extractTrebuchetNodes(root) {
 
   if (!targetNode) return null;
 
-  const restDegrees = BARRAGE_CONFIG.trebuchetArmRestRotationZDegrees ?? 15;
+  const restDegrees = getConfig("trebuchetArmRestRotationZDegrees");
   if (armNode) {
     armNode.rotationQuaternion = null;
     armNode.rotation.z = (restDegrees * Math.PI) / 180;

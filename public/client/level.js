@@ -1,4 +1,5 @@
 import { engine, scene, canvas, CONFIG } from "./engine.js";
+import { getServerConfig } from "./network.js";
 import { childRole, descendantsOf, isTrebuchetArmRoot, isMissileName, colliderNodesFor } from "./utils.js";
 import { visualObjects, visualBaseRotations, trebuchetArmNodes, trebuchetLoadTargets, latestObjectStates, findGameplayRoot } from "./state.js";
 import { createAimArrowMeshes } from "./aim.js";
@@ -284,7 +285,7 @@ export function shrinkAndDisposeFragment(fragId) {
   const visual = fragmentVisuals.get(fragId);
   if (!visual) return;
 
-  const shrinkMs = (window.BARRAGE_CONFIG?.fragmentShrinkMs ?? 500);
+  const shrinkMs = (getServerConfig("fragmentShrinkMs") ?? 500);
   const startTime = performance.now();
   const startScale = visual.scaling?.clone() ?? new BABYLON.Vector3(1, 1, 1);
 
