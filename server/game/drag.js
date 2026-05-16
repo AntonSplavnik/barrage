@@ -181,17 +181,6 @@ function velocityFromDragState(object, point) {
   }, normalReleaseVelocityMax());
 }
 
-function usableReleaseVelocity(object, message) {
-  const clientVelocity = releaseVelocityForObject(object, message.velocity);
-  const clientSpeed = Math.hypot(clientVelocity.x, clientVelocity.y, clientVelocity.z);
-
-  if (clientSpeed > 0.1) {
-    return clientVelocity;
-  }
-
-  return releaseVelocityForObject(object, velocityFromDragState(object, message.point));
-}
-
 export function handleDragStart(client, message) {
   const object = gameObjects.get(message.entityId);
   if (!object || !message.point) return;
@@ -275,13 +264,43 @@ export function handleDragEnd(client, message) {
   if (!object || !message.point) return;
   if (object.draggedBy !== client.id) return;
 
-  const next = constrainedPointForObject(object, message.point, client.id);
-  const releaseVelocity = usableReleaseVelocity(object, message);
+  const previous = dragState.get(object.id);
+  const now = Date.now();
+  const dt = Math.max(0.001, (now - (previous?.lastTime ?? now)) / 1000);
+  const validated = validateDragPosition(message.point, previous?.lastPoint ?? message.point, dt);
+
+  const rawVelocity = velocityFromDragState(object, validated);
+  const releaseVelocity = releaseVelocityForObject(object, rawVelocity);
+
+  if (usesMagneticDrag(object)) {
+    const state = dragState.get(object.id);
+    if (state?.originalAngularDamping !== undefined) {
+      const aggregate = physicsAggregates.get(object.id);
+      if (aggregate) {
+        aggregate.body.setAngularDamping(state.originalAngularDamping);
+        aggregate.body.setLinearVelocity(
+          new Vector3(releaseVelocity.x, releaseVelocity.y, releaseVelocity.z),
+        );
+      }
+    }
+    object.vx = releaseVelocity.x;
+    object.vy = releaseVelocity.y;
+    object.vz = releaseVelocity.z;
+    object.dragVx = 0;
+    object.dragVy = 0;
+    object.dragVz = 0;
+    object.draggedBy = null;
+    dragState.delete(object.id);
+    return;
+  }
+
+  const next = constrainedPointForObject(object, validated, client.id);
   object.x = next.x;
   object.y = next.y;
   object.z = next.z;
   constrainWorldBounds(object);
-  returnDraggedObjectUpright(object);
+  moveMissileReleaseUntilClear(object, client.id);
+
   if (!maybeLoadMissile(object)) {
     if (isMissileName(object.id)) setPhysicsBodyTrigger(object, false);
     object.vx = releaseVelocity.x;
