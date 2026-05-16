@@ -198,6 +198,7 @@ export function handleDragStart(client, message) {
   if (!object.dynamic) return;
   if (object.loadedInto) return;
   if (isKingName(object.id)) return;
+  if (object.draggedBy) return;
 
   if (isTrebuchetName(object.id)) {
     if (object.player && object.player !== client.id) return;
@@ -207,12 +208,30 @@ export function handleDragStart(client, message) {
   }
 
   object.draggedBy = client.id;
-  if (isMissileName(object.id)) setPhysicsBodyTrigger(object, true);
   object.vx = 0;
   object.vy = 0;
   object.vz = 0;
-  returnDraggedObjectUpright(object);
-  dragState.set(object.id, { lastTime: Date.now(), lastPoint: message.point });
+
+  if (usesMagneticDrag(object)) {
+    const aggregate = physicsAggregates.get(object.id);
+    if (aggregate) {
+      aggregate.body.setLinearVelocity(Vector3.Zero());
+      aggregate.body.setAngularVelocity(Vector3.Zero());
+    }
+    const grabLocalPoint = localPointForObject(object, message.point);
+    const originalAngularDamping = aggregate?.body.getAngularDamping() ?? 0;
+    if (aggregate) aggregate.body.setAngularDamping(0);
+    dragState.set(object.id, {
+      lastTime: Date.now(),
+      lastPoint: message.point,
+      grabLocalPoint,
+      originalAngularDamping,
+    });
+  } else {
+    if (isMissileName(object.id)) setPhysicsBodyTrigger(object, true);
+    returnDraggedObjectUpright(object);
+    dragState.set(object.id, { lastTime: Date.now(), lastPoint: message.point });
+  }
 }
 
 export function handleDragMove(client, message) {
