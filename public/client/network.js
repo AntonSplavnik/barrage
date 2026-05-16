@@ -6,6 +6,12 @@ let seq = 0;
 let displayedScores = { P1: 0, P2: 0 };
 let ready = false;
 
+let serverConfig = {};
+
+export function getServerConfig(key) {
+  return serverConfig[key];
+}
+
 const socketProtocol = window.location.protocol === "https:" ? "wss" : "ws";
 export const socket = new WebSocket(`${socketProtocol}://${window.location.host}`);
 
@@ -96,6 +102,7 @@ socket.addEventListener("message", async (event) => {
   const message = JSON.parse(event.data);
 
   if (message.type === "welcome") {
+    if (message.config) serverConfig = message.config;
     playerEl.textContent = message.playerId;
     const { initTemplateRegistry } = await import("./templateRegistry.js");
     await initTemplateRegistry(message.templates ?? []);
@@ -112,6 +119,7 @@ socket.addEventListener("message", async (event) => {
   }
 
   if (message.type === "roundStarted") {
+    if (message.config) serverConfig = message.config;
     clearDestructionVisuals();
     if (message.level) reloadLevel(message.level);
   }
@@ -125,6 +133,7 @@ socket.addEventListener("message", async (event) => {
   }
 
   if (message.type === "matchReset") {
+    if (message.config) serverConfig = message.config;
     matchEndEl.classList.add("hidden");
     scoreLeftEl.innerHTML = "";
     scoreRightEl.innerHTML = "";

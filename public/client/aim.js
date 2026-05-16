@@ -1,4 +1,5 @@
 import { scene, CONFIG } from "./engine.js";
+import { getServerConfig } from "./network.js";
 import { latestObjectStates, trebuchetLoadTargets, setOnAimUpdate } from "./state.js";
 import { degreesToRadians, isForwardPullPoint, clampAimTailPoint } from "./utils.js";
 
@@ -95,7 +96,7 @@ function releasePointForTrebuchet(trebuchetId) {
   const target = trebuchetLoadTargets.get(trebuchetId);
   if (!target?.targetNode) return null;
 
-  const restRadians = degreesToRadians(CONFIG.trebuchetArmRestRotationZDegrees ?? 15);
+  const restRadians = degreesToRadians(getServerConfig("trebuchetArmRestRotationZDegrees") ?? 15);
 
   if (target.armNode) {
     const trebState = latestObjectStates.get(trebuchetId);
@@ -147,7 +148,8 @@ export function updateAimArrow() {
     return;
   }
 
-  const tailPoint = clampAimTailPoint(headPoint, aimWorldPoint.clone(), CONFIG);
+  const maxArrowLength = getServerConfig("aimMaxPullDistance") ?? CONFIG.aimArrowMaxLength ?? 4.5;
+  const tailPoint = clampAimTailPoint(headPoint, aimWorldPoint.clone(), { aimArrowMaxLength: maxArrowLength });
   tailPoint.z = headPoint.z + (CONFIG.aimArrowZOffset ?? 0.05);
   headPoint.z += CONFIG.aimArrowZOffset ?? 0.05;
 
@@ -159,7 +161,7 @@ export function updateAimArrow() {
   }
 
   const backDir = backVector.scale(1 / arrowLength);
-  const extensionRatio = arrowLength / Math.max(0.001, CONFIG.aimArrowMaxLength ?? CONFIG.aimMaxPullDistance ?? 4.5);
+  const extensionRatio = arrowLength / Math.max(0.001, maxArrowLength);
   updateAimArrowColor(extensionRatio);
   const headLength = Math.min(
     CONFIG.aimArrowHeadLengthMax ?? 0.75,

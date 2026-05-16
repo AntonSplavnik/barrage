@@ -1,7 +1,7 @@
 import { scene, canvas, resetEl, restartServerEl, connectionEl, CONFIG } from "./engine.js";
 import { isDraggableRoot, clampMagnitude } from "./utils.js";
 import { visualObjects, latestObjectStates, findGameplayRoot } from "./state.js";
-import { sendInput } from "./network.js";
+import { sendInput, getServerConfig } from "./network.js";
 import { setAimRefs, updateAimArrow, hideAimArrow } from "./aim.js";
 
 const { Vector3 } = BABYLON;
@@ -94,7 +94,7 @@ function averageReleaseVelocity() {
     x: ((last.point.x - first.point.x) / dt) * scale,
     y: ((last.point.y - first.point.y) / dt) * scale,
     z: ((last.point.z - first.point.z) / dt) * scale,
-  }, CONFIG.normalReleaseVelocityMax ?? CONFIG.releaseVelocityMax ?? 8);
+  }, getServerConfig("normalReleaseVelocityMax") ?? 8);
 }
 
 function pickDraggableRoot() {
