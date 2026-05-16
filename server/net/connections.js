@@ -3,6 +3,7 @@ import { clients, gameState } from "../game/state.js";
 import { TICK_RATE, getClientRelevantConfig } from "../config.js";
 import { applyInput } from "../game/input.js";
 import { getAllPaths } from "../game/templateRegistry.js";
+import { releaseDragForClient } from "../game/drag.js";
 
 export function setupWebSocket(httpServer) {
   const wss = new WebSocketServer({ server: httpServer });
@@ -32,6 +33,7 @@ export function setupWebSocket(httpServer) {
     });
 
     socket.on("close", () => {
+      releaseDragForClient(clientId);
       clients.delete(clientId);
     });
   });
