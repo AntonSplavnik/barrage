@@ -36,7 +36,7 @@ Applied in `handleDragMove` and `handleDragEnd` before any physics:
 
 1. **Zone check** (already exists): reject/clamp positions outside the player's allowed half. Current thresholds: `x > 2` for player 1, `x < -2` for player 2. Trebuchets use `trebuchetLeftMinX/MaxX` and `trebuchetRightMinX/MaxX`.
 
-2. **Speed clamp** (new): if the distance between the current `dragMove` position and the previous `dragState.lastPoint` exceeds `maxDragSpeed * dt`, clamp the position to the maximum allowed displacement along the same direction vector.
+2. **Speed clamp** (new): if the distance between the current `dragMove` position and the previous `dragState.lastPoint` exceeds `maxDragSpeed * dt`, clamp the position to the maximum allowed displacement along the same direction vector. `maxDragSpeed` is in units/second (default 5000 — well above any legitimate swipe). `dt` is wall-clock seconds between messages, capped at `2 * TICK_MS / 1000` to prevent batching exploits (a cheater sending updates at 1/10th the rate would otherwise get 10x the allowed displacement per message).
 
 ## Changes by File
 
@@ -71,6 +71,7 @@ physicsBody.applyForce(totalForce, grabWorldPoint)
 **Add `validateDragPosition(point, previousPoint, dt)`:**
 Speed clamp logic. Returns the validated (possibly clamped) position.
 ```
+dt = min(wallClockDtSeconds, 2 * TICK_MS / 1000)
 displacement = point - previousPoint
 distance = ||displacement||
 maxDistance = maxDragSpeed * dt
@@ -146,7 +147,7 @@ dragRadiusLimit: 30,
 dragDampingMax: 400,
 
 // Server-side drag validation.
-maxDragSpeed: 80,
+maxDragSpeed: 5000,
 
 // Missile release depenetration.
 depenetrationStep: 0.25,
@@ -192,6 +193,6 @@ The disconnect handler must call `releaseDragForClient(clientId)` — a new help
 
 The magnetic drag config values (`dragForceMax: 1500`, `dragRadiusLimit: 30`, `dragDampingMax: 400`) come from `rufus-prototype`. These may need tuning since the server-refactor branch has different physics settings (e.g., `physicsTimeScale: 1.5` vs rufus-prototype's value). Start with rufus values and tune from there.
 
-The `maxDragSpeed: 80` is new — set high enough to never trigger during normal play (a fast swipe across a 60-unit-wide field in one 16ms tick = ~3750 units/sec, so 80 m/s per tick is generous). This catches only blatant cheats.
+The `maxDragSpeed: 5000` is in units/second — at 60Hz that's ~83 units per tick, above the ~60-unit field width, so it never triggers during normal play. Only catches blatant cheats (teleporting objects across the map). The dt cap at `2 * TICK_MS / 1000` prevents a cheater from batching slow updates to accumulate displacement.
 
 All new config keys live in `SERVER_CONFIG` inside `server/config.js` and are read via `getConfig(key)`, consistent with the config separation done on this branch. `public/config.js` no longer exists.
