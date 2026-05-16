@@ -18,9 +18,10 @@ export const SERVER_CONFIG = {
   dynamicMass: 6,
   dynamicFriction: 0.9,
   dynamicRestitution: 0.15,
-  blockMass: 20,
+  blockMass: 10,
   blockFriction: 0.9,
   blockRestitution: 0.15,
+  missileMass: 6,
   staticFriction: 1.0,
 
   // Trebuchet mechanics
@@ -41,7 +42,7 @@ export const SERVER_CONFIG = {
   dragUprightLerp: 0.25,
 
   // Magnetic drag
-  dragForceMax: 1500,
+  dragForceMax: 1000,
   dragRadiusLimit: 30,
   dragDampingMax: 400,
 

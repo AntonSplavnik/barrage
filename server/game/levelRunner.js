@@ -11,6 +11,7 @@ import { PORT, SERVER_CONFIG, setActiveLevelConfig, getConfig } from "../config.
 import {
   isTrebuchetName,
   isMissileName,
+  isBlockName,
   isKingName,
   restArmAngleForTrebuchet,
   ARM_STATE_IDLE,
@@ -81,7 +82,9 @@ function createSpawnFunction() {
       halfY: bounds.halfY,
       halfZ: bounds.halfZ,
       halfHeight: bounds.halfY,
-      mass: getConfig("dynamicMass"),
+      mass: isBlockName(id) ? getConfig("blockMass")
+        : isMissileName(id) ? getConfig("missileMass")
+        : getConfig("dynamicMass"),
       friction: getConfig("dynamicFriction"),
       restitution: getConfig("dynamicRestitution"),
       player: opts.player ?? null,
