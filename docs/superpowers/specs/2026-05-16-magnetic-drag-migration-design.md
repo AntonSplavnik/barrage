@@ -21,7 +21,7 @@ Files involved: `server/game/drag.js`, `server/game/simulation.js`, `server/game
 - Grab point stored in object-local coordinates — force applied at that point, producing natural rotation
 - Damping force opposes velocity at the grab point to prevent oscillation
 - Object is NOT teleported — it moves through physics
-- On release, velocity comes from physics momentum (no client velocity needed)
+- On release, velocity is computed from `velocityFromDragState` (pointer movement history), clamped via `releaseVelocityForObject`, and set on the physics body
 - No `returnDraggedObjectUpright` — object rotates freely during magnetic drag
 
 **Direct drag** for missiles (same as current, with additions):
@@ -98,7 +98,7 @@ Depenetration search on missile release. Check AABB overlap with all static/dyna
 - If missile: keep current behavior (teleport + sync), but use validated position
 
 **Modify `handleDragEnd`:**
-- For magnetic objects: restore body-level `angularDamping` from `dragState.originalAngularDamping`. Clear dragState, set `draggedBy = null`. Don't set velocity — physics already has momentum. Don't teleport to release position.
+- For magnetic objects: restore body-level `angularDamping` from `dragState.originalAngularDamping`. Compute release velocity from `velocityFromDragState` (pointer movement, not physics body velocity), clamp via `releaseVelocityForObject` (which handles trebuchet X-only constraint), and set that velocity on the physics body. Clear dragState, set `draggedBy = null`. Don't teleport to release position — the physics body is already at its correct location from force integration.
 - If missile: run depenetration, then release with server-computed velocity from `dragState` only (remove client velocity path from `usableReleaseVelocity`)
 
 **Remove `usableReleaseVelocity` dual-source logic:**
