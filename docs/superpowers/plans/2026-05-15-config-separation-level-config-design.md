@@ -118,7 +118,6 @@ export function getConfig(key) {
 const CLIENT_RELEVANT_KEYS = [
   "trebuchetArmRestRotationZDegrees",
   "normalReleaseVelocityMax",
-  "releaseVelocityMax",
   "aimMaxPullDistance",
   "fragmentShrinkMs",
 ];
