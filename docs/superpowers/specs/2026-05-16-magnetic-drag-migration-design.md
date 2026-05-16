@@ -85,9 +85,14 @@ Depenetration search on missile release. Check AABB overlap with all static/dyna
 
 **Modify `handleDragStart`:**
 - Early return if `object.draggedBy` is already set — prevents a second player from stealing the drag and leaking the first player's `dragState` entry (never cleaned up since `handleDragEnd` won't fire for the original owner)
+- Zero `vx/vy/vz` (already done) — kept for magnetic drag so objects start from rest
 - After setting `dragState`, also store `grabLocalPoint` via `localPointForObject` if `usesMagneticDrag(object)` is true
+- For magnetic objects: set body-level `angularDamping` to 0 on the physics body. The spec's velocity-based damping at the grab point already handles damping; keeping the body's default `angularDamping: 0.55` on top of that double-damps rotation and makes it feel sluggish.
 - Remove `returnDraggedObjectUpright(object)` call for magnetic objects (they rotate freely)
 - Keep upright lerp for missiles only
+
+**Modify `handleDragEnd`:**  (addition to existing changes)
+- For magnetic objects: restore body-level `angularDamping` to its original value (0.55) when drag ends.
 
 **Modify `handleDragMove`:**
 - Add `validateDragPosition` call before `constrainedPointForObject`
