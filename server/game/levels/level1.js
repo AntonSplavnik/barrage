@@ -93,9 +93,8 @@ export default {
 		spawn("trebuchets/trebuche-L", { x: 15, y: 1, player: 2 });
 	},
 
-	hooks: {
-		onBlockDestroyed(block, missile, ctx) {
-			ctx.shatterBlock(block, missile);
-		},
+	config: {
+		crackSystem: true,
+		fragmentation: true,
 	},
 };
