@@ -185,10 +185,33 @@ If a player disconnects mid-drag, `draggedBy` and `dragState` must be cleaned up
 
 The disconnect handler must call `releaseDragForClient(clientId)` — a new helper that iterates `gameObjects`, finds any object where `draggedBy === clientId`, clears `draggedBy`, deletes the `dragState` entry, and (for missiles) restores the physics body from trigger to solid. The object then falls under normal physics with whatever velocity the physics body had at disconnect. No release velocity calculation needed — momentum is already there for magnetic objects, and for missiles the velocity was zeroed during drag so it just drops.
 
+## Client changes
+
+The client no longer computes release velocity — the server owns that entirely.
+
+**Remove release velocity computation** (dead code after migration):
+- `sampleReleasePoint`, `startReleaseVelocitySampling`, `stopReleaseVelocitySampling`, `updateReleasePoint`, `averageReleaseVelocity`
+- Associated state: `releaseSamples`, `releaseSampleTimer`, `releaseVelocity`, `latestDragPoint`
+
+**Simplify `dragEnd` message format:**
+```javascript
+// Before:
+sendInput("dragEnd", { entityId, point, velocity: releaseVelocity, rot: 0 });
+// After:
+sendInput("dragEnd", { entityId, point });
+```
+Server already ignores `rot` (computes rotation from physics) and now ignores `velocity` too.
+
+**Remove `normalReleaseVelocityMax` from `CLIENT_RELEVANT_KEYS`** in `server/config.js`. It was only sent to the client for velocity clamping — no longer needed. Also removes a vector where a modified client could influence server behavior via crafted config.
+
+**Keep (unchanged):**
+- Object picking + screen-to-world (`pickDraggableRoot`, `pointerWorldAtDragDepth`)
+- `dragHeightOffset` — Y offset applied before sending. UX convenience; server validates the result. Note: server-received Y values will be offset from the raw pointer position by this amount.
+- `protocolPointFromWorld` — axis inversion for camera orientation
+- `dragStart` and `dragMove` message format unchanged
+
 ## What does NOT change
 
-- Client input: still sends `dragStart`, `dragMove`, `dragEnd` with world positions
-- Client-side picking/raycasting logic
 - Trebuchet aiming system (`aimStart`, `aimMove`, `aimRelease`) — separate from drag
 - Zone enforcement thresholds
 - Missile loading into trebuchets (`maybeLoadMissile`)
