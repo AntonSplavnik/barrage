@@ -3,7 +3,8 @@ import { gameObjects, gameState } from "./state.js";
 import { isMissileName, isBlockName, isFragmentName } from "./entities.js";
 import { getActiveLevel, getHookContext } from "./modeRunner.js";
 import { broadcast } from "../net/broadcast.js";
-import { BARRAGE_CONFIG } from "../../public/config.js";
+import { getConfig, TICK_MS } from "../config.js";
+import { shatterBlock, deleteBlock } from "./fragmentation.js";
 
 const pendingBlockHits = new Map();
 
@@ -26,16 +27,21 @@ function handleMissileBlockHit(missile, block) {
 
   block.hitStage = (block.hitStage ?? 0) + 1;
 
-  if (block.hitStage < block.maxHits) {
+  if (getConfig("crackSystem") && block.hitStage < block.maxHits) {
     broadcast({
       type: "event",
       tick: gameState.tick,
       events: [{ kind: "blockHit", blockId: block.id, hitStage: block.hitStage }],
     });
   } else {
-    // Called synchronously — collision hooks must not be async.
     const hook = getActiveLevel()?.def.hooks?.onBlockDestroyed;
-    if (hook) hook(block, missile, getHookContext());
+    if (hook) {
+      hook(block, missile, getHookContext());
+    } else if (getConfig("fragmentation")) {
+      shatterBlock(block, missile);
+    } else {
+      deleteBlock(block);
+    }
   }
 }
 
@@ -43,20 +49,19 @@ function handleMissileFragmentHit(missile, fragment) {
   if (fragment.removing) return;
   if (missile.loadedInto) return;
 
-  const immunityMs = BARRAGE_CONFIG.fragmentImmunityMs ?? 500;
-  const tickMs = 1000 / 60;
+  const immunityMs = getConfig("fragmentImmunityMs");
   const elapsedTicks = gameState.tick - fragment.createdTick;
-  if (elapsedTicks * tickMs < immunityMs) return;
+  if (elapsedTicks * TICK_MS < immunityMs) return;
 
   fragment.removing = true;
-  fragment.removeAfterMs = Date.now() + (BARRAGE_CONFIG.fragmentShrinkMs ?? 500);
+  fragment.removeAfterMs = Date.now() + getConfig("fragmentShrinkMs");
 
   const aggregate = physicsAggregates.get(fragment.id);
   if (aggregate?.shape) {
     aggregate.shape.isTrigger = true;
   }
 
-  const penalty = BARRAGE_CONFIG.fragmentHitSpeedPenalty ?? 3;
+  const penalty = getConfig("fragmentHitSpeedPenalty");
   const speed = Math.hypot(missile.vx, missile.vy, missile.vz);
   if (speed > penalty) {
     const scale = (speed - penalty) / speed;
