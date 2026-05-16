@@ -64,6 +64,50 @@ function validateDragPosition(point, previousPoint, dt) {
   };
 }
 
+export function applyMagneticDragForce(object) {
+  const aggregate = physicsAggregates.get(object.id);
+  if (!aggregate) return;
+
+  const state = dragState.get(object.id);
+  if (!state?.grabLocalPoint || !state.lastPoint) return;
+
+  const node = aggregate.transformNode;
+  node.computeWorldMatrix(true);
+
+  const grabWorldPoint = Vector3.TransformCoordinates(
+    new Vector3(state.grabLocalPoint.x, state.grabLocalPoint.y, state.grabLocalPoint.z),
+    node.getWorldMatrix(),
+  );
+
+  const targetPoint = new Vector3(
+    Number(state.lastPoint.x),
+    Number(state.lastPoint.y),
+    Number(state.lastPoint.z),
+  );
+
+  const displacement = targetPoint.subtract(grabWorldPoint);
+  const distance = displacement.length();
+  if (distance < 0.0001 || distance > getConfig("dragRadiusLimit")) return;
+
+  const forceDirection = displacement.normalize();
+  const magneticForce = forceDirection.scale(getConfig("dragForceMax"));
+
+  const linearVelocity = aggregate.body.getLinearVelocity();
+  const angularVelocity = aggregate.body.getAngularVelocity();
+  const centerOfMass = node.position.add(
+    new Vector3(object.offsetX ?? 0, object.offsetY ?? 0, object.offsetZ ?? 0),
+  );
+  const r = grabWorldPoint.subtract(centerOfMass);
+  const pointVelocity = linearVelocity.add(Vector3.Cross(angularVelocity, r));
+  const dampingForce = pointVelocity.scale(-getConfig("dragDampingMax"));
+
+  const totalForce = magneticForce.add(dampingForce);
+  totalForce.z = 0;
+  if (isTrebuchetName(object.id)) totalForce.y = 0;
+
+  aggregate.body.applyForce(totalForce, grabWorldPoint);
+}
+
 function velocityFromDragState(object, point) {
   const previous = dragState.get(object.id);
   if (!previous?.lastPoint || !previous.lastTime) return { x: 0, y: 0, z: 0 };
