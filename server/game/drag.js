@@ -242,24 +242,32 @@ export function handleDragMove(client, message) {
   const now = Date.now();
   const previous = dragState.get(object.id);
   const dt = Math.max(0.001, (now - (previous?.lastTime ?? now)) / 1000);
-  const next = constrainedPointForObject(object, message.point, client.id);
-  const nextX = next.x;
-  const nextY = next.y;
-  const nextZ = next.z;
 
-  object.dragVx = (nextX - object.x) / dt;
-  object.dragVy = (nextY - object.y) / dt;
-  object.dragVz = (nextZ - object.z) / dt;
-  object.x = nextX;
-  object.y = nextY;
-  object.z = nextZ;
+  const validated = validateDragPosition(message.point, previous?.lastPoint ?? message.point, dt);
+  const next = constrainedPointForObject(object, validated, client.id);
+
+  if (usesMagneticDrag(object)) {
+    dragState.set(object.id, {
+      ...previous,
+      lastTime: now,
+      lastPoint: next,
+    });
+    return;
+  }
+
+  object.dragVx = (next.x - object.x) / dt;
+  object.dragVy = (next.y - object.y) / dt;
+  object.dragVz = (next.z - object.z) / dt;
+  object.x = next.x;
+  object.y = next.y;
+  object.z = next.z;
   constrainWorldBounds(object);
   returnDraggedObjectUpright(object);
   syncPhysicsBodyFromObject(object, { x: 0, y: 0, z: 0 });
   object.vx = 0;
   object.vy = 0;
   object.vz = 0;
-  dragState.set(object.id, { lastTime: now, lastPoint: message.point });
+  dragState.set(object.id, { lastTime: now, lastPoint: next });
 }
 
 export function handleDragEnd(client, message) {
