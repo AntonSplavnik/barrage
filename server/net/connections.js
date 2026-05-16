@@ -1,6 +1,6 @@
 import { WebSocketServer } from "ws";
 import { clients, gameState } from "../game/state.js";
-import { TICK_RATE } from "../config.js";
+import { TICK_RATE, getClientRelevantConfig } from "../config.js";
 import { applyInput } from "../game/input.js";
 import { getAllPaths } from "../game/templateRegistry.js";
 
@@ -20,6 +20,7 @@ export function setupWebSocket(httpServer) {
       tickRate: TICK_RATE,
       level: gameState.currentLevel?.url ?? "/assets/levels/level1.glb",
       templates: getAllPaths(),
+      config: getClientRelevantConfig(),
     }));
 
     socket.on("message", (raw) => {

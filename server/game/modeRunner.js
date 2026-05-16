@@ -1,4 +1,5 @@
 // server/game/modeRunner.js
+import { getClientRelevantConfig } from "../config.js";
 import {
   isKingName,
   restArmAngleForTrebuchet,
@@ -223,6 +224,7 @@ export function checkRoundEnd() {
       roundNumber: gameState.roundNumber,
       scores: gameState.scores,
       level: activeLevel.url,
+      config: getClientRelevantConfig(),
     });
   }, resetDelayMs);
 }
@@ -250,5 +252,6 @@ export async function resetMatch() {
     roundNumber: gameState.roundNumber,
     scores: gameState.scores,
     level: activeLevel.url,
+    config: getClientRelevantConfig(),
   });
 }
