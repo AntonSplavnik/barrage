@@ -3,8 +3,7 @@ import { physicsAggregates, createConvexHullBody } from "./physics.js";
 import { gameObjects, gameState, destroyedBlocks } from "./state.js";
 import { getTemplate } from "./templateRegistry.js";
 import { broadcast } from "../net/broadcast.js";
-import { BARRAGE_CONFIG } from "../../public/config.js";
-import { SERVER_CONFIG } from "../config.js";
+import { SERVER_CONFIG, getConfig } from "../config.js";
 
 function randomSpread(max) {
   return (Math.random() - 0.5) * 2 * max;
@@ -24,9 +23,9 @@ export function shatterBlock(block, missile) {
   const cosR = Math.cos(blockRot);
   const sinR = Math.sin(blockRot);
 
-  const spreadX = BARRAGE_CONFIG.fragmentSpreadX ?? 4;
-  const spreadY = BARRAGE_CONFIG.fragmentSpreadY ?? 2;
-  const lifetimeMs = BARRAGE_CONFIG.fragmentLifetimeMs ?? 5000;
+  const spreadX = getConfig("fragmentSpreadX");
+  const spreadY = getConfig("fragmentSpreadY");
+  const lifetimeMs = getConfig("fragmentLifetimeMs");
 
   const missileSpeed = Math.hypot(missile.vx ?? 0, missile.vy ?? 0, missile.vz ?? 0);
   const missileDir = missileSpeed > 0.01
@@ -126,7 +125,7 @@ export function shatterBlock(block, missile) {
   deleteBlock(block);
 }
 
-function deleteBlock(block) {
+export function deleteBlock(block) {
   destroyedBlocks.set(block.id, { ...block });
   const aggregate = physicsAggregates.get(block.id);
   if (aggregate) {
@@ -138,7 +137,7 @@ function deleteBlock(block) {
 
 export function processFragmentLifecycle() {
   const now = Date.now();
-  const shrinkMs = BARRAGE_CONFIG.fragmentShrinkMs ?? 500;
+  const shrinkMs = getConfig("fragmentShrinkMs");
 
   for (const object of gameObjects.values()) {
     if (!object.isFragment) continue;
