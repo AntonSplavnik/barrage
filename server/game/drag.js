@@ -1,20 +1,68 @@
+import { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
 import { gameObjects, dragState } from "./state.js";
 import {
   isTrebuchetName,
   isMissileName,
   isKingName,
+  isBlockName,
+  isFragmentName,
   constrainWorldBounds,
   constrainedPointForObject,
   normalReleaseVelocityMax,
   releaseVelocityForObject,
 } from "./entities.js";
 import { clampVector } from "../math.js";
+import { TICK_MS, getConfig } from "../config.js";
 import {
+  physicsAggregates,
   syncPhysicsBodyFromObject,
   setPhysicsBodyTrigger,
   returnDraggedObjectUpright,
 } from "./physics.js";
 import { maybeLoadMissile } from "./trebuchet.js";
+
+export function usesMagneticDrag(object) {
+  if (isFragmentName(object.id)) return false;
+  return isBlockName(object.id) || isTrebuchetName(object.id);
+}
+
+function localPointForObject(object, point) {
+  const aggregate = physicsAggregates.get(object.id);
+  if (!aggregate) return { x: 0, y: 0, z: 0 };
+
+  const node = aggregate.transformNode;
+  node.computeWorldMatrix(true);
+  const inverse = node.getWorldMatrix().clone().invert();
+  const local = Vector3.TransformCoordinates(
+    new Vector3(Number(point.x), Number(point.y ?? object.y), Number(point.z)),
+    inverse,
+  );
+  return { x: local.x, y: local.y, z: local.z };
+}
+
+function validateDragPosition(point, previousPoint, dt) {
+  const cappedDt = Math.min(dt, 2 * TICK_MS / 1000);
+  const dx = Number(point.x) - Number(previousPoint.x);
+  const dy = Number(point.y ?? previousPoint.y) - Number(previousPoint.y);
+  const dz = Number(point.z) - Number(previousPoint.z);
+  const distance = Math.hypot(dx, dy, dz);
+  const maxDistance = getConfig("maxDragSpeed") * cappedDt;
+
+  if (distance <= maxDistance) {
+    return {
+      x: Number(point.x),
+      y: Number(point.y ?? previousPoint.y),
+      z: Number(point.z),
+    };
+  }
+
+  const scale = maxDistance / distance;
+  return {
+    x: Number(previousPoint.x) + dx * scale,
+    y: Number(previousPoint.y) + dy * scale,
+    z: Number(previousPoint.z) + dz * scale,
+  };
+}
 
 function velocityFromDragState(object, point) {
   const previous = dragState.get(object.id);
