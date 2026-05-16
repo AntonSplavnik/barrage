@@ -108,6 +108,67 @@ export function applyMagneticDragForce(object) {
   aggregate.body.applyForce(totalForce, grabWorldPoint);
 }
 
+function moveMissileReleaseUntilClear(object, clientId) {
+  const step = getConfig("depenetrationStep");
+  const maxDist = getConfig("depenetrationMaxDistance");
+
+  function overlapsAny(x, y, z) {
+    for (const other of gameObjects.values()) {
+      if (other.id === object.id) continue;
+      if (isFragmentName(other.id)) continue;
+      if (!physicsAggregates.has(other.id)) continue;
+
+      const dx = Math.abs(x - other.x) - (object.halfX + other.halfX);
+      const dy = Math.abs(y - other.y) - (object.halfY + other.halfY);
+      const dz = Math.abs(z - other.z) - (object.halfZ + other.halfZ);
+      if (dx < 0 && dy < 0 && dz < 0) return true;
+    }
+    return false;
+  }
+
+  if (!overlapsAny(object.x, object.y, object.z)) return;
+
+  for (let d = step; d <= maxDist; d += step) {
+    if (!overlapsAny(object.x, object.y + d, object.z)) {
+      object.y += d;
+      return;
+    }
+  }
+
+  const xDir = clientId === 1 ? -1 : 1;
+  for (let d = step; d <= maxDist; d += step) {
+    if (!overlapsAny(object.x + d * xDir, object.y, object.z)) {
+      object.x += d * xDir;
+      return;
+    }
+  }
+}
+
+export function releaseDragForClient(clientId) {
+  for (const object of gameObjects.values()) {
+    if (object.draggedBy !== clientId) continue;
+
+    const state = dragState.get(object.id);
+
+    if (usesMagneticDrag(object) && state?.originalAngularDamping !== undefined) {
+      const aggregate = physicsAggregates.get(object.id);
+      if (aggregate) {
+        aggregate.body.setAngularDamping(state.originalAngularDamping);
+      }
+    }
+
+    if (isMissileName(object.id)) {
+      setPhysicsBodyTrigger(object, false);
+    }
+
+    object.dragVx = 0;
+    object.dragVy = 0;
+    object.dragVz = 0;
+    object.draggedBy = null;
+    dragState.delete(object.id);
+  }
+}
+
 function velocityFromDragState(object, point) {
   const previous = dragState.get(object.id);
   if (!previous?.lastPoint || !previous.lastTime) return { x: 0, y: 0, z: 0 };
