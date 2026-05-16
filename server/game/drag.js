@@ -89,15 +89,12 @@ export function applyMagneticDragForce(object) {
   const distance = displacement.length();
   if (distance < 0.0001 || distance > getConfig("dragRadiusLimit")) return;
 
-  const forceDirection = displacement.normalize();
-  const magneticForce = forceDirection.scale(getConfig("dragForceMax"));
+  const forceMagnitude = Math.min(getConfig("dragForceMax"), getConfig("dragForceMax") * distance);
+  const magneticForce = displacement.normalize().scale(forceMagnitude);
 
   const linearVelocity = aggregate.body.getLinearVelocity();
   const angularVelocity = aggregate.body.getAngularVelocity();
-  const centerOfMass = node.position.add(
-    new Vector3(object.offsetX ?? 0, object.offsetY ?? 0, object.offsetZ ?? 0),
-  );
-  const r = grabWorldPoint.subtract(centerOfMass);
+  const r = grabWorldPoint.subtract(node.position);
   const pointVelocity = linearVelocity.add(Vector3.Cross(angularVelocity, r));
   const dampingForce = pointVelocity.scale(-getConfig("dragDampingMax"));
 
@@ -128,19 +125,27 @@ function moveMissileReleaseUntilClear(object, clientId) {
 
   if (!overlapsAny(object.x, object.y, object.z)) return;
 
+  let upDist = null;
   for (let d = step; d <= maxDist; d += step) {
     if (!overlapsAny(object.x, object.y + d, object.z)) {
-      object.y += d;
-      return;
+      upDist = d;
+      break;
     }
   }
 
   const xDir = clientId === 1 ? -1 : 1;
+  let sideDist = null;
   for (let d = step; d <= maxDist; d += step) {
     if (!overlapsAny(object.x + d * xDir, object.y, object.z)) {
-      object.x += d * xDir;
-      return;
+      sideDist = d;
+      break;
     }
+  }
+
+  if (sideDist !== null && (upDist === null || sideDist <= upDist)) {
+    object.x += sideDist * xDir;
+  } else if (upDist !== null) {
+    object.y += upDist;
   }
 }
 
