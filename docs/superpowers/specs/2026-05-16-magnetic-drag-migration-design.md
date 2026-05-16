@@ -10,7 +10,7 @@ All draggable objects use the same logic:
 - Object is lerped upright (`returnDraggedObjectUpright`)
 - On release, velocity comes from client data with server fallback via `usableReleaseVelocity`
 
-Files involved: `server/game/drag.js`, `server/game/simulation.js`, `server/game/entities.js`, `server/game/physics.js`, `server/game/state.js`, `public/config.js`.
+Files involved: `server/game/drag.js`, `server/game/simulation.js`, `server/game/entities.js`, `server/game/physics.js`, `server/game/state.js`, `server/config.js`.
 
 ## Target State
 
@@ -124,9 +124,9 @@ No new functions needed — `usesMagneticDrag` lives in `drag.js` since it's dra
 
 No changes. `dragState` map already exists. The entries will carry an additional `grabLocalPoint` field for magnetic objects — no schema change needed.
 
-### public/config.js
+### server/config.js
 
-Add to `BARRAGE_CONFIG`:
+Add to `SERVER_CONFIG`:
 ```javascript
 // Magnetic drag physics.
 dragForceMax: 1500,
@@ -141,6 +141,8 @@ depenetrationStep: 0.25,
 depenetrationMaxDistance: 60,
 missileReleaseFloorPadding: 0.05,
 ```
+
+These keys are server-only — no need to add them to `CLIENT_RELEVANT_KEYS`. All drag code reads config via `getConfig(key)` so levels can override values like `dragForceMax` if needed.
 
 ### server/game/physics.js
 
@@ -160,3 +162,5 @@ No new exports needed. `applyMagneticDragForce` will access the physics aggregat
 The magnetic drag config values (`dragForceMax: 1500`, `dragRadiusLimit: 30`, `dragDampingMax: 400`) come from `rufus-prototype`. These may need tuning since the server-refactor branch has different physics settings (e.g., `physicsTimeScale: 1.5` vs rufus-prototype's value). Start with rufus values and tune from there.
 
 The `maxDragSpeed: 80` is new — set high enough to never trigger during normal play (a fast swipe across a 60-unit-wide field in one 16ms tick = ~3750 units/sec, so 80 m/s per tick is generous). This catches only blatant cheats.
+
+All new config keys live in `SERVER_CONFIG` inside `server/config.js` and are read via `getConfig(key)`, consistent with the config separation done on this branch. `public/config.js` no longer exists.
