@@ -8,14 +8,13 @@ import {
   teleportPhysicsBody,
   returnDraggedObjectUpright,
 } from "./physics.js";
-import { SERVER_CONFIG, TICK_MS } from "../config.js";
-import { BARRAGE_CONFIG } from "../../public/config.js";
+import { SERVER_CONFIG, TICK_MS, getConfig } from "../config.js";
 import { isTrebuchetName } from "./entities.js";
 import { babylonToProtocolRotationZ } from "../math.js";
 import { updateTrebuchetFireState, loadTargetForTrebuchet } from "./trebuchet.js";
 
 export function simulatePhysics() {
-  const scaledDt = (TICK_MS / 1000) * (BARRAGE_CONFIG.physicsTimeScale ?? 1);
+  const scaledDt = (TICK_MS / 1000) * getConfig("physicsTimeScale");
   updateTrebuchetFireState(scaledDt);
 
   for (const object of gameObjects.values()) {
@@ -74,7 +73,7 @@ export function simulatePhysics() {
     object.vy = linearVelocity.y;
     object.vz = 0;
 
-    const floorY = SERVER_CONFIG.groundY + object.halfY - (object.offsetY ?? 0);
+    const floorY = getConfig("groundY") + object.halfY - (object.offsetY ?? 0);
     if (object.y < floorY) {
       object.y = floorY;
       if (object.vy < 0) object.vy = 0;
