@@ -57,9 +57,8 @@ distance = ||targetPoint - grabWorldPoint||
 
 if distance < 0.0001 or distance > dragRadiusLimit: return
 
-forceMagnitude = dragForceMax * (1 - distance / dragRadiusLimit)
 forceDirection = normalize(targetPoint - grabWorldPoint)
-magneticForce = forceDirection * forceMagnitude
+magneticForce = forceDirection * dragForceMax
 
 pointVelocity = linearVelocity + cross(angularVelocity, grabWorldPoint - centerOfMass)
 dampingForce = -pointVelocity * dragDampingMax
