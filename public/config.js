@@ -31,6 +31,8 @@ export const BARRAGE_CONFIG = {
     missile_fragments_block: { file: "/sounds/missile_fragments_block.mp3", volume: 0.95, pan: 0, pitch: 0.96 },
     missile_hits_fragment: { file: "/sounds/missile_hits_fragment.mp3", volume: 0.7, pan: 0, pitch: 1.04 },
     king_hit: { file: "/sounds/king_hit.mp3", volume: 1.0, pan: 0, pitch: 1.0 },
+    missile_bomb_hit: { file: "/sounds/missile_bomb-hit.mp3", volume: 1.0, pan: 0, pitch: 0.9 },
+    missile_crack_block: { file: "/sounds/missile_crack_block.mp3", volume: 0.75, pan: 0, pitch: 1.0 },
   },
 
   // VFX.
@@ -51,7 +53,7 @@ export const BARRAGE_CONFIG = {
   vfxMissileBombExplodeGravity: -4,       // m/s², particle gravity
 
   // Rendering.
-  importedLightIntensityScale: 0.01,      // multiplier
+  importedLightIntensityScale: 0.0018,      // multiplier
   fallbackLightIntensity: 0.1,            // multiplier
   shadowsEnabled: true,
   shadowMapSize: 2048,                    // px
@@ -106,7 +108,7 @@ export const BARRAGE_CONFIG = {
   // Gameplay Rules.
   noMansLandX: 5,                         // m (half-width of centre dead zone)
   kingKnockoutAngle: 50,                  // deg
-  blockMaxHits: 2,                        // hits before fragmentation
+  blockMaxHits: 3,                        // hits before fragmentation
   kingHitVelocityMin: 5,                  // m/s (min speed to register a king hit)
   blockHitVelocityMin: 7,                 // m/s (min speed to register a hit)
   blockHitCooldownMs: 100,                // ms - missile can only crack one block per this window

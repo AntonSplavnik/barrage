@@ -1130,6 +1130,9 @@ socket.addEventListener("message", (event) => {
         const side = ev.blockId.toLowerCase().includes("blockl") ? "L" : "R";
         const template = hitVisualTemplates[side][ev.hits];
         if (template) {
+          const blockState = latestObjectStates.get(ev.blockId);
+          soundEffectsController.playEffect("missile_crack_block", { pan: worldXToPan(blockState?.x) });
+
           const originalBase = visualBaseRotations.get(ev.blockId) ?? { x: 0, y: 0, z: 0 };
           const current = visualObjects.get(ev.blockId);
           if (current) {

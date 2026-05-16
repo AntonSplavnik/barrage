@@ -280,9 +280,7 @@ export function createFragmentSystem({
       && !missile.usedToFragment
       && fragSpeed >= (config.blockFragmentVelocityMin ?? config.blockHitVelocityMin ?? 3);
 
-    if (!willFragment) {
-      broadcastImpactSoundEffect("missile_hit_block", hitPosition ?? collisionPointFor(missile, block), impactSpeedFor(missile, block));
-    }
+    broadcastImpactSoundEffect("missile_hit_block", hitPosition ?? collisionPointFor(missile, block), impactSpeedFor(missile, block));
 
     broadcast({
       type: "event",

@@ -45,7 +45,8 @@ export function isBlockName(name) {
 }
 
 export function isGroundName(name) {
-  return name.toLowerCase().includes("ground");
+  const lower = name.toLowerCase();
+  return lower.includes("ground") || lower.includes("plane-colvis");
 }
 
 export function isLeftSideTrebuchetName(name) {
