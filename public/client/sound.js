@@ -70,7 +70,7 @@ export function createSoundSystem() {
     const range = SOUND_CONFIG.panWorldMaxX - SOUND_CONFIG.panWorldMinX;
     if (range <= 0) return 0;
     const t = (x - SOUND_CONFIG.panWorldMinX) / range;
-    return Math.min(Math.max(t * 2 - 1, -1), 1);
+    return -Math.min(Math.max(t * 2 - 1, -1), 1);
   }
 
   function isOnCooldown(effectName) {
