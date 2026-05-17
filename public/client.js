@@ -49,11 +49,23 @@ lobbyStatusEl.addEventListener("click", (e) => {
   const btn = e.target.closest("[data-copy-url]");
   if (!btn) return;
   const url = btn.dataset.copyUrl;
-  navigator.clipboard.writeText(url).then(() => {
+  const flash = () => {
     const prev = btn.textContent;
     btn.textContent = "Copied!";
     setTimeout(() => { btn.textContent = prev; }, 1500);
-  });
+  };
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(url).then(flash);
+  } else {
+    const ta = document.createElement("textarea");
+    ta.value = url;
+    ta.style.cssText = "position:fixed;opacity:0";
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    document.body.removeChild(ta);
+    flash();
+  }
 });
 const crownsLeftEl = document.getElementById("crowns-left");
 const crownsRightEl = document.getElementById("crowns-right");
