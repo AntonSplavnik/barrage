@@ -44,7 +44,7 @@ export function triggerExplosion(bombId, position, config) {
     }
   }
 
-  broadcastSfx("missile_bomb_hit", { speed: maxForce, x: position.x });
+  broadcastSfx("missile_bomb_explosion", { speed: maxForce, x: position.x });
 
   broadcast({
     type: "event",
