@@ -16,7 +16,7 @@ function objectIdFromBody(body) {
   return name.startsWith(prefix) ? name.slice(prefix.length) : null;
 }
 
-const SFX_MIN_SPEED = 1.5;
+const SFX_MIN_SPEED = 1.2;
 const sfxPairTicks = new Map();
 
 function broadcastPairSfx(idA, idB, effect, opts) {
