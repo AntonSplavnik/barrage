@@ -12,8 +12,8 @@ const SOUND_CONFIG = {
   effects: {
     trebuchet_release:       { file: "/sounds/trebuchet_release.mp3", volume: 0.75, pitch: 1.0 },
     trebuchet_stretch:       { file: "/sounds/trebuche-stretch.mp3", volume: 0.7, pitch: 1.0 },
-    block_hit_ground:        { file: "/sounds/block_hit_ground.mp3", volume: 0.55, pitch: 0.9 },
-    block_hit_block:         { file: "/sounds/block-hit-block.mp3", volume: 0.65, pitch: 0.95, cooldownMs: 220 },
+    block_hit_ground:        { file: "/sounds/block_hit_ground.mp3", volume: 0.55, pitch: 0.9, cooldownMs: 30 },
+    block_hit_block:         { file: "/sounds/block-hit-block.mp3", volume: 0.65, pitch: 0.95, cooldownMs: 30 },
     missile_hit_ground:      { file: "/sounds/missile-hit-ground.mp3", volume: 0.55, pitch: 1.0, cooldownMs: 180 },
     missile_hit_block:       { file: "/sounds/missile_hit_block.mp3", volume: 0.65, pitch: 0.98, cooldownMs: 220 },
     missile_hit_missile:     { file: "/sounds/missile-hit-missile.mp3", volume: 0.65, pitch: 1.0 },
