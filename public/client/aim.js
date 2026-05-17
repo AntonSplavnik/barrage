@@ -212,7 +212,7 @@ export function updateAimArrow() {
     if (trebuchetState?.shotArcPoints) {
       renderer.update(trebuchetState.shotArcPoints, trebuchetState.powerRatio ?? 0);
       wasShowingArc = true;
-    } else if (wasShowingArc && trebuchetState?.fireState === "releasing") {
+    } else if (wasShowingArc && (trebuchetState?.fireState === "releasing" || trebuchetState?.fireState === "returning")) {
       renderer.fadeOut();
       wasShowingArc = false;
     } else {

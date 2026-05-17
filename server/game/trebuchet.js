@@ -204,11 +204,12 @@ export function updateTrebuchetAim(trebuchet, point) {
 
   trebuchet.shotVelocity = shotVelocity;
   trebuchet.shotStartPoint = shotStartPoint;
+  const physicsTimeScale = getConfig("physicsTimeScale");
   trebuchet.shotArcPoints = computeArcPoints({
     startPoint: shotStartPoint,
     velocity: shotVelocity,
-    gravity: getConfig("gravity"),
-    damping: getConfig("missileLinearDamping"),
+    gravity: getConfig("gravity") * physicsTimeScale,
+    damping: getConfig("missileLinearDamping") * physicsTimeScale,
     dotCount: getConfig("shotArcDotCount"),
     arcFraction: getConfig("shotArcFraction"),
     maxDuration: getConfig("shotArcMaxDuration"),
