@@ -235,9 +235,15 @@ export function createSoundEffectsController(button, scene, { onStatus } = {}) {
 
   setEnabledUi(false);
   if (CONFIG.soundEffectsEnabledByDefault ?? true) {
-    enable().catch((error) => {
-      console.warn("Sound effects could not be enabled by default.", error);
-    });
+    const onFirstInteraction = () => {
+      window.removeEventListener("pointerdown", onFirstInteraction);
+      window.removeEventListener("keydown", onFirstInteraction);
+      enable().catch((error) => {
+        console.warn("Sound effects could not be enabled by default.", error);
+      });
+    };
+    window.addEventListener("pointerdown", onFirstInteraction);
+    window.addEventListener("keydown", onFirstInteraction);
   }
 
   return {
