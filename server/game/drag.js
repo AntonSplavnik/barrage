@@ -102,47 +102,85 @@ export function applyMagneticDragForce(object) {
   aggregate.body.applyForce(totalForce, grabWorldPoint);
 }
 
-function moveMissileReleaseUntilClear(object, clientId) {
+export const unstuckMissiles = new Set();
+const unstuckExitDir = new Map();
+
+function missileOverlapsAny(object) {
+  for (const other of gameObjects.values()) {
+    if (other.id === object.id) continue;
+    if (isFragmentName(other.id)) continue;
+    if (!physicsAggregates.has(other.id)) continue;
+
+    const dx = Math.abs(object.x - other.x) - (object.halfX + other.halfX);
+    const dy = Math.abs(object.y - other.y) - (object.halfY + other.halfY);
+    const dz = Math.abs(object.z - other.z) - (object.halfZ + other.halfZ);
+    if (dx < 0 && dy < 0 && dz < 0) return true;
+  }
+  return false;
+}
+
+export function tickMissileUnstuck() {
+  for (const id of unstuckMissiles) {
+    const object = gameObjects.get(id);
+    if (!object) { unstuckMissiles.delete(id); unstuckExitDir.delete(id); continue; }
+
+    if (missileOverlapsAny(object)) {
+      const dir = findExitDirection(object);
+      unstuckExitDir.set(id, dir);
+      const step = getConfig("depenetrationStep") * 0.5;
+      object.x += dir.x * step;
+      object.y += dir.y * step;
+      syncPhysicsBodyFromObject(object, { x: 0, y: 0, z: 0 });
+    } else {
+      const dir = unstuckExitDir.get(id) || { x: 0, y: 1 };
+      const padding = getConfig("depenetrationStep");
+      object.x += dir.x * padding;
+      object.y += dir.y * padding;
+      syncPhysicsBodyFromObject(object, { x: 0, y: 0, z: 0 });
+      setPhysicsBodyTrigger(object, false);
+      unstuckMissiles.delete(id);
+      unstuckExitDir.delete(id);
+    }
+  }
+}
+
+function findExitDirection(object) {
   const step = getConfig("depenetrationStep");
   const maxDist = getConfig("depenetrationMaxDistance");
 
-  function overlapsAny(x, y, z) {
-    for (const other of gameObjects.values()) {
-      if (other.id === object.id) continue;
-      if (isFragmentName(other.id)) continue;
-      if (!physicsAggregates.has(other.id)) continue;
+  let bestDist = Infinity;
+  let bestDir = { x: 0, y: 1 };
 
-      const dx = Math.abs(x - other.x) - (object.halfX + other.halfX);
-      const dy = Math.abs(y - other.y) - (object.halfY + other.halfY);
-      const dz = Math.abs(z - other.z) - (object.halfZ + other.halfZ);
-      if (dx < 0 && dy < 0 && dz < 0) return true;
-    }
-    return false;
-  }
+  const directions = [
+    { x: 0, y: 1 },
+    { x: 1, y: 0 },
+    { x: -1, y: 0 },
+    { x: 0.707, y: 0.707 },
+    { x: -0.707, y: 0.707 },
+  ];
 
-  if (!overlapsAny(object.x, object.y, object.z)) return;
-
-  let upDist = null;
-  for (let d = step; d <= maxDist; d += step) {
-    if (!overlapsAny(object.x, object.y + d, object.z)) {
-      upDist = d;
-      break;
-    }
-  }
-
-  const xDir = clientId === 1 ? -1 : 1;
-  let sideDist = null;
-  for (let d = step; d <= maxDist; d += step) {
-    if (!overlapsAny(object.x + d * xDir, object.y, object.z)) {
-      sideDist = d;
-      break;
+  for (const dir of directions) {
+    for (let d = step; d <= maxDist; d += step) {
+      const testObj = { ...object, x: object.x + dir.x * d, y: object.y + dir.y * d };
+      if (!missileOverlapsAny(testObj)) {
+        if (d < bestDist) {
+          bestDist = d;
+          bestDir = dir;
+        }
+        break;
+      }
     }
   }
 
-  if (sideDist !== null && (upDist === null || sideDist <= upDist)) {
-    object.x += sideDist * xDir;
-  } else if (upDist !== null) {
-    object.y += upDist;
+  return bestDir;
+}
+
+function beginMissileUnstuck(object) {
+  if (missileOverlapsAny(object)) {
+    setPhysicsBodyTrigger(object, true);
+    unstuckMissiles.add(object.id);
+  } else {
+    setPhysicsBodyTrigger(object, false);
   }
 }
 
@@ -301,10 +339,9 @@ export function handleDragEnd(client, message) {
   object.y = next.y;
   object.z = next.z;
   constrainWorldBounds(object);
-  moveMissileReleaseUntilClear(object, client.id);
 
   if (!maybeLoadMissile(object)) {
-    if (isMissileName(object.id)) setPhysicsBodyTrigger(object, false);
+    if (isMissileName(object.id)) beginMissileUnstuck(object);
     object.vx = releaseVelocity.x;
     object.vy = releaseVelocity.y;
     object.vz = releaseVelocity.z;
