@@ -41,10 +41,11 @@ export function createInputHandler({
     if (message.action === "dragStart") {
       const object = gameObjects().get(message.entityId);
       if (!object || !message.point) return;
-      if (!object.dynamic) return;
-      if (object.loadedInto) return;
-      if (object.isFragment) return;
-      if (!canGrab(client.playerId, object)) return;
+      if (!object.dynamic) { console.log("[grab] REJECT not dynamic", message.entityId); return; }
+      if (object.loadedInto) { console.log("[grab] REJECT loadedInto", message.entityId, object.loadedInto); return; }
+      if (object.isFragment) { console.log("[grab] REJECT isFragment", message.entityId); return; }
+      if (!canGrab(client.playerId, object)) { console.log("[grab] REJECT canGrab", client.playerId, message.entityId, "x=", object.x); return; }
+      console.log("[grab] OK", client.playerId, message.entityId, "x=", object.x);
 
       object.draggedBy = client.id;
       if (isMissileName(object.id)) {
