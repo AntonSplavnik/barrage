@@ -147,8 +147,12 @@ export function updateTrebuchetAim(trebuchet, point) {
     y: Number(point.y ?? start.y),
     z: Number(point.z ?? start.z),
   };
-  const pullX = requested.x - start.x;
-  const pullY = requested.y - start.y;
+  const rawPullX = requested.x - start.x;
+  const isWrongDirection =
+    (trebuchet.player === 1 && rawPullX > 0) ||
+    (trebuchet.player === 2 && rawPullX < 0);
+  const pullX = isWrongDirection ? 0 : rawPullX;
+  const pullY = isWrongDirection ? 0 : requested.y - start.y;
   const pullDistance = Math.hypot(pullX, pullY);
   const maxPullDistance = getConfig("aimMaxPullDistance");
   const clampedDistance = clamp(pullDistance, 0, maxPullDistance);
