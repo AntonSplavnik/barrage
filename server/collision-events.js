@@ -95,7 +95,9 @@ function handlePhysicsContact(contact, deps) {
   }
 
   if (missile && king) {
-    deps.maybeRecordKingHit(missile, king, contactPositionFor(contact, missile, king));
+    const kingPos = contactPositionFor(contact, missile, king);
+    deps.maybeRecordKingHit(missile, king, kingPos);
+    maybeTriggerBombDetonate(missile, deps.impactSpeedFor(missile, king), kingPos, deps);
     return;
   }
 
@@ -112,7 +114,9 @@ function handlePhysicsContact(contact, deps) {
   }
 
   if (missile && fragment) {
-    deps.maybeRecordFragmentHit(missile, fragment, contactPositionFor(contact, missile, fragment));
+    const fragPos = contactPositionFor(contact, missile, fragment);
+    deps.maybeRecordFragmentHit(missile, fragment, fragPos);
+    maybeTriggerBombDetonate(missile, deps.impactSpeedFor(missile, fragment), fragPos, deps);
     return;
   }
 
@@ -125,13 +129,11 @@ function handlePhysicsContact(contact, deps) {
   }
 
   if (deps.isMissileName(object.id) && deps.isMissileName(other.id)) {
-    deps.maybeBroadcastObjectImpactSound(
-      "missile_hit_missile",
-      object,
-      other,
-      deps.impactSpeedFor(object, other),
-      contactPositionFor(contact, object, other),
-    );
+    const missilePos = contactPositionFor(contact, object, other);
+    const missileSpeed = deps.impactSpeedFor(object, other);
+    deps.maybeBroadcastObjectImpactSound("missile_hit_missile", object, other, missileSpeed, missilePos);
+    maybeTriggerBombDetonate(object, missileSpeed, missilePos, deps);
+    maybeTriggerBombDetonate(other, missileSpeed, missilePos, deps);
     return;
   }
 

@@ -46,11 +46,23 @@ export const BARRAGE_CONFIG = {
 
   missileBombTriggerSpeed: 10,              // m/s, min impact speed to trigger detonation + VFX
   missileBombBlastRadius: 3.4,              // m, blast radius for fragmentation and VFX
-  vfxMissileBombExplodeCount: 200,         // max particle count
+  missileBombKingKillRadius: 2.5,          // m, blast radius for instant king kill
+  vfxMissileBombExplodeCount: 40,         // max particle count
   vfxMissileBombExplodeDurationMs: 500,   // ms, max particle lifetime
   vfxMissileBombExplodeSpeed: 2,         // m/s, max particle speed
-  vfxMissileBombExplodeSize: 8,         // m, max particle size
+  vfxMissileBombExplodeSize: 5,         // m, max particle size
   vfxMissileBombExplodeGravity: -4,       // m/s², particle gravity
+  vfxMissileBombSmokeCount: 15,           // smoke particle count
+  vfxMissileBombSmokeDurationMs: 2000,    // ms, smoke lifetime
+  vfxMissileBombSmokeSize: 2,             // m, max smoke particle size
+  vfxMissileBombSmokeSpeed: 2.5,          // m/s, smoke emit speed
+  vfxMissileBombSmokeGravity: 1.8,        // m/s², smoke rises (positive = up)
+  vfxMissileBombSparksCount: 60,          // spark particle count
+  vfxMissileBombSparksDurationMs: 900,    // ms, spark lifetime
+  vfxMissileBombSparksSpeed: 18,          // m/s, spark emit speed
+  vfxMissileBombSparksSize: 2,         // m, spark size
+  vfxMissileBombSparksGravity: -14,       // m/s², sparks fall fast
+  vfxMissileBombSparksWidth: 0.12,        // perpendicular width scale (smaller = thinner lines)
 
   // Rendering.
   importedLightIntensityScale: 0.004,      // multiplier

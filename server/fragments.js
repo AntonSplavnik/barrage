@@ -20,6 +20,8 @@ export function createFragmentSystem({
   getActiveRoom,
   getScene,
   getTick,
+  isKingName,
+  onBombKingKill,
   path,
   physicsAggregates,
   parseFragmentGlb,
@@ -334,6 +336,7 @@ export function createFragmentSystem({
 
   function processBombDetonations(tick) {
     const blastRadius = config.missileBombBlastRadius ?? 5;
+    const kingKillRadius = config.missileBombKingKillRadius ?? 2.5;
     for (const missile of [...gameObjects().values()]) {
       if (!missile.pendingBombDetonate || !isMissileBombName(missile.id)) continue;
       const pos = missile.pendingBombDetonate;
@@ -343,16 +346,22 @@ export function createFragmentSystem({
       // Zero-velocity proxy: fragments scatter by their own spread, not the missile's momentum
       const blastProxy = { x: pos.x, y: pos.y, z: pos.z ?? 0, vx: 0, vy: 0, vz: 0 };
 
-      for (const block of [...gameObjects().values()]) {
-        if (!isBlockName(block.id) || block.pendingFragment) continue;
-        const dx = (block.x ?? 0) - (pos.x ?? 0);
-        const dy = (block.y ?? 0) - (pos.y ?? 0);
-        if (Math.sqrt(dx * dx + dy * dy) > blastRadius) continue;
-        block.pendingFragmentHitPosition = pos;
+      for (const obj of [...gameObjects().values()]) {
+        const dx = (obj.x ?? 0) - (pos.x ?? 0);
+        const dy = (obj.y ?? 0) - (pos.y ?? 0);
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (isKingName?.(obj.id) && onBombKingKill) {
+          if (dist <= kingKillRadius) onBombKingKill(obj, pos);
+          continue;
+        }
+
+        if (!isBlockName(obj.id) || obj.pendingFragment || dist > blastRadius) continue;
+        obj.pendingFragmentHitPosition = pos;
         try {
-          fragmentBlock(block, blastProxy);
+          fragmentBlock(obj, blastProxy);
         } catch (err) {
-          console.error(`Bomb fragmentation failed for ${block.id}:`, err.message);
+          console.error(`Bomb fragmentation failed for ${obj.id}:`, err.message);
         }
       }
     }

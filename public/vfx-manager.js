@@ -48,6 +48,39 @@ function createTetrahedron(name, size, scene) {
   return mesh;
 }
 
+function createSparkTexture(scene) {
+  const w = 8, h = 64;
+  const tex = new DynamicTexture("vfxSparkTex", { width: w, height: h }, scene, false);
+  tex.hasAlpha = true;
+  const ctx = tex.getContext();
+  const gradient = ctx.createLinearGradient(0, 0, 0, h);
+  gradient.addColorStop(0.0,  "rgba(255,255,255,0)");
+  gradient.addColorStop(0.35, "rgba(255,240,180,0.9)");
+  gradient.addColorStop(0.5,  "rgba(255,255,255,1)");
+  gradient.addColorStop(0.65, "rgba(255,240,180,0.9)");
+  gradient.addColorStop(1.0,  "rgba(255,255,255,0)");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, w, h);
+  tex.update();
+  return tex;
+}
+
+function createSmokeTexture(scene) {
+  const size = 64;
+  const tex = new DynamicTexture("vfxSmokeTex", { width: size, height: size }, scene, false);
+  tex.hasAlpha = true;
+  const ctx = tex.getContext();
+  const c = size / 2;
+  const gradient = ctx.createRadialGradient(c, c, 0, c, c, c);
+  gradient.addColorStop(0.0, "rgba(30,30,30,0.9)");
+  gradient.addColorStop(0.4, "rgba(15,15,15,0.5)");
+  gradient.addColorStop(1.0, "rgba(0,0,0,0)");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, size, size);
+  tex.update();
+  return tex;
+}
+
 function createExplosionTexture(scene) {
   const size = 64;
   const tex = new DynamicTexture("vfxExplosionTex", { width: size, height: size }, scene, false);
@@ -69,6 +102,8 @@ export function createVfxManager(scene) {
   const activeBursts = new Map();
   const activeExplosions = new Set();
   const explosionTexture = createExplosionTexture(scene);
+  const smokeTexture = createSmokeTexture(scene);
+  const sparkTexture = createSparkTexture(scene);
   const fragmentMaterial = new StandardMaterial("VfxGreyFragmentMaterial", scene);
   fragmentMaterial.diffuseColor = new Color3(0.35, 0.35, 0.34);
   fragmentMaterial.emissiveColor = new Color3(0.18, 0.18, 0.17);
@@ -176,6 +211,96 @@ export function createVfxManager(scene) {
 
     ps.start();
     spawnMissileHitBlock(position, 1);
+    spawnMissileSmoke(position);
+    spawnMissileSparks(position);
+  }
+
+  function spawnMissileSmoke(position) {
+    const origin = new Vector3(position.x ?? 0, position.y ?? 0, 0);
+    const count = CONFIG.vfxMissileBombSmokeCount ?? 28;
+    const lifetimeSec = (CONFIG.vfxMissileBombSmokeDurationMs ?? 2200) / 1000;
+    const speed = CONFIG.vfxMissileBombSmokeSpeed ?? 2.5;
+    const size = CONFIG.vfxMissileBombSmokeSize ?? 5;
+
+    const ps = new ParticleSystem("vfxMissileSmoke", count, scene);
+    ps.particleTexture = smokeTexture;
+    ps.emitter = origin.clone();
+    ps.createSphereEmitter(0.3, 1);
+
+    ps.color1 = new Color4(0.08, 0.08, 0.08, 0.8);
+    ps.color2 = new Color4(0.18, 0.16, 0.14, 0.6);
+    ps.colorDead = new Color4(0.05, 0.05, 0.05, 0);
+
+    ps.minSize = size * 0.3;
+    ps.maxSize = size;
+    ps.minLifeTime = lifetimeSec * 0.5;
+    ps.maxLifeTime = lifetimeSec;
+    ps.minEmitPower = speed * 0.4;
+    ps.maxEmitPower = speed;
+
+    ps.gravity = new Vector3(0, CONFIG.vfxMissileBombSmokeGravity ?? 1.8, 0);
+    ps.minAngularSpeed = -1;
+    ps.maxAngularSpeed = 1;
+    ps.blendMode = ParticleSystem.BLENDMODE_STANDARD;
+    ps.renderingGroupId = 2;
+
+    ps.emitRate = count / 0.08;
+    ps.targetStopDuration = 0.08;
+
+    activeExplosions.add(ps);
+    ps.onStoppedObservable.addOnce(() => {
+      setTimeout(() => {
+        if (!ps.isDisposed) ps.dispose(false);
+        activeExplosions.delete(ps);
+      }, lifetimeSec * 1000 + 100);
+    });
+    ps.start();
+  }
+
+  function spawnMissileSparks(position) {
+    const origin = new Vector3(position.x ?? 0, position.y ?? 0, 0);
+    const count = CONFIG.vfxMissileBombSparksCount ?? 60;
+    const lifetimeSec = (CONFIG.vfxMissileBombSparksDurationMs ?? 900) / 1000;
+    const speed = CONFIG.vfxMissileBombSparksSpeed ?? 18;
+    const size = CONFIG.vfxMissileBombSparksSize ?? 0.22;
+
+    const ps = new ParticleSystem("vfxMissileSparks", count, scene);
+    ps.particleTexture = sparkTexture;
+    ps.emitter = origin.clone();
+    ps.createSphereEmitter(0.1, 1);
+
+    ps.color1 = new Color4(1, 0.95, 0.5, 1);
+    ps.color2 = new Color4(1, 0.7, 0.1, 1);
+    ps.colorDead = new Color4(0.8, 0.3, 0.0, 0);
+
+    ps.minSize = size * 0.4;
+    ps.maxSize = size;
+    ps.minLifeTime = lifetimeSec * 0.3;
+    ps.maxLifeTime = lifetimeSec;
+    ps.minEmitPower = speed * 0.5;
+    ps.maxEmitPower = speed;
+
+    ps.gravity = new Vector3(0, CONFIG.vfxMissileBombSparksGravity ?? -14, 0);
+    ps.minAngularSpeed = 0;
+    ps.maxAngularSpeed = 0;
+    const width = CONFIG.vfxMissileBombSparksWidth ?? 0.12;
+    ps.minScaleX = width * 0.5;
+    ps.maxScaleX = width;
+    ps.billboardMode = ParticleSystem.BILLBOARDMODE_STRETCHED;
+    ps.blendMode = ParticleSystem.BLENDMODE_ADD;
+    ps.renderingGroupId = 2;
+
+    ps.emitRate = count / 0.03;
+    ps.targetStopDuration = 0.03;
+
+    activeExplosions.add(ps);
+    ps.onStoppedObservable.addOnce(() => {
+      setTimeout(() => {
+        if (!ps.isDisposed) ps.dispose(false);
+        activeExplosions.delete(ps);
+      }, lifetimeSec * 1000 + 100);
+    });
+    ps.start();
   }
 
   function handleEvent(ev) {
@@ -205,6 +330,8 @@ export function createVfxManager(scene) {
   function dispose() {
     clearEffects();
     explosionTexture.dispose();
+    smokeTexture.dispose();
+    sparkTexture.dispose();
   }
 
   return {

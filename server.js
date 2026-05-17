@@ -400,6 +400,8 @@ const {
   getActiveRoom: () => activeRoom,
   getScene: () => scene,
   getTick: () => tick,
+  isKingName,
+  onBombKingKill: recordBombKingKill,
   path,
   physicsAggregates: () => physicsAggregates,
   parseFragmentGlb: (buffer) => parseFragmentGlbData(buffer, { childRole }),
@@ -550,6 +552,26 @@ async function advanceRoomAfterRound(room) {
     scores: room.scores,
   });
   sendState();
+}
+
+function recordBombKingKill(king, position) {
+  if (!king || activeRoom.roundWinner) return;
+  const loser = playerIdForKing(king);
+  if (!loser) return;
+  broadcastImpactSoundEffect("king_hit", position, BARRAGE_CONFIG.missileBombTriggerSpeed ?? 10);
+  broadcast({
+    type: "event",
+    roomId: activeRoom.id,
+    tick,
+    events: [{
+      kind: "kingHit",
+      kingId: king.id,
+      playerId: loser,
+      hits: king.maxHits ?? 3,
+      maxHits: king.maxHits ?? 3,
+    }],
+  });
+  recordRoundWin(loser);
 }
 
 function maybeRecordKingHit(object, other, hitPosition = null) {
