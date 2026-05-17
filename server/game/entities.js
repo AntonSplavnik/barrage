@@ -6,7 +6,7 @@ export const ARM_STATE_AIMING = "aiming";
 export const ARM_STATE_RELEASING = "releasing";
 export const ARM_STATE_RETURNING = "returning";
 
-export function toWireObject(object) {
+export function toWireObject(object, clientId) {
   return {
     id: object.id,
     x: object.x,
@@ -21,6 +21,9 @@ export function toWireObject(object) {
     ...(object.loadedInto ? { loadedInto: object.loadedInto } : {}),
     ...(object.missileType ? { missileType: object.missileType } : {}),
     ...(object.armAngle !== undefined ? { armAngle: object.armAngle, fireState: object.fireState } : {}),
+    ...(object.fireState === ARM_STATE_AIMING && object.aimedBy === clientId
+      ? { shotArcPoints: object.shotArcPoints, powerRatio: object.powerRatio }
+      : {}),
     ...(object.hits !== undefined ? { hits: object.hits, maxHits: object.maxHits } : {}),
     ...(object.hitStage !== undefined ? { hitStage: object.hitStage } : {}),
     ...(!object.isFragment && object.fragmentTemplate ? { fragmentTemplate: object.fragmentTemplate } : {}),
