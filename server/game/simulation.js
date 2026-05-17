@@ -13,6 +13,7 @@ import { isTrebuchetName } from "./entities.js";
 import { babylonToProtocolRotationZ } from "../math.js";
 import { updateTrebuchetFireState, loadTargetForTrebuchet } from "./trebuchet.js";
 import { usesMagneticDrag, applyMagneticDragForce, tickMissileUnstuck, unstuckMissiles } from "./drag.js";
+import { processPendingDetonations } from "./collisions.js";
 
 export function simulatePhysics() {
   const scaledDt = (TICK_MS / 1000) * getConfig("physicsTimeScale");
@@ -58,6 +59,7 @@ export function simulatePhysics() {
 
   tickMissileUnstuck();
   scene.getPhysicsEngine()?._step(scaledDt);
+  processPendingDetonations();
 
   for (const object of gameObjects.values()) {
     if (!object.dynamic) continue;

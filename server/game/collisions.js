@@ -9,6 +9,20 @@ import { shatterBlock, deleteBlock } from "./fragmentation.js";
 import { triggerExplosion, removeBomb } from "./explosion.js";
 
 const pendingBlockHits = new Map();
+const pendingDetonations = [];
+
+export function processPendingDetonations() {
+  for (const { bomb, pos } of pendingDetonations) {
+    if (!gameObjects.has(bomb.id)) continue;
+    removeBomb(bomb);
+    triggerExplosion(bomb.id, pos, {
+      radius: getConfig("bombBlastRadius"),
+      maxDamage: getConfig("bombMaxDamage"),
+      maxForce: getConfig("bombMaxForce"),
+    });
+  }
+  pendingDetonations.length = 0;
+}
 
 function objectIdFromBody(body) {
   const name = body.transformNode?.name;
@@ -143,21 +157,9 @@ export function initCollisions() {
       const missileSpeed = Math.hypot(missile.vx ?? 0, missile.vy ?? 0, missile.vz ?? 0);
 
       if (missile.missileType === "bomb" && !missile.loadedInto && missileSpeed >= getConfig("bombDetonationMinSpeed")) {
-        const bombPos = { x: missile.x, y: missile.y, z: missile.z };
-        removeBomb(missile);
-        triggerExplosion(missile.id, bombPos, {
-          radius: getConfig("bombBlastRadius"),
-          maxDamage: getConfig("bombMaxDamage"),
-          maxForce: getConfig("bombMaxForce"),
-        });
+        pendingDetonations.push({ bomb: missile, pos: { x: missile.x, y: missile.y, z: missile.z } });
         if (other && isMissileName(otherId) && other.missileType === "bomb" && gameObjects.has(otherId)) {
-          const otherPos = { x: other.x, y: other.y, z: other.z };
-          removeBomb(other);
-          triggerExplosion(other.id, otherPos, {
-            radius: getConfig("bombBlastRadius"),
-            maxDamage: getConfig("bombMaxDamage"),
-            maxForce: getConfig("bombMaxForce"),
-          });
+          pendingDetonations.push({ bomb: other, pos: { x: other.x, y: other.y, z: other.z } });
         }
         return;
       }
@@ -167,13 +169,7 @@ export function initCollisions() {
       if (other && isMissileName(otherId) && other.missileType === "bomb" && !other.loadedInto) {
         const otherSpeed = Math.hypot(other.vx ?? 0, other.vy ?? 0, other.vz ?? 0);
         if (otherSpeed >= getConfig("bombDetonationMinSpeed")) {
-          const otherPos = { x: other.x, y: other.y, z: other.z };
-          removeBomb(other);
-          triggerExplosion(other.id, otherPos, {
-            radius: getConfig("bombBlastRadius"),
-            maxDamage: getConfig("bombMaxDamage"),
-            maxForce: getConfig("bombMaxForce"),
-          });
+          pendingDetonations.push({ bomb: other, pos: { x: other.x, y: other.y, z: other.z } });
         }
         return;
       }
