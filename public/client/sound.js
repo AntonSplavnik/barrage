@@ -123,7 +123,7 @@ export function createSoundSystem() {
 
     const source = ctx.createBufferSource();
     source.buffer = buffer;
-    source.loop = true;
+    source.loop = false;
     source.playbackRate.value = cfg.pitch;
 
     const gainNode = ctx.createGain();
