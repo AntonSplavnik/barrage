@@ -6,6 +6,7 @@ import { getActiveLevel, getHookContext } from "./modeRunner.js";
 import { broadcast } from "../net/broadcast.js";
 import { getConfig, TICK_MS } from "../config.js";
 import { shatterBlock, deleteBlock } from "./fragmentation.js";
+import { triggerExplosion, removeBomb } from "./explosion.js";
 
 const pendingBlockHits = new Map();
 
@@ -138,6 +139,42 @@ export function initCollisions() {
       if (!missile) return;
 
       const missileSpeed = Math.hypot(missile.vx ?? 0, missile.vy ?? 0, missile.vz ?? 0);
+
+      if (missile.missileType === "bomb" && !missile.loadedInto && missileSpeed >= getConfig("bombDetonationMinSpeed")) {
+        const bombPos = { x: missile.x, y: missile.y, z: missile.z };
+        removeBomb(missile);
+        triggerExplosion(missile.id, bombPos, {
+          radius: getConfig("bombBlastRadius"),
+          maxDamage: getConfig("bombMaxDamage"),
+          maxForce: getConfig("bombMaxForce"),
+        });
+        if (other && isMissileName(otherId) && other.missileType === "bomb" && gameObjects.has(otherId)) {
+          const otherPos = { x: other.x, y: other.y, z: other.z };
+          removeBomb(other);
+          triggerExplosion(other.id, otherPos, {
+            radius: getConfig("bombBlastRadius"),
+            maxDamage: getConfig("bombMaxDamage"),
+            maxForce: getConfig("bombMaxForce"),
+          });
+        }
+        return;
+      }
+
+      if (missile.missileType === "bomb") return;
+
+      if (other && isMissileName(otherId) && other.missileType === "bomb" && !other.loadedInto) {
+        const otherSpeed = Math.hypot(other.vx ?? 0, other.vy ?? 0, other.vz ?? 0);
+        if (otherSpeed >= getConfig("bombDetonationMinSpeed")) {
+          const otherPos = { x: other.x, y: other.y, z: other.z };
+          removeBomb(other);
+          triggerExplosion(other.id, otherPos, {
+            radius: getConfig("bombBlastRadius"),
+            maxDamage: getConfig("bombMaxDamage"),
+            maxForce: getConfig("bombMaxForce"),
+          });
+        }
+        return;
+      }
 
       if (isBlockName(otherId) && !isFragmentName(otherId) && other) {
         handleMissileBlockHit(missile, other);
