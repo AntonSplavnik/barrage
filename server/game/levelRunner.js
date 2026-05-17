@@ -113,7 +113,10 @@ function createSpawnFunction() {
         returnStartArmAngle: null,
         releaseElapsedMs: 0,
       } : {}),
-      ...(isMissileName(id) ? { loadedInto: null } : {}),
+      ...(isMissileName(id) ? {
+        loadedInto: null,
+        missileType: opts.missileType ?? templatePath.slice("missiles/".length),
+      } : {}),
       ...(isKingName(id) ? { hits: 0, maxHits: 3 } : {}),
     };
 
