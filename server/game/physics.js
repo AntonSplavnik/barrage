@@ -94,6 +94,7 @@ export function createArenaColliders() {
         extents: new Vector3(Math.max(sizeX, 0.01), Math.max(sizeY, 0.01), Math.max(sizeZ, 0.01)),
       }, scene);
       aggregate.body.disablePreStep = true;
+      aggregate.body.setCollisionCallbackEnabled(true);
 
       arenaColliders.push(aggregate);
       console.log(`Arena collider "${node.name}": center=(${centerX.toFixed(2)}, ${centerY.toFixed(2)}, ${centerZ.toFixed(2)}) size=(${sizeX.toFixed(2)}, ${sizeY.toFixed(2)}, ${sizeZ.toFixed(2)})`);
@@ -112,6 +113,7 @@ export function createArenaColliders() {
       extents: new Vector3(200, 1, 200),
     }, scene);
     aggregate.body.disablePreStep = true;
+    aggregate.body.setCollisionCallbackEnabled(true);
     arenaColliders.push(aggregate);
   }
 }
