@@ -83,7 +83,7 @@ export function createArenaColliders() {
       const centerY = (min.y + max.y) / 2;
       const centerZ = (min.z + max.z) / 2;
 
-      const colNode = new TransformNode(`arena-col-${node.name}`, scene);
+      const colNode = new TransformNode(`physics-arena-col-${node.name}`, scene);
       colNode.position.set(centerX, centerY, centerZ);
       colNode.rotationQuaternion = Quaternion.Identity();
 
