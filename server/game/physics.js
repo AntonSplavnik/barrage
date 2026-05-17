@@ -189,7 +189,7 @@ export function createPhysicsBodies() {
     }
 
     aggregate.body.disablePreStep = true;
-    aggregate.body.setLinearDamping(isTrebuchetName(object.id) ? 2.2 : 0.15);
+    aggregate.body.setLinearDamping(isTrebuchetName(object.id) ? 2.2 : getConfig("missileLinearDamping"));
     aggregate.body.setAngularDamping(isTrebuchetName(object.id) ? 10 : 0.55);
 
     if (isMissileName(object.id) || isBlockName(object.id)) {
@@ -255,7 +255,7 @@ export function createPhysicsBodyForObject(object) {
   }
 
   aggregate.body.disablePreStep = true;
-  aggregate.body.setLinearDamping(isTrebuchetName(object.id) ? 2.2 : 0.15);
+  aggregate.body.setLinearDamping(isTrebuchetName(object.id) ? 2.2 : getConfig("missileLinearDamping"));
   aggregate.body.setAngularDamping(isTrebuchetName(object.id) ? 10 : 0.55);
 
   if (isMissileName(object.id) || isBlockName(object.id)) {
