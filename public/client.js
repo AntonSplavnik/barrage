@@ -63,6 +63,7 @@ const hudOpponentEl = document.getElementById("hud-opponent");
 const opponentPlayerEl = document.getElementById("opponent-player");
 
 const engine = new Engine(canvas, true, { audioEngine: true });
+if (Engine.audioEngine) Engine.audioEngine.useCustomUnlockedButton = true;
 const scene = new Scene(engine);
 window.addEventListener("keydown", (e) => {
   if (e.key === "I" && e.shiftKey) scene.debugLayer.isVisible() ? scene.debugLayer.hide() : scene.debugLayer.show();
