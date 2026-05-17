@@ -43,6 +43,17 @@ const lobbyStatusEl = document.getElementById("lobby-status");
 const lobbyPanelEl = document.querySelector(".lobby-panel");
 const lobbyTitleEl = document.getElementById("lobby-title");
 const roundCounterEl = document.getElementById("round-counter");
+
+lobbyStatusEl.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-copy-url]");
+  if (!btn) return;
+  const url = btn.dataset.copyUrl;
+  navigator.clipboard.writeText(url).then(() => {
+    const prev = btn.textContent;
+    btn.textContent = "Copied!";
+    setTimeout(() => { btn.textContent = prev; }, 1500);
+  });
+});
 const crownsLeftEl = document.getElementById("crowns-left");
 const crownsRightEl = document.getElementById("crowns-right");
 const portraitLeftEl = document.getElementById("player-portrait-left");
@@ -122,7 +133,7 @@ function setLobbyStatus(text, visible = true, winnerPlayerId = null) {
   lobbyTitleEl.style.opacity = "";
   lobbyPanelEl.classList.remove("panel-hidden");
 
-  lobbyStatusEl.textContent = text;
+  lobbyStatusEl.innerHTML = text;
   lobbyEl.classList.toggle("is-visible", visible);
   lobbyPanelEl.classList.remove("winner-odd", "winner-even");
   if (winnerPlayerId) {
@@ -1202,7 +1213,7 @@ socket.addEventListener("message", (event) => {
     isMatched = false;
     setLobbyStatus(message.status === "spectating"
       ? `${message.playerId} waiting for a player slot...`
-      : `${message.playerId} waiting for opponent...`);
+      : `A two player battle. You are waiting for an opponent. <button class="copy-url-btn" data-copy-url="http://game-show.cloud-ip.cc/">Copy game URL</button> and give to a friend and prepare for combat!`);
     if (message.status === "spectating") {
       switchLevelIfNeeded(currentLevelUrl);
     }
