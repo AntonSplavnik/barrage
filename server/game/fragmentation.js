@@ -4,6 +4,7 @@ import { gameObjects, gameState, destroyedBlocks } from "./state.js";
 import { getTemplate } from "./templateRegistry.js";
 import { broadcast } from "../net/broadcast.js";
 import { SERVER_CONFIG, getConfig } from "../config.js";
+import { broadcastSfx } from "./sound.js";
 
 function randomSpread(max) {
   return (Math.random() - 0.5) * 2 * max;
@@ -11,6 +12,9 @@ function randomSpread(max) {
 
 export function shatterBlock(block, missile) {
   if (!block.fragmentTemplate) return;
+
+  const missileSpeed = Math.hypot(missile.vx ?? 0, missile.vy ?? 0, missile.vz ?? 0);
+  broadcastSfx("missile_fragments_block", { speed: missileSpeed, x: block.x });
 
   const template = getTemplate(block.fragmentTemplate);
   if (!template?.fragments || template.fragments.length === 0) {
@@ -27,7 +31,6 @@ export function shatterBlock(block, missile) {
   const spreadY = getConfig("fragmentSpreadY");
   const lifetimeMs = getConfig("fragmentLifetimeMs");
 
-  const missileSpeed = Math.hypot(missile.vx ?? 0, missile.vy ?? 0, missile.vz ?? 0);
   const missileDir = missileSpeed > 0.01
     ? { x: missile.vx / missileSpeed, y: missile.vy / missileSpeed }
     : { x: 1, y: 0 };
