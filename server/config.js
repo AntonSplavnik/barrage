@@ -68,7 +68,6 @@ export const SERVER_CONFIG = {
 
   // Missiles
   missileDamageMinSpeed: 10,
-  missileHitForce: 20,
 
   // Bombs
   bombBlastRadius: 5,

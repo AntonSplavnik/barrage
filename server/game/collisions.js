@@ -1,4 +1,3 @@
-import { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
 import { scene, physicsAggregates } from "./physics.js";
 import { gameObjects, gameState } from "./state.js";
 import { isMissileName, isBlockName, isFragmentName, isTrebuchetName, isKingName, isGroundName } from "./entities.js";
@@ -48,18 +47,6 @@ function handleMissileBlockHit(missile, block) {
   const x = midpointX(missile, block);
 
   if (speed < getConfig("missileDamageMinSpeed")) return;
-
-  const force = getConfig("missileHitForce");
-  if (force > 0 && speed > 0) {
-    const aggregate = physicsAggregates.get(block.id);
-    if (aggregate) {
-      const scale = force / speed;
-      aggregate.body.applyImpulse(
-        new Vector3((missile.vx ?? 0) * scale, (missile.vy ?? 0) * scale, 0),
-        aggregate.transformNode.getAbsolutePosition(),
-      );
-    }
-  }
 
   if (!block.maxHits) {
     broadcastSfx("missile_hit_block", { speed, x });
