@@ -47,6 +47,10 @@ export function isFragmentName(name) {
   return name.startsWith("blocks/") && name.includes("_frag_");
 }
 
+export function isGroundName(name) {
+  return name === "ground" || name === "arena-col-Plane-ColVis";
+}
+
 export function restArmAngleForTrebuchet() {
   return getConfig("trebuchetArmRestRotationZDegrees");
 }

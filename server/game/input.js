@@ -8,6 +8,7 @@ import {
 import { handleDragStart, handleDragMove, handleDragEnd } from "./drag.js";
 import { updateTrebuchetAim, beginTrebuchetRelease } from "./trebuchet.js";
 import { broadcast } from "../net/broadcast.js";
+import { broadcastSfx, broadcastSfxStart, broadcastSfxStop } from "./sound.js";
 
 export function applyInput(client, message) {
   if (message.type !== "input") return;
@@ -51,6 +52,7 @@ export function applyInput(client, message) {
     trebuchet.pendingShot = null;
     trebuchet.releaseElapsedMs = 0;
     trebuchet.armAngle = restArmAngleForTrebuchet();
+    broadcastSfxStart("trebuchet_stretch", trebuchet.id, { x: trebuchet.x });
   }
 
   if (message.action === "aimMove") {
@@ -68,8 +70,11 @@ export function applyInput(client, message) {
     if (!missile || !message.point || !missile.loadedInto) return;
 
     const trebuchet = gameObjects.get(missile.loadedInto);
-    if (!trebuchet || trebuchet.aimedBy !== client.id || trebuchet.fireState !== ARM_STATE_AIMING) return;
+    if (!trebuchet || trebuchet.aimedBy !== client.id) return;
+    broadcastSfxStop(trebuchet.id);
+    if (trebuchet.fireState !== ARM_STATE_AIMING) return;
 
+    broadcastSfx("trebuchet_release", { x: trebuchet.x });
     updateTrebuchetAim(trebuchet, message.point);
     beginTrebuchetRelease(trebuchet);
   }

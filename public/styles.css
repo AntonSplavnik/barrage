@@ -116,7 +116,8 @@ body {
 }
 
 #reset,
-#restart-server {
+#restart-server,
+#sfx-toggle {
   appearance: none;
   padding: 5px 8px;
   color: #f6f2e8;
@@ -128,6 +129,12 @@ body {
 }
 
 #reset:hover,
-#restart-server:hover {
+#restart-server:hover,
+#sfx-toggle:hover {
   background: rgb(255 255 255 / 16%);
+}
+
+#sfx-toggle.active {
+  background: rgb(255 255 255 / 24%);
+  border-color: rgb(255 255 255 / 40%);
 }

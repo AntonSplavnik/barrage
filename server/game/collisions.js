@@ -1,6 +1,7 @@
 import { scene, physicsAggregates } from "./physics.js";
 import { gameObjects, gameState } from "./state.js";
-import { isMissileName, isBlockName, isFragmentName } from "./entities.js";
+import { isMissileName, isBlockName, isFragmentName, isTrebuchetName, isKingName, isGroundName } from "./entities.js";
+import { broadcastSfx } from "./sound.js";
 import { getActiveLevel, getHookContext } from "./modeRunner.js";
 import { broadcast } from "../net/broadcast.js";
 import { getConfig, TICK_MS } from "../config.js";
@@ -15,10 +16,39 @@ function objectIdFromBody(body) {
   return name.startsWith(prefix) ? name.slice(prefix.length) : null;
 }
 
+const SFX_MIN_SPEED = 1.2;
+const sfxPairTicks = new Map();
+
+function broadcastPairSfx(idA, idB, effect, opts) {
+  const key = idA < idB ? `${idA}:${idB}` : `${idB}:${idA}`;
+  if (sfxPairTicks.get(key) === gameState.tick) return;
+  sfxPairTicks.set(key, gameState.tick);
+  broadcastSfx(effect, opts);
+}
+
+function impactSpeed(a, b) {
+  return Math.hypot(
+    (a.vx ?? 0) - (b.vx ?? 0),
+    (a.vy ?? 0) - (b.vy ?? 0),
+    (a.vz ?? 0) - (b.vz ?? 0),
+  );
+}
+
+function midpointX(a, b) {
+  return (a.x + b.x) / 2;
+}
+
 function handleMissileBlockHit(missile, block) {
-  if (!block.maxHits) return;
   if (missile.loadedInto) return;
   if (block.removing) return;
+
+  const speed = Math.hypot(missile.vx ?? 0, missile.vy ?? 0, missile.vz ?? 0);
+  const x = midpointX(missile, block);
+
+  if (!block.maxHits) {
+    broadcastSfx("missile_hit_block", { speed, x });
+    return;
+  }
 
   const hitKey = `${missile.id}:${block.id}`;
   const lastTick = pendingBlockHits.get(hitKey);
@@ -28,6 +58,7 @@ function handleMissileBlockHit(missile, block) {
   block.hitStage = (block.hitStage ?? 0) + 1;
 
   if (getConfig("crackSystem") && block.hitStage < block.maxHits) {
+    broadcastSfx("missile_crack_block", { speed, x });
     broadcast({
       type: "event",
       tick: gameState.tick,
@@ -40,6 +71,7 @@ function handleMissileBlockHit(missile, block) {
     } else if (getConfig("fragmentation")) {
       shatterBlock(block, missile);
     } else {
+      broadcastSfx("missile_hit_block", { speed, x });
       deleteBlock(block);
     }
   }
@@ -93,24 +125,79 @@ export function initCollisions() {
 
     const objA = gameObjects.get(idA);
     const objB = gameObjects.get(idB);
-    if (!objA || !objB) return;
 
     const missileA = isMissileName(idA);
     const missileB = isMissileName(idB);
-    if (!missileA && !missileB) return;
 
-    const missile = missileA ? objA : objB;
-    const other = missileA ? objB : objA;
-    const otherId = missileA ? idB : idA;
+    // --- Missile collisions ---
+    if (missileA || missileB) {
+      const missile = missileA ? objA : objB;
+      const other = missileA ? objB : objA;
+      const otherId = missileA ? idB : idA;
 
-    if (isBlockName(otherId) && !isFragmentName(otherId)) {
-      handleMissileBlockHit(missile, other);
-    } else if (isFragmentName(otherId)) {
-      handleMissileFragmentHit(missile, other);
+      if (!missile) return;
+
+      const missileSpeed = Math.hypot(missile.vx ?? 0, missile.vy ?? 0, missile.vz ?? 0);
+
+      if (isBlockName(otherId) && !isFragmentName(otherId) && other) {
+        handleMissileBlockHit(missile, other);
+        return;
+      }
+      if (isFragmentName(otherId) && other) {
+        broadcastPairSfx(idA, idB, "missile_hits_fragment", { speed: missileSpeed, x: missile.x });
+        handleMissileFragmentHit(missile, other);
+        return;
+      }
+      if (missileA && missileB) {
+        if (objA && objB) {
+          broadcastPairSfx(idA, idB, "missile_hit_missile", { speed: impactSpeed(objA, objB), x: midpointX(objA, objB) });
+        }
+        return;
+      }
+      if (isGroundName(otherId)) {
+        broadcastPairSfx(idA, idB, "missile_hit_ground", { speed: missileSpeed, x: missile.x });
+        return;
+      }
+      if (isTrebuchetName(otherId)) {
+        if (missile.loadedInto) return;
+        broadcastPairSfx(idA, idB, "missile_hit_trebuchet", { speed: missileSpeed, x: missile.x });
+        return;
+      }
+      if (isKingName(otherId)) {
+        broadcastPairSfx(idA, idB, "king_hit", { speed: missileSpeed, x: missile.x });
+        return;
+      }
+      return;
+    }
+
+    // --- Non-missile collisions ---
+    const blockA = isBlockName(idA) && !isFragmentName(idA);
+    const blockB = isBlockName(idB) && !isFragmentName(idB);
+    const groundA = isGroundName(idA);
+    const groundB = isGroundName(idB);
+
+    if (blockA && groundB && objA) {
+      const speed = Math.hypot(objA.vx ?? 0, objA.vy ?? 0, objA.vz ?? 0);
+      if (speed < SFX_MIN_SPEED) return;
+      broadcastPairSfx(idA, idB, "block_hit_ground", { speed, x: objA.x });
+      return;
+    }
+    if (blockB && groundA && objB) {
+      const speed = Math.hypot(objB.vx ?? 0, objB.vy ?? 0, objB.vz ?? 0);
+      if (speed < SFX_MIN_SPEED) return;
+      broadcastPairSfx(idA, idB, "block_hit_ground", { speed, x: objB.x });
+      return;
+    }
+    if (blockA && blockB && objA && objB) {
+      const speed = impactSpeed(objA, objB);
+      if (speed < SFX_MIN_SPEED) return;
+      broadcastPairSfx(idA, idB, "block_hit_block", { speed, x: midpointX(objA, objB) });
+      return;
     }
   });
 }
 
 export function clearCollisionState() {
   pendingBlockHits.clear();
+  sfxPairTicks.clear();
 }
