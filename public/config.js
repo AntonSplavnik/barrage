@@ -53,7 +53,7 @@ export const BARRAGE_CONFIG = {
   vfxMissileBombExplodeGravity: -4,       // m/s², particle gravity
 
   // Rendering.
-  importedLightIntensityScale: 0.0018,      // multiplier
+  importedLightIntensityScale: 0.004,      // multiplier
   fallbackLightIntensity: 0.1,            // multiplier
   shadowsEnabled: true,
   shadowMapSize: 2048,                    // px
