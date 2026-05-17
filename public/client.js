@@ -14,6 +14,7 @@ import {
   registerVisualRootsFromGlb,
 } from "./client-glb-parser.js";
 import { BARRAGE_CONFIG } from "./config.js";
+import { createInterpolator } from "./interpolation.js";
 
 const {
   Color3,
@@ -1102,36 +1103,8 @@ function applyState(message) {
       }
     }
     latestObjectStates.set(object.id, object);
-
-    const visual = visualObjects.get(object.id);
-    if (!visual) continue;
-
-    visual.position.x = object.x;
-    visual.position.y = object.y ?? visual.position.y;
-    visual.position.z = object.z;
-    visual.rotationQuaternion = null;
-    const baseRotation = visualBaseRotations.get(object.id);
-    if (baseRotation) {
-      visual.rotation.x = baseRotation.x;
-      visual.rotation.y = baseRotation.y;
-      visual.rotation.z = baseRotation.z + protocolToBabylonRotation(object.rot || 0);
-    } else {
-      visual.rotation.z = protocolToBabylonRotation(object.rot || 0);
-    }
-
-    const arm = trebuchetArmNodes.get(object.id);
-    if (arm && typeof object.armAngle === "number") {
-      arm.rotationQuaternion = null;
-      arm.rotation.z = armAngleSign(object.id) * degreesToRadians(object.armAngle);
-      arm.computeWorldMatrix(true);
-    }
   }
-
-  if (pointerMode === "aim" && selectedEntityId) {
-    updateAimArrow();
-  }
-
-  updateDragPivotMarker();
+  interpolator.pushSnapshot(message);
 }
 
 function removeFragmentVisualReferences(fragId) {
@@ -1720,6 +1693,21 @@ levelSwitchPromise = loadLevel(initialLevelUrl).finally(() => {
     }
   });
 });
+
+const interpolator = createInterpolator({
+  config: CONFIG,
+  visualObjects,
+  visualBaseRotations,
+  trebuchetArmNodes,
+  protocolToBabylonRotation,
+  degreesToRadians,
+  armAngleSign,
+  getPointerMode: () => pointerMode,
+  getSelectedEntityId: () => selectedEntityId,
+  updateAimArrow,
+  updateDragPivotMarker,
+});
+scene.onBeforeRenderObservable.add(interpolator.applyInterpolatedPositions);
 
 window.addEventListener("resize", () => {
   applyRenderResolutionLimit(engine, CONFIG);

@@ -46,7 +46,7 @@ export const BARRAGE_CONFIG = {
 
   missileBombTriggerSpeed: 10,              // m/s, min impact speed to trigger detonation + VFX
   missileBombBlastRadius: 3.4,              // m, blast radius for fragmentation and VFX
-  missileBombKingKillRadius: 2.5,          // m, blast radius for instant king kill
+  missileBombKingKillRadius: 3,          // m, blast radius for instant king kill
   vfxMissileBombExplodeCount: 40,         // max particle count
   vfxMissileBombExplodeDurationMs: 500,   // ms, max particle lifetime
   vfxMissileBombExplodeSpeed: 2,         // m/s, max particle speed
@@ -63,6 +63,10 @@ export const BARRAGE_CONFIG = {
   vfxMissileBombSparksSize: 2,         // m, spark size
   vfxMissileBombSparksGravity: -14,       // m/s², sparks fall fast
   vfxMissileBombSparksWidth: 0.12,        // perpendicular width scale (smaller = thinner lines)
+
+  // Interpolation.
+  interpolationDelayMs: 50,               // ms — render behind live to absorb jitter (≈3 ticks at 60 Hz)
+  interpolationBufferSize: 8,             // number of snapshots to keep
 
   // Rendering.
   importedLightIntensityScale: 0.004,      // multiplier
