@@ -66,11 +66,15 @@ export const SERVER_CONFIG = {
   crackSystem: true,
   fragmentation: true,
 
+  // Missiles
+  missileDamageMinSpeed: 10,
+  missileHitForce: 20,
+
   // Bombs
   bombBlastRadius: 5,
   bombMaxDamage: 3,
-  bombMaxForce: 40,
-  bombDetonationMinSpeed: 5,
+  bombMaxForce: 200,
+  bombDetonationMinSpeed: 10,
 };
 
 let activeLevelConfig = null;
