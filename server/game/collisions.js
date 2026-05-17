@@ -16,6 +16,7 @@ function objectIdFromBody(body) {
   return name.startsWith(prefix) ? name.slice(prefix.length) : null;
 }
 
+const SFX_MIN_SPEED = 1.5;
 const sfxPairTicks = new Map();
 
 function broadcastPairSfx(idA, idB, effect, opts) {
@@ -177,16 +178,19 @@ export function initCollisions() {
 
     if (blockA && groundB && objA) {
       const speed = Math.hypot(objA.vx ?? 0, objA.vy ?? 0, objA.vz ?? 0);
+      if (speed < SFX_MIN_SPEED) return;
       broadcastPairSfx(idA, idB, "block_hit_ground", { speed, x: objA.x });
       return;
     }
     if (blockB && groundA && objB) {
       const speed = Math.hypot(objB.vx ?? 0, objB.vy ?? 0, objB.vz ?? 0);
+      if (speed < SFX_MIN_SPEED) return;
       broadcastPairSfx(idA, idB, "block_hit_ground", { speed, x: objB.x });
       return;
     }
     if (blockA && blockB && objA && objB) {
       const speed = impactSpeed(objA, objB);
+      if (speed < SFX_MIN_SPEED) return;
       broadcastPairSfx(idA, idB, "block_hit_block", { speed, x: midpointX(objA, objB) });
       return;
     }
