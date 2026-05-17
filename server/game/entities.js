@@ -19,6 +19,7 @@ export function toWireObject(object) {
     ...(object.player != null ? { player: object.player } : {}),
     ...(object.loaded !== undefined ? { loaded: object.loaded } : {}),
     ...(object.loadedInto ? { loadedInto: object.loadedInto } : {}),
+    ...(object.missileType ? { missileType: object.missileType } : {}),
     ...(object.armAngle !== undefined ? { armAngle: object.armAngle, fireState: object.fireState } : {}),
     ...(object.hits !== undefined ? { hits: object.hits, maxHits: object.maxHits } : {}),
     ...(object.hitStage !== undefined ? { hitStage: object.hitStage } : {}),

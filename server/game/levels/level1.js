@@ -80,14 +80,14 @@ export default {
 		spawn("missiles/basic", { x: -1.4, y: 2.1 });
 		spawn("missiles/basic", { x: 1.4, y: 2.1 });
 
-		// spawn("missiles/bomb", { x: 38.8, y: 0.7 });
-		// spawn("missiles/bomb", { x: -38.6, y: 0.7 });
-		// spawn("missiles/bomb", { x: -37.2, y: 0.7 });
-		// spawn("missiles/bomb", { x: 37.4, y: 0.7 });
-		// spawn("missiles/bomb", { x: -38.6, y: 2.1 });
-		// spawn("missiles/bomb", { x: -37.2, y: 2.1 });
-		// spawn("missiles/bomb", { x: 37.4, y: 2.1 });
-		// spawn("missiles/bomb", { x: 38.8, y: 2.1 });
+		spawn("missiles/bomb", { x: 38.8, y: 0.7, missileType: "bomb"});
+		spawn("missiles/bomb", { x: -38.6, y: 0.7, missileType: "bomb" });
+		spawn("missiles/bomb", { x: -37.2, y: 0.7, missileType: "bomb" });
+		spawn("missiles/bomb", { x: 37.4, y: 0.7, missileType: "bomb" });
+		spawn("missiles/bomb", { x: -38.6, y: 2.1, missileType: "bomb" });
+		spawn("missiles/bomb", { x: -37.2, y: 2.1, missileType: "bomb" });
+		spawn("missiles/bomb", { x: 37.4, y: 2.1, missileType: "bomb" });
+		spawn("missiles/bomb", { x: 38.8, y: 2.1, missileType: "bomb" });
 
 		spawn("trebuchets/trebuche-R", { x: -15, y: 1, player: 1 });
 		spawn("trebuchets/trebuche-L", { x: 15, y: 1, player: 2 });

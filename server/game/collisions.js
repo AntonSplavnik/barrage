@@ -6,8 +6,23 @@ import { getActiveLevel, getHookContext } from "./modeRunner.js";
 import { broadcast } from "../net/broadcast.js";
 import { getConfig, TICK_MS } from "../config.js";
 import { shatterBlock, deleteBlock } from "./fragmentation.js";
+import { triggerExplosion, removeBomb } from "./explosion.js";
 
 const pendingBlockHits = new Map();
+const pendingDetonations = [];
+
+export function processPendingDetonations() {
+  for (const { bomb, pos } of pendingDetonations) {
+    if (!gameObjects.has(bomb.id)) continue;
+    removeBomb(bomb);
+    triggerExplosion(bomb.id, pos, {
+      radius: getConfig("bombBlastRadius"),
+      maxDamage: getConfig("bombMaxDamage"),
+      maxForce: getConfig("bombMaxForce"),
+    });
+  }
+  pendingDetonations.length = 0;
+}
 
 function objectIdFromBody(body) {
   const name = body.transformNode?.name;
@@ -44,6 +59,8 @@ function handleMissileBlockHit(missile, block) {
 
   const speed = Math.hypot(missile.vx ?? 0, missile.vy ?? 0, missile.vz ?? 0);
   const x = midpointX(missile, block);
+
+  if (speed < getConfig("missileDamageMinSpeed")) return;
 
   if (!block.maxHits) {
     broadcastSfx("missile_hit_block", { speed, x });
@@ -138,6 +155,24 @@ export function initCollisions() {
       if (!missile) return;
 
       const missileSpeed = Math.hypot(missile.vx ?? 0, missile.vy ?? 0, missile.vz ?? 0);
+
+      if (missile.missileType === "bomb" && !missile.loadedInto && missileSpeed >= getConfig("bombDetonationMinSpeed")) {
+        pendingDetonations.push({ bomb: missile, pos: { x: missile.x, y: missile.y, z: missile.z } });
+        if (other && isMissileName(otherId) && other.missileType === "bomb" && gameObjects.has(otherId)) {
+          pendingDetonations.push({ bomb: other, pos: { x: other.x, y: other.y, z: other.z } });
+        }
+        return;
+      }
+
+      if (missile.missileType === "bomb") return;
+
+      if (other && isMissileName(otherId) && other.missileType === "bomb" && !other.loadedInto) {
+        const otherSpeed = Math.hypot(other.vx ?? 0, other.vy ?? 0, other.vz ?? 0);
+        if (otherSpeed >= getConfig("bombDetonationMinSpeed")) {
+          pendingDetonations.push({ bomb: other, pos: { x: other.x, y: other.y, z: other.z } });
+        }
+        return;
+      }
 
       if (isBlockName(otherId) && !isFragmentName(otherId) && other) {
         handleMissileBlockHit(missile, other);

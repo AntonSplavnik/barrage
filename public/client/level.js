@@ -313,6 +313,28 @@ export function shrinkAndDisposeFragment(fragId) {
   });
 }
 
+export function removeStaleVisuals(objects) {
+  const currentIds = new Set(objects.map((o) => o.id));
+
+  for (const [id, visual] of visualObjects) {
+    if (currentIds.has(id)) continue;
+    if (fragmentVisuals.has(id)) continue;
+
+    visual.dispose(false, false);
+    visualObjects.delete(id);
+    visualBaseRotations.delete(id);
+    latestObjectStates.delete(id);
+    trebuchetArmNodes.delete(id);
+    trebuchetLoadTargets.delete(id);
+
+    const crack = crackStageVisuals.get(id);
+    if (crack) {
+      crack.dispose(false, false);
+      crackStageVisuals.delete(id);
+    }
+  }
+}
+
 export function ensureVisualsForState(objects) {
   let created = false;
 

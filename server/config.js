@@ -65,6 +65,15 @@ export const SERVER_CONFIG = {
   // Features (level-overridable)
   crackSystem: true,
   fragmentation: true,
+
+  // Missiles
+  missileDamageMinSpeed: 10,
+
+  // Bombs
+  bombBlastRadius: 5,
+  bombMaxDamage: 3,
+  bombMaxForce: 200,
+  bombDetonationMinSpeed: 10,
 };
 
 let activeLevelConfig = null;

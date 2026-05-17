@@ -22,7 +22,7 @@ const SOUND_CONFIG = {
     missile_crack_block:     { file: "/sounds/missile_crack_block.mp3", volume: 0.75, pitch: 1.0 },
     missile_hits_fragment:   { file: "/sounds/missile_hits_fragment.mp3", volume: 0.7, pitch: 1.04 },
     king_hit:                { file: "/sounds/king_hit.mp3", volume: 1.0, pitch: 1.0 },
-    missile_bomb_hit:        { file: "/sounds/missile_bomb-hit.mp3", volume: 1.0, pitch: 0.9 },
+    missile_bomb_explosion:  { file: "/sounds/missile_bomb-explosion.mp3", volume: 1.0, pitch: 0.9 },
   },
 };
 
