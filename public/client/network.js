@@ -1,7 +1,7 @@
 import { connectionEl, playerEl, scoreLeftEl, scoreRightEl, matchEndEl, matchEndTextEl, rematchEl, sfxToggleEl, engine, scene } from "./engine.js";
 import { createSoundSystem } from "./sound.js";
 import { applyState, latestObjectStates } from "./state.js";
-import { loadLevel, reloadLevel, ensureVisualsForState, hideBlockVisual, shrinkAndDisposeFragment, clearDestructionVisuals, updateCrackStage } from "./level.js";
+import { loadLevel, reloadLevel, ensureVisualsForState, removeStaleVisuals, hideBlockVisual, shrinkAndDisposeFragment, clearDestructionVisuals, updateCrackStage } from "./level.js";
 
 let seq = 0;
 let displayedScores = { P1: 0, P2: 0 };
@@ -169,6 +169,7 @@ socket.addEventListener("message", async (event) => {
   if (message.type === "state") {
     updateScores(message.scores, false);
     const prevStates = new Map(latestObjectStates);
+    removeStaleVisuals(message.objects ?? []);
     ensureVisualsForState(message.objects ?? []);
     applyState(message);
 
