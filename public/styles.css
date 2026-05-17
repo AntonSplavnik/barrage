@@ -16,7 +16,7 @@ body {
 
 #round-counter {
   position: fixed;
-  top: 12px;
+  bottom: 12px;
   left: 50%;
   transform: translateX(-50%);
   padding: 8px 14px;
@@ -35,7 +35,7 @@ body {
 
 #hud {
   position: fixed;
-  top: 12px;
+  bottom: 12px;
   left: 12px;
   display: flex;
   gap: 10px;
@@ -48,22 +48,71 @@ body {
   font-size: 14px;
 }
 
+#hud.hud-hidden,
+#hud-opponent.hud-hidden,
+#round-counter.hud-hidden {
+  display: none !important;
+}
+
+#media-controls {
+  position: fixed;
+  top: 100px;
+  left: 12px;
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  background: rgb(18 23 25 / 78%);
+  border: 1px solid rgb(255 255 255 / 16%);
+  border-radius: 6px;
+  z-index: 10;
+}
+
+#media-controls.player-odd {
+  background: rgb(160 30 30 / 78%);
+  border-color: rgb(255 100 100 / 30%);
+}
+
+#media-controls.player-even {
+  left: auto;
+  right: 12px;
+  background: rgb(30 60 160 / 78%);
+  border-color: rgb(100 150 255 / 30%);
+}
+
+#player-portrait-left,
+#player-portrait-right {
+  position: fixed;
+  top: 12px;
+  width: auto;
+  height: 80px;
+  border-radius: 6px;
+  pointer-events: none;
+  z-index: 10;
+}
+
+#player-portrait-left  { left: 12px; }
+#player-portrait-right { right: 12px; }
+
 #crowns-left,
 #crowns-right {
   position: fixed;
-  top: 64px;
-  font-size: 44px;
+  top: 16px;
+  font-size: 28px;
   line-height: 1;
   pointer-events: none;
 }
 
-#crowns-left {
-  left: 12px;
+.win-crown-fly {
+  position: fixed;
+  font-size: 80px;
+  line-height: 1;
+  pointer-events: none;
+  user-select: none;
+  z-index: 9999;
 }
 
-#crowns-right {
-  right: 12px;
-}
+#crowns-left  { left: 104px; } /* overridden by JS repositionCrowns() */
+#crowns-right { right: 104px; }
 
 #player {
   color: #ffd166;
@@ -71,7 +120,7 @@ body {
 
 #hud-opponent {
   position: fixed;
-  top: 12px;
+  bottom: 12px;
   left: 12px;
   display: none;
   padding: 8px 10px;
@@ -173,6 +222,24 @@ body {
   display: grid;
 }
 
+.lobby-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+#lobby-title {
+  width: 30vw;
+  height: auto;
+  pointer-events: none;
+  transition: opacity 0.8s ease;
+}
+
+.lobby-panel.panel-hidden {
+  display: none;
+}
+
 .lobby-panel.winner-odd {
   background: rgb(160 30 30 / 88%);
   border-color: rgb(255 100 100 / 30%);
@@ -192,11 +259,6 @@ body {
   text-align: center;
 }
 
-.lobby-panel h1 {
-  margin: 0 0 8px;
-  font-size: 26px;
-  font-weight: 700;
-}
 
 .lobby-panel p {
   margin: 0;

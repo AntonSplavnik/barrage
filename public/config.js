@@ -91,6 +91,9 @@ export const BARRAGE_CONFIG = {
   blockRestitution: 0.15,                 // 0–1 (bounciness)
   staticFriction: 1.0,                    // 0–1
 
+  // UI.
+  hideHud: true,                           // hide player name + buttons panel
+
   // Input.
   inputInvertX: true,
   trebuchetInputInvertX: true,

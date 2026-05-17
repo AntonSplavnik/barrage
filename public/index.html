@@ -15,21 +15,27 @@
     <div id="hud">
       <span id="connection">Connecting...</span>
       <span id="player"></span>
+      <button id="reset" type="button">Reset</button>
+      <button id="restart-server" type="button">Restart Server</button>
+    </div>
+    <div id="media-controls">
       <button id="music-toggle" type="button" aria-label="Enable music" title="Enable music">
         <span class="music-note" aria-hidden="true">♪</span>
       </button>
       <button id="sfx-toggle" type="button" aria-label="Enable sound effects" title="Enable sound effects">
         <span class="sfx-speaker" aria-hidden="true">🔊</span>
       </button>
-      <button id="reset" type="button">Reset</button>
-      <button id="restart-server" type="button">Restart Server</button>
     </div>
+    <img id="player-portrait-left"  src="/backgrounds/player1.webp" alt="" />
+    <img id="player-portrait-right" src="/backgrounds/player2.webp" alt="" />
     <div id="crowns-left"></div>
     <div id="crowns-right"></div>
     <div id="lobby" class="is-visible">
-      <div class="lobby-panel">
-        <h1>Barrage</h1>
-        <p id="lobby-status">Connecting...</p>
+      <div class="lobby-content">
+        <img id="lobby-title" src="/backgrounds/title.webp" alt="Barrage" />
+        <div class="lobby-panel">
+          <p id="lobby-status">Connecting...</p>
+        </div>
       </div>
     </div>
     <script src="https://cdn.babylonjs.com/babylon.js"></script>

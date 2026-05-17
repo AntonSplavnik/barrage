@@ -31,6 +31,7 @@ const CONFIG = BARRAGE_CONFIG;
 const LEVEL_URL = CONFIG.levelUrl ?? "/assets/level1.glb";
 const canvas = document.getElementById("game");
 const hudEl = document.getElementById("hud");
+const mediaControlsEl = document.getElementById("media-controls");
 const connectionEl = document.getElementById("connection");
 const playerEl = document.getElementById("player");
 const musicToggleEl = document.getElementById("music-toggle");
@@ -40,9 +41,12 @@ const restartServerEl = document.getElementById("restart-server");
 const lobbyEl = document.getElementById("lobby");
 const lobbyStatusEl = document.getElementById("lobby-status");
 const lobbyPanelEl = document.querySelector(".lobby-panel");
+const lobbyTitleEl = document.getElementById("lobby-title");
 const roundCounterEl = document.getElementById("round-counter");
 const crownsLeftEl = document.getElementById("crowns-left");
 const crownsRightEl = document.getElementById("crowns-right");
+const portraitLeftEl = document.getElementById("player-portrait-left");
+const portraitRightEl = document.getElementById("player-portrait-right");
 const hudOpponentEl = document.getElementById("hud-opponent");
 const opponentPlayerEl = document.getElementById("opponent-player");
 
@@ -107,7 +111,17 @@ function setStatus(text) {
   connectionEl.textContent = text;
 }
 
+let _lobbyFadeTimer = null;
+let _lobbyHideTimer = null;
+
 function setLobbyStatus(text, visible = true, winnerPlayerId = null) {
+  clearTimeout(_lobbyFadeTimer);
+  clearTimeout(_lobbyHideTimer);
+  _lobbyFadeTimer = null;
+  _lobbyHideTimer = null;
+  lobbyTitleEl.style.opacity = "";
+  lobbyPanelEl.classList.remove("panel-hidden");
+
   lobbyStatusEl.textContent = text;
   lobbyEl.classList.toggle("is-visible", visible);
   lobbyPanelEl.classList.remove("winner-odd", "winner-even");
@@ -126,6 +140,22 @@ function updateRoundCounter(roundNumber) {
   roundCounterEl.classList.add("is-visible");
 }
 
+function repositionCrowns() {
+  const GAP = 8; // px gap between portrait edge and first crown
+  if (portraitLeftEl.naturalWidth > 0) {
+    const r = portraitLeftEl.getBoundingClientRect();
+    crownsLeftEl.style.left = (r.right + GAP) + "px";
+  }
+  if (portraitRightEl.naturalWidth > 0) {
+    const r = portraitRightEl.getBoundingClientRect();
+    crownsRightEl.style.right = (window.innerWidth - r.left + GAP) + "px";
+  }
+}
+portraitLeftEl.addEventListener("load", repositionCrowns);
+portraitRightEl.addEventListener("load", repositionCrowns);
+if (portraitLeftEl.complete)  repositionCrowns();
+window.addEventListener("resize", repositionCrowns);
+
 function updateCrowns(scores) {
   if (JSON.stringify(scores) === JSON.stringify(displayedScores)) return;
   displayedScores = scores;
@@ -139,6 +169,89 @@ function updateCrowns(scores) {
   }
   crownsLeftEl.textContent = "👑".repeat(leftCount);
   crownsRightEl.textContent = "👑".repeat(rightCount);
+}
+
+let _flyingCrown = null;
+
+function newCrownSlotRect(targetEl, scores, isLeft) {
+  let count = 0;
+  for (const [pid, wins] of Object.entries(scores)) {
+    const n = parseInt(pid.split("_")[1], 10);
+    if (!Number.isFinite(n)) continue;
+    if ((n % 2 === 1) === isLeft) count += wins;
+  }
+
+  const saved = targetEl.textContent;
+  targetEl.textContent = "👑".repeat(count);
+  let rect = null;
+  if (count > 0 && targetEl.firstChild) {
+    const CROWN_LEN = "👑".length; // 2 JS chars (surrogate pair)
+    // Left element has fixed left edge — it grows rightward, newest crown is last.
+    // Right element has fixed right edge — it grows leftward, newest crown is first.
+    const slotIndex = isLeft ? count - 1 : 0;
+    const range = document.createRange();
+    range.setStart(targetEl.firstChild, slotIndex * CROWN_LEN);
+    range.setEnd(targetEl.firstChild, (slotIndex + 1) * CROWN_LEN);
+    rect = range.getBoundingClientRect();
+  }
+  targetEl.textContent = saved;
+  return rect ?? targetEl.getBoundingClientRect();
+}
+
+function animateWinCrown(winnerPlayerId, scores) {
+  if (_flyingCrown) { _flyingCrown.remove(); _flyingCrown = null; }
+
+  const num = parseInt(winnerPlayerId.split("_")[1], 10);
+  const isLeft = Number.isFinite(num) && num % 2 === 1;
+  const targetEl = isLeft ? crownsLeftEl : crownsRightEl;
+
+  const crown = document.createElement("span");
+  crown.className = "win-crown-fly";
+  crown.textContent = "👑";
+  document.body.appendChild(crown);
+  _flyingCrown = crown;
+
+  crown.style.transformOrigin = "0 0";
+  const crownW = crown.offsetWidth;
+  const startX = (window.innerWidth  - crownW) / 2;
+  const startY = (window.innerHeight - crown.offsetHeight) / 2;
+  crown.style.left = startX + "px";
+  crown.style.top  = startY + "px";
+
+  // Measure the glyph rect within the flying crown's CSS box.
+  // The emoji glyph doesn't always start at the box's top-left corner.
+  const flyRange = document.createRange();
+  flyRange.setStart(crown.firstChild, 0);
+  flyRange.setEnd(crown.firstChild, "👑".length);
+  const flyGlyph = flyRange.getBoundingClientRect();
+  const glyphOffsetX = flyGlyph.left - startX;
+  const glyphOffsetY = flyGlyph.top  - startY;
+
+  const PAUSE_MS = 600;
+  const FLY_MS   = 1600;
+
+  setTimeout(() => {
+    if (_flyingCrown !== crown) return;
+
+    const slot = newCrownSlotRect(targetEl, scores, isLeft);
+    const targetScale = slot.width / flyGlyph.width;
+    // With transform-origin 0 0, the glyph lands at:
+    //   (startX + dx + glyphOffsetX * s, startY + dy + glyphOffsetY * s)
+    // We want that to equal (slot.left, slot.top).
+    const dx = slot.left - startX - glyphOffsetX * targetScale;
+    const dy = slot.top  - startY - glyphOffsetY * targetScale;
+
+    const anim = crown.animate([
+      { transform: "translate(0,0) scale(1)" },
+      { transform: `translate(${dx}px,${dy}px) scale(${targetScale})` },
+    ], { duration: FLY_MS, easing: "ease-in", fill: "forwards" });
+
+    anim.onfinish = () => {
+      if (_flyingCrown === crown) _flyingCrown = null;
+      updateCrowns(scores);
+      crown.remove();
+    };
+  }, PAUSE_MS);
 }
 
 async function loadFragmentTemplates() {
@@ -1057,8 +1170,15 @@ socket.addEventListener("message", (event) => {
     playerEl.textContent = message.playerId;
     const playerNum = parseInt(message.playerId?.split("_")[1], 10);
     if (Number.isFinite(playerNum)) {
+      const isOdd = playerNum % 2 === 1;
       hudEl.classList.remove("player-odd", "player-even");
-      hudEl.classList.add(playerNum % 2 === 1 ? "player-odd" : "player-even");
+      hudEl.classList.add(isOdd ? "player-odd" : "player-even");
+      const hideHud = Boolean(CONFIG.hideHud);
+      hudEl.classList.toggle("hud-hidden", hideHud);
+      hudOpponentEl.classList.toggle("hud-hidden", hideHud);
+      roundCounterEl.classList.toggle("hud-hidden", hideHud);
+      mediaControlsEl.classList.remove("player-odd", "player-even");
+      mediaControlsEl.classList.add(isOdd ? "player-odd" : "player-even");
     }
   }
 
@@ -1093,14 +1213,17 @@ socket.addEventListener("message", (event) => {
     setLobbyStatus("Loading match...");
     switchLevelIfNeeded(currentLevelUrl).then(() => {
       isMatched = true;
-      setLobbyStatus("", false);
+      lobbyPanelEl.classList.add("panel-hidden");
+      _lobbyFadeTimer = setTimeout(() => {
+        lobbyTitleEl.style.opacity = "0";
+        _lobbyHideTimer = setTimeout(() => setLobbyStatus("", false), 800);
+      }, 5000);
     });
   }
 
   if (message.type === "roundEnded") {
     isMatched = false;
-    updateCrowns(message.scores ?? {});
-    setLobbyStatus(`${message.winner} won round ${message.roundNumber}`, true, message.winner);
+    animateWinCrown(message.winner, message.scores ?? {});
     cameraControl.onRoundWin(message.winner);
   }
 
@@ -1192,7 +1315,7 @@ socket.addEventListener("message", (event) => {
     }
 
     updateRoundCounter(message.roundNumber);
-    updateCrowns(message.scores ?? {});
+    if (!_flyingCrown) updateCrowns(message.scores ?? {});
     applyState(message);
     updateMusicFromState(message);
   }
