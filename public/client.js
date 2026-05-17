@@ -1184,8 +1184,9 @@ socket.addEventListener("message", (event) => {
     currentRoomId = message.roomId;
     currentLevelUrl = message.level ?? currentLevelUrl;
     isMatched = false;
+    const spectatorNum = message.playerId?.split("_")[1] ?? "?";
     setLobbyStatus(message.status === "spectating"
-      ? `${message.playerId} waiting for a player slot...`
+      ? `A two player battle. You are spectating. You are in queue position ${spectatorNum} waiting to play a match.`
       : `A two player battle. You are waiting for an opponent. <button class="copy-url-btn" data-copy-url="http://game-show.cloud-ip.cc/">Copy game URL</button> and give to a friend and prepare for combat!`);
     if (message.status === "spectating") {
       switchLevelIfNeeded(currentLevelUrl);

@@ -1,3 +1,5 @@
+#babylonUnmuteIcon { display: none !important; }
+
 html,
 body {
   width: 100%;
@@ -48,9 +50,14 @@ body {
   font-size: 14px;
 }
 
-#hud.hud-hidden,
 #hud-opponent.hud-hidden,
 #round-counter.hud-hidden {
+  display: none !important;
+}
+
+#hud.hud-hidden #connection,
+#hud.hud-hidden #reset,
+#hud.hud-hidden #restart-server {
   display: none !important;
 }
 
