@@ -18,10 +18,6 @@ export const CLIENT_CONFIG = {
 
   // Drag/release (client-side feel)
   dragHeightOffset: 0.2,
-  releaseVelocityScale: 1.0,
-  releaseVelocitySampleHz: 60,
-  releaseVelocityFrameWindow: 5,
-  releaseVelocityMinSampleDistance: 0.05,
   missilePickColliderScale: 2,
 
   // Aim arrow visuals

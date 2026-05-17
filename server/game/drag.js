@@ -1,20 +1,213 @@
+import { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
 import { gameObjects, dragState } from "./state.js";
 import {
   isTrebuchetName,
   isMissileName,
   isKingName,
+  isBlockName,
+  isFragmentName,
   constrainWorldBounds,
   constrainedPointForObject,
   normalReleaseVelocityMax,
   releaseVelocityForObject,
 } from "./entities.js";
 import { clampVector } from "../math.js";
+import { TICK_MS, getConfig } from "../config.js";
 import {
+  physicsAggregates,
   syncPhysicsBodyFromObject,
   setPhysicsBodyTrigger,
   returnDraggedObjectUpright,
 } from "./physics.js";
 import { maybeLoadMissile } from "./trebuchet.js";
+
+export function usesMagneticDrag(object) {
+  if (isFragmentName(object.id)) return false;
+  return isBlockName(object.id) || isTrebuchetName(object.id);
+}
+
+function localPointForObject(object, point) {
+  const aggregate = physicsAggregates.get(object.id);
+  if (!aggregate) return { x: 0, y: 0, z: 0 };
+
+  const node = aggregate.transformNode;
+  node.computeWorldMatrix(true);
+  const inverse = node.getWorldMatrix().clone().invert();
+  const local = Vector3.TransformCoordinates(
+    new Vector3(Number(point.x), Number(point.y ?? object.y), Number(point.z)),
+    inverse,
+  );
+  return { x: local.x, y: local.y, z: local.z };
+}
+
+function validateDragPosition(point, previousPoint, dt) {
+  const cappedDt = Math.min(dt, 2 * TICK_MS / 1000);
+  const dx = Number(point.x) - Number(previousPoint.x);
+  const dy = Number(point.y ?? previousPoint.y) - Number(previousPoint.y);
+  const dz = Number(point.z) - Number(previousPoint.z);
+  const distance = Math.hypot(dx, dy, dz);
+  const maxDistance = getConfig("maxDragSpeed") * cappedDt;
+
+  if (distance <= maxDistance) {
+    return {
+      x: Number(point.x),
+      y: Number(point.y ?? previousPoint.y),
+      z: Number(point.z),
+    };
+  }
+
+  const scale = maxDistance / distance;
+  return {
+    x: Number(previousPoint.x) + dx * scale,
+    y: Number(previousPoint.y) + dy * scale,
+    z: Number(previousPoint.z) + dz * scale,
+  };
+}
+
+export function applyMagneticDragForce(object) {
+  const aggregate = physicsAggregates.get(object.id);
+  if (!aggregate) return;
+
+  const state = dragState.get(object.id);
+  if (!state?.grabLocalPoint || !state.lastPoint) return;
+
+  const node = aggregate.transformNode;
+  node.computeWorldMatrix(true);
+
+  const grabWorldPoint = Vector3.TransformCoordinates(
+    new Vector3(state.grabLocalPoint.x, state.grabLocalPoint.y, state.grabLocalPoint.z),
+    node.getWorldMatrix(),
+  );
+
+  const targetPoint = new Vector3(
+    Number(state.lastPoint.x),
+    Number(state.lastPoint.y),
+    Number(state.lastPoint.z),
+  );
+
+  const displacement = targetPoint.subtract(grabWorldPoint);
+  const distance = displacement.length();
+  if (distance < 0.0001 || distance > getConfig("dragRadiusLimit")) return;
+
+  const forceMagnitude = Math.min(getConfig("dragForceMax"), getConfig("dragForceMax") * distance);
+  const magneticForce = displacement.normalize().scale(forceMagnitude);
+
+  const linearVelocity = aggregate.body.getLinearVelocity();
+  const dampingForce = linearVelocity.scale(-getConfig("dragDampingMax"));
+
+  const totalForce = magneticForce.add(dampingForce);
+  totalForce.z = 0;
+  if (isTrebuchetName(object.id)) totalForce.y = 0;
+
+  aggregate.body.applyForce(totalForce, grabWorldPoint);
+}
+
+export const unstuckMissiles = new Set();
+const unstuckExitDir = new Map();
+
+function missileOverlapsAny(object) {
+  for (const other of gameObjects.values()) {
+    if (other.id === object.id) continue;
+    if (isFragmentName(other.id)) continue;
+    if (!physicsAggregates.has(other.id)) continue;
+
+    const dx = Math.abs(object.x - other.x) - (object.halfX + other.halfX);
+    const dy = Math.abs(object.y - other.y) - (object.halfY + other.halfY);
+    const dz = Math.abs(object.z - other.z) - (object.halfZ + other.halfZ);
+    if (dx < 0 && dy < 0 && dz < 0) return true;
+  }
+  return false;
+}
+
+export function tickMissileUnstuck() {
+  for (const id of unstuckMissiles) {
+    const object = gameObjects.get(id);
+    if (!object) { unstuckMissiles.delete(id); unstuckExitDir.delete(id); continue; }
+
+    if (missileOverlapsAny(object)) {
+      const dir = findExitDirection(object);
+      unstuckExitDir.set(id, dir);
+      const step = getConfig("depenetrationStep") * 0.5;
+      object.x += dir.x * step;
+      object.y += dir.y * step;
+      syncPhysicsBodyFromObject(object, { x: 0, y: 0, z: 0 });
+    } else {
+      const dir = unstuckExitDir.get(id) || { x: 0, y: 1 };
+      const padding = getConfig("depenetrationStep");
+      object.x += dir.x * padding;
+      object.y += dir.y * padding;
+      syncPhysicsBodyFromObject(object, { x: 0, y: 0, z: 0 });
+      setPhysicsBodyTrigger(object, false);
+      unstuckMissiles.delete(id);
+      unstuckExitDir.delete(id);
+    }
+  }
+}
+
+function findExitDirection(object) {
+  const step = getConfig("depenetrationStep");
+  const maxDist = getConfig("depenetrationMaxDistance");
+
+  let bestDist = Infinity;
+  let bestDir = { x: 0, y: 1 };
+
+  const directions = [
+    { x: 0, y: 1 },
+    { x: 1, y: 0 },
+    { x: -1, y: 0 },
+    { x: 0.707, y: 0.707 },
+    { x: -0.707, y: 0.707 },
+  ];
+
+  for (const dir of directions) {
+    for (let d = step; d <= maxDist; d += step) {
+      const testObj = { ...object, x: object.x + dir.x * d, y: object.y + dir.y * d };
+      if (!missileOverlapsAny(testObj)) {
+        if (d < bestDist) {
+          bestDist = d;
+          bestDir = dir;
+        }
+        break;
+      }
+    }
+  }
+
+  return bestDir;
+}
+
+function beginMissileUnstuck(object) {
+  if (missileOverlapsAny(object)) {
+    setPhysicsBodyTrigger(object, true);
+    unstuckMissiles.add(object.id);
+  } else {
+    setPhysicsBodyTrigger(object, false);
+  }
+}
+
+export function releaseDragForClient(clientId) {
+  for (const object of gameObjects.values()) {
+    if (object.draggedBy !== clientId) continue;
+
+    const state = dragState.get(object.id);
+
+    if (usesMagneticDrag(object) && state?.originalAngularDamping !== undefined) {
+      const aggregate = physicsAggregates.get(object.id);
+      if (aggregate) {
+        aggregate.body.setAngularDamping(state.originalAngularDamping);
+      }
+    }
+
+    if (isMissileName(object.id)) {
+      setPhysicsBodyTrigger(object, false);
+    }
+
+    object.dragVx = 0;
+    object.dragVy = 0;
+    object.dragVz = 0;
+    object.draggedBy = null;
+    dragState.delete(object.id);
+  }
+}
 
 function velocityFromDragState(object, point) {
   const previous = dragState.get(object.id);
@@ -28,23 +221,13 @@ function velocityFromDragState(object, point) {
   }, normalReleaseVelocityMax());
 }
 
-function usableReleaseVelocity(object, message) {
-  const clientVelocity = releaseVelocityForObject(object, message.velocity);
-  const clientSpeed = Math.hypot(clientVelocity.x, clientVelocity.y, clientVelocity.z);
-
-  if (clientSpeed > 0.1) {
-    return clientVelocity;
-  }
-
-  return releaseVelocityForObject(object, velocityFromDragState(object, message.point));
-}
-
 export function handleDragStart(client, message) {
   const object = gameObjects.get(message.entityId);
   if (!object || !message.point) return;
   if (!object.dynamic) return;
   if (object.loadedInto) return;
   if (isKingName(object.id)) return;
+  if (object.draggedBy) return;
 
   if (isTrebuchetName(object.id)) {
     if (object.player && object.player !== client.id) return;
@@ -54,12 +237,30 @@ export function handleDragStart(client, message) {
   }
 
   object.draggedBy = client.id;
-  if (isMissileName(object.id)) setPhysicsBodyTrigger(object, true);
   object.vx = 0;
   object.vy = 0;
   object.vz = 0;
-  returnDraggedObjectUpright(object);
-  dragState.set(object.id, { lastTime: Date.now(), lastPoint: message.point });
+
+  if (usesMagneticDrag(object)) {
+    const aggregate = physicsAggregates.get(object.id);
+    if (aggregate) {
+      aggregate.body.setLinearVelocity(Vector3.Zero());
+      aggregate.body.setAngularVelocity(Vector3.Zero());
+    }
+    const grabLocalPoint = localPointForObject(object, message.point);
+    const originalAngularDamping = aggregate?.body.getAngularDamping() ?? 0;
+    if (aggregate) aggregate.body.setAngularDamping(0);
+    dragState.set(object.id, {
+      lastTime: Date.now(),
+      lastPoint: message.point,
+      grabLocalPoint,
+      originalAngularDamping,
+    });
+  } else {
+    if (isMissileName(object.id)) setPhysicsBodyTrigger(object, true);
+    returnDraggedObjectUpright(object);
+    dragState.set(object.id, { lastTime: Date.now(), lastPoint: message.point });
+  }
 }
 
 export function handleDragMove(client, message) {
@@ -70,24 +271,32 @@ export function handleDragMove(client, message) {
   const now = Date.now();
   const previous = dragState.get(object.id);
   const dt = Math.max(0.001, (now - (previous?.lastTime ?? now)) / 1000);
-  const next = constrainedPointForObject(object, message.point, client.id);
-  const nextX = next.x;
-  const nextY = next.y;
-  const nextZ = next.z;
 
-  object.dragVx = (nextX - object.x) / dt;
-  object.dragVy = (nextY - object.y) / dt;
-  object.dragVz = (nextZ - object.z) / dt;
-  object.x = nextX;
-  object.y = nextY;
-  object.z = nextZ;
+  const validated = validateDragPosition(message.point, previous?.lastPoint ?? message.point, dt);
+  const next = constrainedPointForObject(object, validated, client.id);
+
+  if (usesMagneticDrag(object)) {
+    dragState.set(object.id, {
+      ...previous,
+      lastTime: now,
+      lastPoint: next,
+    });
+    return;
+  }
+
+  object.dragVx = (next.x - object.x) / dt;
+  object.dragVy = (next.y - object.y) / dt;
+  object.dragVz = (next.z - object.z) / dt;
+  object.x = next.x;
+  object.y = next.y;
+  object.z = next.z;
   constrainWorldBounds(object);
   returnDraggedObjectUpright(object);
   syncPhysicsBodyFromObject(object, { x: 0, y: 0, z: 0 });
   object.vx = 0;
   object.vy = 0;
   object.vz = 0;
-  dragState.set(object.id, { lastTime: now, lastPoint: message.point });
+  dragState.set(object.id, { lastTime: now, lastPoint: next });
 }
 
 export function handleDragEnd(client, message) {
@@ -95,15 +304,44 @@ export function handleDragEnd(client, message) {
   if (!object || !message.point) return;
   if (object.draggedBy !== client.id) return;
 
-  const next = constrainedPointForObject(object, message.point, client.id);
-  const releaseVelocity = usableReleaseVelocity(object, message);
+  const previous = dragState.get(object.id);
+  const now = Date.now();
+  const dt = Math.max(0.001, (now - (previous?.lastTime ?? now)) / 1000);
+  const validated = validateDragPosition(message.point, previous?.lastPoint ?? message.point, dt);
+
+  const rawVelocity = velocityFromDragState(object, validated);
+  const releaseVelocity = releaseVelocityForObject(object, rawVelocity);
+
+  if (usesMagneticDrag(object)) {
+    const state = dragState.get(object.id);
+    if (state?.originalAngularDamping !== undefined) {
+      const aggregate = physicsAggregates.get(object.id);
+      if (aggregate) {
+        aggregate.body.setAngularDamping(state.originalAngularDamping);
+        aggregate.body.setLinearVelocity(
+          new Vector3(releaseVelocity.x, releaseVelocity.y, releaseVelocity.z),
+        );
+      }
+    }
+    object.vx = releaseVelocity.x;
+    object.vy = releaseVelocity.y;
+    object.vz = releaseVelocity.z;
+    object.dragVx = 0;
+    object.dragVy = 0;
+    object.dragVz = 0;
+    object.draggedBy = null;
+    dragState.delete(object.id);
+    return;
+  }
+
+  const next = constrainedPointForObject(object, validated, client.id);
   object.x = next.x;
   object.y = next.y;
   object.z = next.z;
   constrainWorldBounds(object);
-  returnDraggedObjectUpright(object);
+
   if (!maybeLoadMissile(object)) {
-    if (isMissileName(object.id)) setPhysicsBodyTrigger(object, false);
+    if (isMissileName(object.id)) beginMissileUnstuck(object);
     object.vx = releaseVelocity.x;
     object.vy = releaseVelocity.y;
     object.vz = releaseVelocity.z;

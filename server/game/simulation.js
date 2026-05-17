@@ -12,6 +12,7 @@ import { SERVER_CONFIG, TICK_MS, getConfig } from "../config.js";
 import { isTrebuchetName } from "./entities.js";
 import { babylonToProtocolRotationZ } from "../math.js";
 import { updateTrebuchetFireState, loadTargetForTrebuchet } from "./trebuchet.js";
+import { usesMagneticDrag, applyMagneticDragForce, tickMissileUnstuck, unstuckMissiles } from "./drag.js";
 
 export function simulatePhysics() {
   const scaledDt = (TICK_MS / 1000) * getConfig("physicsTimeScale");
@@ -36,8 +37,12 @@ export function simulatePhysics() {
     }
 
     if (object.draggedBy) {
-      returnDraggedObjectUpright(object);
-      syncPhysicsBodyFromObject(object, { x: 0, y: 0, z: 0 });
+      if (usesMagneticDrag(object)) {
+        applyMagneticDragForce(object);
+      } else {
+        returnDraggedObjectUpright(object);
+        syncPhysicsBodyFromObject(object, { x: 0, y: 0, z: 0 });
+      }
       continue;
     }
 
@@ -51,11 +56,14 @@ export function simulatePhysics() {
     }
   }
 
+  tickMissileUnstuck();
   scene.getPhysicsEngine()?._step(scaledDt);
 
   for (const object of gameObjects.values()) {
     if (!object.dynamic) continue;
-    if (object.draggedBy || object.loadedInto) continue;
+    if (object.loadedInto) continue;
+    if (object.draggedBy && !usesMagneticDrag(object)) continue;
+    if (unstuckMissiles.has(object.id)) continue;
 
     const aggregate = physicsAggregates.get(object.id);
     if (!aggregate) continue;

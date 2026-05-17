@@ -18,9 +18,10 @@ export const SERVER_CONFIG = {
   dynamicMass: 6,
   dynamicFriction: 0.9,
   dynamicRestitution: 0.15,
-  blockMass: 20,
+  blockMass: 10,
   blockFriction: 0.9,
   blockRestitution: 0.15,
+  missileMass: 6,
   staticFriction: 1.0,
 
   // Trebuchet mechanics
@@ -39,6 +40,19 @@ export const SERVER_CONFIG = {
   normalReleaseVelocityMax: 8,
   releaseVelocityMax: 80,
   dragUprightLerp: 0.25,
+
+  // Magnetic drag
+  dragForceMax: 1000,
+  dragRadiusLimit: 30,
+  dragDampingMax: 400,
+
+  // Drag speed validation
+  maxDragSpeed: 5000,
+
+  // Missile release depenetration
+  depenetrationStep: 0.25,
+  depenetrationMaxDistance: 60,
+  missileReleaseFloorPadding: 0.05,
 
   // Fragments
   fragmentLifetimeMs: 5000,
@@ -65,7 +79,6 @@ export function getConfig(key) {
 
 const CLIENT_RELEVANT_KEYS = [
   "trebuchetArmRestRotationZDegrees",
-  "normalReleaseVelocityMax",
   "aimMaxPullDistance",
   "fragmentShrinkMs",
 ];

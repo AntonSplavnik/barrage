@@ -281,7 +281,7 @@ export async function initTemplateRegistry() {
     });
 
     console.log(
-      `Template "${templatePath}": half=(${bounds.halfX.toFixed(2)}, ${bounds.halfY.toFixed(2)}, ${bounds.halfZ.toFixed(2)})`
+      `Template "${templatePath}": half=(${bounds.halfX.toFixed(2)}, ${bounds.halfY.toFixed(2)}, ${bounds.halfZ.toFixed(2)}) offset=(${bounds.offsetX.toFixed(2)}, ${bounds.offsetY.toFixed(2)}, ${bounds.offsetZ.toFixed(2)})`
       + (convexPositions ? ` vertices=${convexPositions.length / 3}` : "")
       + (hitStages.length > 0 ? ` hitStages=${hitStages.length}` : "")
       + (fragments.length > 0 ? ` fragments=${fragments.length}` : ""),

@@ -1,7 +1,7 @@
 import { scene, canvas, resetEl, restartServerEl, connectionEl, CONFIG } from "./engine.js";
-import { isDraggableRoot, clampMagnitude } from "./utils.js";
+import { isDraggableRoot } from "./utils.js";
 import { visualObjects, latestObjectStates, findGameplayRoot } from "./state.js";
-import { sendInput, getServerConfig } from "./network.js";
+import { sendInput } from "./network.js";
 import { setAimRefs, updateAimArrow, hideAimArrow } from "./aim.js";
 
 const { Vector3 } = BABYLON;
@@ -9,10 +9,6 @@ const { Vector3 } = BABYLON;
 let selectedEntityId = null;
 let pointerMode = "drag";
 let dragDepth = 0;
-let latestDragPoint = null;
-let releaseSamples = [];
-let releaseSampleTimer = null;
-let releaseVelocity = { x: 0, y: 0, z: 0 };
 let aimWorldPoint = null;
 
 setAimRefs(
@@ -39,62 +35,6 @@ function protocolPointFromWorld(world, entityId = "") {
     y: (CONFIG.inputInvertY ? -1 : 1) * world.y,
     z: (CONFIG.inputInvertZ ? -1 : 1) * world.z,
   };
-}
-
-function sampleReleasePoint() {
-  if (!latestDragPoint) return;
-
-  releaseSamples.push({
-    time: performance.now(),
-    point: latestDragPoint,
-  });
-
-  const maxSamples = Math.max(2, (CONFIG.releaseVelocityFrameWindow ?? 5) + 1);
-  while (releaseSamples.length > maxSamples) {
-    releaseSamples.shift();
-  }
-}
-
-function startReleaseVelocitySampling(point) {
-  latestDragPoint = point;
-  releaseSamples = [];
-  sampleReleasePoint();
-
-  const sampleHz = CONFIG.releaseVelocitySampleHz ?? 60;
-  releaseSampleTimer = window.setInterval(sampleReleasePoint, 1000 / sampleHz);
-}
-
-function stopReleaseVelocitySampling() {
-  if (releaseSampleTimer) {
-    window.clearInterval(releaseSampleTimer);
-  }
-
-  releaseSampleTimer = null;
-}
-
-function updateReleasePoint(point) {
-  latestDragPoint = point;
-}
-
-function averageReleaseVelocity() {
-  sampleReleasePoint();
-
-  if (releaseSamples.length < 2) {
-    return { x: 0, y: 0, z: 0 };
-  }
-
-  const frameWindow = CONFIG.releaseVelocityFrameWindow ?? 5;
-  const samples = releaseSamples.slice(-Math.max(2, frameWindow + 1));
-  const first = samples[0];
-  const last = samples.at(-1);
-  const dt = Math.max(0.001, (last.time - first.time) / 1000);
-  const scale = CONFIG.releaseVelocityScale ?? 1.0;
-
-  return clampMagnitude({
-    x: ((last.point.x - first.point.x) / dt) * scale,
-    y: ((last.point.y - first.point.y) / dt) * scale,
-    z: ((last.point.z - first.point.z) / dt) * scale,
-  }, getServerConfig("normalReleaseVelocityMax") ?? 8);
 }
 
 function pickDraggableRoot() {
@@ -145,8 +85,6 @@ function beginDrag() {
     return;
   }
 
-  startReleaseVelocitySampling(point);
-  releaseVelocity = { x: 0, y: 0, z: 0 };
   sendInput("dragStart", {
     entityId: selectedEntityId,
     point,
@@ -175,8 +113,6 @@ function moveDrag() {
     Math.max(world.y + (CONFIG.dragHeightOffset ?? 0.2), 0.2),
     world.z,
   ), selectedEntityId);
-  updateReleasePoint(point);
-
   sendInput("dragMove", {
     entityId: selectedEntityId,
     point,
@@ -212,22 +148,14 @@ function endDrag() {
     Math.max(point.y + (CONFIG.dragHeightOffset ?? 0.2), 0.2),
     point.z,
   ), selectedEntityId);
-  updateReleasePoint(finalPoint);
-  releaseVelocity = averageReleaseVelocity();
-  stopReleaseVelocitySampling();
 
   sendInput("dragEnd", {
     entityId: selectedEntityId,
     point: finalPoint,
-    velocity: releaseVelocity,
-    rot: 0,
   });
 
   selectedEntityId = null;
   pointerMode = "drag";
-  latestDragPoint = null;
-  releaseSamples = [];
-  releaseVelocity = { x: 0, y: 0, z: 0 };
   aimWorldPoint = null;
   hideAimArrow();
 
@@ -278,7 +206,4 @@ export function setupInput() {
     }
   });
 
-  window.addEventListener("blur", () => {
-    stopReleaseVelocitySampling();
-  });
 }
