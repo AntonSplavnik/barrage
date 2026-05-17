@@ -4,9 +4,16 @@ import { childRole, descendantsOf, isTrebuchetArmRoot, isMissileName, colliderNo
 import { visualObjects, visualBaseRotations, trebuchetArmNodes, trebuchetLoadTargets, latestObjectStates, findGameplayRoot } from "./state.js";
 import { createAimArrowMeshes } from "./aim.js";
 import { getTemplateRoot } from "./templateRegistry.js";
+import { createShotArcRenderer } from "./shotArcRenderer.js";
 
 const crackStageVisuals = new Map();
 const fragmentVisuals = new Map();
+
+let shotArcRenderer = null;
+
+export function getShotArcRenderer() {
+  return shotArcRenderer;
+}
 
 const {
   ArcRotateCamera,
@@ -448,6 +455,10 @@ function clearLevel() {
   trebuchetArmNodes.clear();
   trebuchetLoadTargets.clear();
   latestObjectStates.clear();
+  if (shotArcRenderer) {
+    shotArcRenderer.dispose();
+    shotArcRenderer = null;
+  }
 
   for (const generator of scene.shadowGenerators?.slice() ?? []) {
     generator.dispose();
@@ -472,6 +483,7 @@ export async function loadLevel(url) {
   ensureCameraAndLight();
   setupShadows();
   createAimArrowMeshes();
+  shotArcRenderer = createShotArcRenderer(scene, CONFIG);
   engine.resize();
 }
 
