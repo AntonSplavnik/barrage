@@ -1,10 +1,18 @@
-import { connectionEl, playerEl, scoreLeftEl, scoreRightEl, matchEndEl, matchEndTextEl, rematchEl, engine, scene } from "./engine.js";
+import { connectionEl, playerEl, scoreLeftEl, scoreRightEl, matchEndEl, matchEndTextEl, rematchEl, sfxToggleEl, engine, scene } from "./engine.js";
+import { createSoundSystem } from "./sound.js";
 import { applyState, latestObjectStates } from "./state.js";
 import { loadLevel, reloadLevel, ensureVisualsForState, hideBlockVisual, shrinkAndDisposeFragment, clearDestructionVisuals, updateCrackStage } from "./level.js";
 
 let seq = 0;
 let displayedScores = { P1: 0, P2: 0 };
 let ready = false;
+
+const soundSystem = createSoundSystem();
+
+sfxToggleEl.addEventListener("click", () => {
+  soundSystem.toggle();
+  sfxToggleEl.classList.toggle("active", soundSystem.isEnabled());
+});
 
 let serverConfig = {};
 
@@ -151,6 +159,9 @@ socket.addEventListener("message", async (event) => {
       }
       if (evt.kind === "reset") {
         clearDestructionVisuals();
+      }
+      if (evt.kind === "sfx" || evt.kind === "sfxStart" || evt.kind === "sfxStop") {
+        soundSystem.handleSfxEvent(evt);
       }
     }
   }
