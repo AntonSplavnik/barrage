@@ -5,7 +5,7 @@ export const BARRAGE_CONFIG = {
   // Music.
   musicTuneUrl: "/strudel.js",
   musicSamplesUrl: "https://raw.githubusercontent.com/felixroos/dough-samples/main/tidal-drum-machines.json",
-  musicVolume: 1.0,
+  musicVolume: 0.5,
   musicKickVoiceFlightVelocityMin: 10,    // m/s
 
   // Sound.

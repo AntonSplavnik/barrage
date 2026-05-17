@@ -4,26 +4,26 @@ stack(
     .dec(.4)
     .delay(0.5)
     .degradeBy(0.5)
-    .gain(0.5 * musicVolume)
+    .gain(0.2 * musicVolume)
     ._pianoroll(),
 
-  stack(
-    s("[bd]*8")
-      .bank("RolandTR909")
-      .gain((kickVoiceGain / 2) * musicVolume)
-      ._pianoroll(),
+  // stack(
+  //   s("[bd]*8")
+  //     .bank("RolandTR909")
+  //     .gain((kickVoiceGain / 2) * musicVolume)
+  //     ._pianoroll(),
 
-    s("[bd]*2")
-      .bank("RolandTR909")
-      .gain(kickVoiceGain * musicVolume)
-      ._pianoroll()
-  ),
+  //   s("[bd]*2")
+  //     .bank("RolandTR909")
+  //     .gain(kickVoiceGain * musicVolume)
+  //     ._pianoroll()
+  // ),
 
   s("[hh]*16")
     .bank("RolandTR909")
-    .degradeBy(0.5 - 0.5 * kickVoiceGain)
+    .degradeBy(0.5) // - 0.5 * kickVoiceGain)
     .delay(0.25)
-    .gain(0.5 * musicVolume)
+    .gain(0.15 * musicVolume)
     ._pianoroll(),
 
   note("a1 ~ ~ ~  c2 ~ ~ ~  g1 ~ ~ ~  e1 ~ ~ ~")
