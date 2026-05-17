@@ -68,16 +68,6 @@ export function impactSpeedFor(object, other = null) {
   );
 }
 
-export function impactVolumeFor(config, effect, impactSpeed) {
-  const minSpeed = config.impactSoundVelocityMin ?? 1.5;
-  const maxSpeed = Math.max(minSpeed, config.impactSoundVelocityMax ?? 24);
-  const minScale = config.impactSoundVolumeMinScale ?? 0.2;
-  const maxScale = config.impactSoundVolumeMaxScale ?? 1.0;
-  const baseVolume = config.soundEffects?.[effect]?.volume ?? 1;
-  const t = maxSpeed === minSpeed ? 1 : clamp((impactSpeed - minSpeed) / (maxSpeed - minSpeed), 0, 1);
-
-  return baseVolume * lerp(minScale, maxScale, t);
-}
 
 export function impactSoundKey(effect, ...ids) {
   return [effect, ...ids.filter(Boolean).sort()].join(":");
@@ -136,11 +126,7 @@ export function createSoundEventDispatcher({
   }
 
   function broadcastImpactSoundEffect(effect, position, impactSpeed, overrides = {}) {
-    broadcastSoundEffect(effect, position, {
-      volume: impactVolumeFor(config, effect, impactSpeed),
-      impactSpeed,
-      ...overrides,
-    });
+    broadcastSoundEffect(effect, position, { impactSpeed, ...overrides });
   }
 
   function maybeBroadcastObjectImpactSound(effect, object, other, impactSpeed, hitPosition = null) {

@@ -1,45 +1,7 @@
 
-
-
-
-
-i want to make loading and firing trebuche possible with one drag movement.  at the moment when i drag a missile to treb i need to release it then it snaps to the missile load target, then you start another drag to pull back and release, but i want to make it  possible in one drag. so when we are in range the missile snaps to target and then the drag continues and drags out the arrown vector from the load target 
-
-
-
-
- 
-
-
-i want to add sound effects.  this may be complicated by our strudel music.  is it possible to use babylons sound manager for sound effects and play the strudel simultaneously?  do they need to mmanged by one sound handler, will there be conflicts?
-
-
-sound_manager can be sued as a thin conroller as you suggest.
-sound effects code can be put into a helper file for client called sound_effects.js
-
-i want the sound play function to have input params for volume, pan and pitch that i can edit to tune it,  maybe we have some stuff in onfig for that.
-
-and of course server has to send the events that will trigger the sounds.
-
-the events are, on a trebuche release play whoosh.mp3
-missile hits block play metallic-thud.mp3
-missle hits block causing fragmentation play crushing-hit.mp3
-missile hits frgament play crunch.mp3
-
-you can also wwire up king-hit.mp3 for king hits and i will add a file for it soon.  the files are in public/sounds
-
-
-when we destrpy blocks and fragments, and when we load a new level,,  are we clearing all necessary leftovers from memory
-
-in the client i want to add a trajectory visualiser, similar to angrybirds.  when you pull back on the trebuche it should draw 2/3rds (a tunable fraction in config) of of a dotted parabola describing the projected arc of the shot with a dotted black line, based on the vector that would be created if i released at any given point. As i pull back harder the parabola adjusts to the stronger shot etc.  This function is a helper that could live in its own js file called trebuche-shot-arc-prediction.js
-
-i want to limit the render resolution on the canvas, i see visiblue slowdown on my 4k monitor when running powered by laptop.  I still want fullscreenbut scaled lower res, is that possible?
-
-
-depenetrator is not iterating long enough for many colliders horizontally
-
-
-please take a look at this game.  I have introduced a new type of missile its called missle-bomb, it currentlt behaves exactly as a missile should but it want to change what it does visually when it hits something.  When it hits with greater than a given velocity (put in cofig)  i want it to create a particle effect. in vfx-manager we have one particle effect, i want another in there as it will be applied on client only.   you can call it spawnMissileExplode.  i want to have an explosive effect so with an effect radius.. i am not familiar with babylon effects, is there an appropriate one? do we need to make custom sprites, or is there a standard effect for this?
-
-
 plyers touches other treb
+
+i want to change the explosion vfx, i want to add black smoke, and sparks that shoot out
+
+
+anton spotted an issue.  apparently the sound volume is being handled by the server and sent every tick.  this is not needed at all, sound can be handled on frontend only by client. server responsibilities need to be minimised for performance

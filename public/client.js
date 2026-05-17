@@ -312,14 +312,28 @@ function worldXToPan(x) {
   return t * 2 - 1;
 }
 
+function impactVolumeFor(effect, impactSpeed) {
+  const minSpeed = CONFIG.impactSoundVelocityMin ?? 1.5;
+  const maxSpeed = Math.max(minSpeed, CONFIG.impactSoundVelocityMax ?? 24);
+  const minScale = CONFIG.impactSoundVolumeMinScale ?? 0.2;
+  const maxScale = CONFIG.impactSoundVolumeMaxScale ?? 1.0;
+  const baseVolume = CONFIG.soundEffects?.[effect]?.volume ?? 1;
+  const t = maxSpeed === minSpeed ? 1 : Math.max(0, Math.min(1, (impactSpeed - minSpeed) / (maxSpeed - minSpeed)));
+  return baseVolume * (minScale + (maxScale - minScale) * t);
+}
+
 function playSoundEffectEvent(ev) {
   if (ev.kind === "soundEffectStop") {
     soundEffectsController.stopEffect(ev.effect, ev.instanceId);
     return;
   }
 
+  const volume = ev.impactSpeed != null
+    ? impactVolumeFor(ev.effect, ev.impactSpeed)
+    : ev.volume;
+
   const options = {
-    volume: ev.volume,
+    volume,
     pitch: ev.pitch,
     pan: worldXToPan(ev.x),
     loop: ev.loop,
