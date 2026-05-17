@@ -96,7 +96,7 @@ export const BARRAGE_CONFIG = {
   staticFriction: 1.0,                    // 0–1
 
   // UI.
-  hideHud: true,                           // hide player name + buttons panel
+  hideHud: true,                          // hides player name and buttons panel
 
   // Input.
   inputInvertX: true,
