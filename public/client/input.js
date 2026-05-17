@@ -3,6 +3,7 @@ import { isDraggableRoot } from "./utils.js";
 import { visualObjects, latestObjectStates, findGameplayRoot } from "./state.js";
 import { sendInput } from "./network.js";
 import { setAimRefs, updateAimArrow, hideAimArrow } from "./aim.js";
+import { getShotArcRenderer } from "./level.js";
 
 const { Vector3 } = BABYLON;
 
@@ -140,6 +141,7 @@ function endDrag() {
     pointerMode = "drag";
     aimWorldPoint = null;
     hideAimArrow();
+    getShotArcRenderer()?.fadeOut();
     return;
   }
 

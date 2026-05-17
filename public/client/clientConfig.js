@@ -35,7 +35,7 @@ export const CLIENT_CONFIG = {
 
   // Shot arc visuals
   shotArcDotCount: 32,
-  shotArcDotSize: 0.14,
+  shotArcDotSize: 0.18,
   shotArcFadeMs: 1500,
   shotArcZOffset: 0.08,
   shotArcDimColor: "#262626",
