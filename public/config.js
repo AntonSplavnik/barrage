@@ -106,10 +106,10 @@ export const BARRAGE_CONFIG = {
   cameraControlsEnabled: false,
 
   // Trebuchet Movement.
-  trebuchetLeftMinX: -30,                 // m
+  trebuchetLeftMinX: -40,                 // m
   trebuchetLeftMaxX: -5,                  // m
   trebuchetRightMinX: 5,                  // m
-  trebuchetRightMaxX: 30,                 // m
+  trebuchetRightMaxX: 40,                 // m
 
   // Drag And Release.
   dragHeightOffset: 0.2,                  // m

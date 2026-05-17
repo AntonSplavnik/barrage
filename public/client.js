@@ -1578,6 +1578,10 @@ function beginDrag() {
     return;
   }
 
+  const _n = selectedEntityId.toLowerCase();
+  if (_n.includes("missile") && _n.includes("bomb")) {
+    console.log("[bomb drag] sending dragStart", selectedEntityId, "client x=", objectState?.x?.toFixed(2), "loadedInto=", objectState?.loadedInto);
+  }
   startReleaseVelocitySampling(point);
   releaseVelocity = { x: 0, y: 0, z: 0 };
   if (!isMissileName(selectedEntityId)) {
