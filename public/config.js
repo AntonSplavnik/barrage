@@ -143,7 +143,7 @@ export const BARRAGE_CONFIG = {
   fragmentImmunityMs: 500,                // ms - newly spawned fragments are immune to hits
   postWinSimulationMs: 5000,              // ms
   roundEndDelayMs: 5000,                  // ms
-  roundsToWin: 2,                         // first player to this many round wins takes the match
+  roundsToWin: 10,                         // first player to this many round wins takes the match
   matchEndDelayMs: 4000,                   // ms — how long after match-winning round before both players are disconnected
   idleTimeoutMs: 10 * 60 * 1000,          // ms — disconnect waiting/spectating client after this long with no input
   inGameIdleTimeoutMs: 5 * 60 * 1000,     // ms — disconnect in-game client after this long with no input
