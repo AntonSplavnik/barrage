@@ -62,6 +62,18 @@ function handleMissileBlockHit(missile, block) {
 
   if (speed < getConfig("missileDamageMinSpeed")) return;
 
+  broadcast({
+    type: "event",
+    tick: gameState.tick,
+    events: [{
+      kind: "missileHit",
+      x: block.x + (missile.x < block.x ? -block.halfX : block.halfX),
+      y: missile.y,
+      z: block.z,
+      speed,
+    }],
+  });
+
   if (!block.maxHits) {
     broadcastSfx("missile_hit_block", { speed, x });
     return;
