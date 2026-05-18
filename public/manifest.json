@@ -1,0 +1,17 @@
+{
+  "name": "Barrage",
+  "short_name": "Barrage",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#0a0e10",
+  "theme_color": "#0a0e10",
+  "start_url": "/",
+  "icons": [
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

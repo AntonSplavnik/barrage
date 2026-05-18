@@ -1,5 +1,26 @@
 #babylonUnmuteIcon { display: none !important; }
 
+#rotate-prompt {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: #0a0e10;
+  color: #f6f2e8;
+  font-size: 1.2rem;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+@media (orientation: portrait) {
+  #rotate-prompt { display: flex; }
+}
+
+@media (orientation: landscape) {
+  #rotate-prompt { display: none; }
+}
+
 html,
 body {
   width: 100%;

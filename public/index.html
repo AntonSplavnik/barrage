@@ -3,7 +3,11 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Barrage" />
     <title>Barrage</title>
+    <link rel="manifest" href="/manifest.json" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
@@ -30,6 +34,9 @@
     <img id="player-portrait-right" src="/backgrounds/player2.webp" alt="" />
     <div id="crowns-left"></div>
     <div id="crowns-right"></div>
+    <div id="rotate-prompt">
+      <p>Please rotate your device to landscape</p>
+    </div>
     <div id="lobby" class="is-visible">
       <div class="lobby-content">
         <img id="lobby-title" src="/backgrounds/title.webp" alt="Barrage" />

@@ -1,5 +1,22 @@
 import { createMusicController } from "./music.js";
 
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/sw.js").catch(() => {});
+}
+
+let _fullscreenDone = false;
+function requestFullscreenAndLock() {
+  if (_fullscreenDone) return;
+  _fullscreenDone = true;
+  const el = document.documentElement;
+  const p = el.requestFullscreen?.() ?? el.webkitRequestFullscreen?.();
+  Promise.resolve(p).then(() => {
+    screen.orientation?.lock("landscape").catch(() => {});
+  }).catch(() => {});
+}
+document.addEventListener("click", requestFullscreenAndLock, { once: true });
+document.addEventListener("touchstart", requestFullscreenAndLock, { once: true });
+
 const isMobile = window.matchMedia?.("(pointer: coarse)").matches ?? false;
 import { createSoundEffectsController } from "./sound_manager.js";
 import { createCameraController } from "./camera_control.js";
@@ -1730,6 +1747,12 @@ scene.onBeforeRenderObservable.add(interpolator.applyInterpolatedPositions);
 window.addEventListener("resize", () => {
   applyRenderResolutionLimit(engine, CONFIG);
   engine.resize();
+});
+
+screen.orientation?.addEventListener("change", () => {
+  applyRenderResolutionLimit(engine, CONFIG);
+  engine.resize();
+  repositionCrowns();
 });
 
 window.addEventListener("blur", () => {
