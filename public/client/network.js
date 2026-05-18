@@ -9,6 +9,8 @@ let ready = false;
 
 const soundSystem = createSoundSystem();
 
+let vfxManager = null;
+
 sfxToggleEl.addEventListener("click", () => {
   soundSystem.toggle();
   sfxToggleEl.classList.toggle("active", soundSystem.isEnabled());
@@ -115,6 +117,8 @@ socket.addEventListener("message", async (event) => {
     const { initTemplateRegistry } = await import("./templateRegistry.js");
     await initTemplateRegistry(message.templates ?? []);
     await loadLevel(message.level);
+    const { createVfxManager } = await import("./vfx/vfxManager.js");
+    vfxManager = createVfxManager(scene);
     engine.runRenderLoop(() => { scene.render(); });
     ready = true;
     return;
@@ -129,6 +133,7 @@ socket.addEventListener("message", async (event) => {
   if (message.type === "roundStarted") {
     if (message.config) serverConfig = message.config;
     clearDestructionVisuals();
+    vfxManager?.clearEffects();
     if (message.level) reloadLevel(message.level);
   }
 
@@ -143,6 +148,7 @@ socket.addEventListener("message", async (event) => {
   if (message.type === "matchReset") {
     if (message.config) serverConfig = message.config;
     matchEndEl.classList.add("hidden");
+    vfxManager?.clearEffects();
     scoreLeftEl.innerHTML = "";
     scoreRightEl.innerHTML = "";
     displayedScores = { P1: 0, P2: 0 };
@@ -159,9 +165,13 @@ socket.addEventListener("message", async (event) => {
       }
       if (evt.kind === "reset") {
         clearDestructionVisuals();
+        vfxManager?.clearEffects();
       }
       if (evt.kind === "sfx" || evt.kind === "sfxStart" || evt.kind === "sfxStop") {
         soundSystem.handleSfxEvent(evt);
+      }
+      if (evt.kind === "explosion" || evt.kind === "missileHit") {
+        vfxManager?.handleEvent(evt);
       }
     }
   }
