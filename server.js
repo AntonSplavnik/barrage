@@ -1183,7 +1183,35 @@ wss.on("connection", (socket) => {
   const client = { id: clientId, playerId: null, room: null, socket, lastInputAt: Date.now() };
   clients.set(clientId, client);
 
+  let assignmentDone = false;
+
+  function onClientClose() {
+    clients.delete(clientId);
+    if (!assignmentDone) return; // assignment will clean up when it resolves and sees socket closed
+    const removal = roomManager.removeClient(client);
+    if (removal?.room) {
+      const delay = removal.room.roundWinner ? (BARRAGE_CONFIG.roundEndDelayMs ?? 5000) : 0;
+      setTimeout(() => {
+        handlePlayerVacancy(removal).catch((error) => {
+          console.error("Failed to handle player vacancy.", error);
+        });
+      }, delay);
+    } else if (removal?.spectatorRenames) {
+      notifySpectatorRenames(removal.spectatorRenames);
+    }
+  }
+
+  socket.on("close", onClientClose);
+
   roomManager.assignClient(client).then(({ room, becameMatched, spectator }) => {
+    assignmentDone = true;
+
+    if (socket.readyState !== socket.OPEN) {
+      // Socket closed while waiting in the assignment queue — clean up the room/spectator slot
+      onClientClose();
+      return;
+    }
+
     sendWelcome(client);
     if (spectator) {
       sendLobby(client);
@@ -1202,21 +1230,6 @@ wss.on("connection", (socket) => {
         saveActiveRoomTick();
       } catch (error) {
         sendToClient(client, { type: "error", message: "Invalid message JSON" });
-      }
-    });
-
-    socket.on("close", () => {
-      clients.delete(clientId);
-      const removal = roomManager.removeClient(client);
-      if (removal?.room) {
-        const delay = removal.room.roundWinner ? (BARRAGE_CONFIG.roundEndDelayMs ?? 5000) : 0;
-        setTimeout(() => {
-          handlePlayerVacancy(removal).catch((error) => {
-            console.error("Failed to handle player vacancy.", error);
-          });
-        }, delay);
-      } else if (removal?.spectatorRenames) {
-        notifySpectatorRenames(removal.spectatorRenames);
       }
     });
   }).catch((error) => {
@@ -1240,13 +1253,16 @@ async function startServer() {
     }
   }, TICK_MS);
 
-  const idleTimeoutMs = BARRAGE_CONFIG.idleTimeoutMs ?? 2 * 60 * 1000;
+  const idleTimeoutMs = BARRAGE_CONFIG.idleTimeoutMs ?? 10 * 60 * 1000;
+  const inGameIdleTimeoutMs = BARRAGE_CONFIG.inGameIdleTimeoutMs ?? 5 * 60 * 1000;
   setInterval(() => {
     const now = Date.now();
     for (const client of clients.values()) {
-      if (now - client.lastInputAt > idleTimeoutMs) {
-        console.log(`Disconnecting idle client ${client.id} (no input for ${idleTimeoutMs / 1000}s)`);
-        if (client.room && roomManager.isMatched(client.room) && !client.room.roundWinner) {
+      const inGame = client.room && roomManager.isMatched(client.room);
+      const timeout = inGame ? inGameIdleTimeoutMs : idleTimeoutMs;
+      if (now - client.lastInputAt > timeout) {
+        console.log(`Disconnecting idle client ${client.id} (no input for ${timeout / 1000}s, ${inGame ? "in-game" : "lobby"})`);
+        if (inGame && !client.room.roundWinner) {
           bindRoom(client.room);
           recordRoundWin(client.id);
         }
