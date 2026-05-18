@@ -1348,7 +1348,7 @@ socket.addEventListener("close", () => {
   if (idleDisconnected) {
     setLobbyStatus("Disconnected due to inactivity. Refresh to reconnect.");
   } else {
-    setLobbyStatus("Disconnected");
+    setLobbyStatus("You have been disconnected for inactivity. To requeue for a game refresh your browser.");
   }
 });
 
