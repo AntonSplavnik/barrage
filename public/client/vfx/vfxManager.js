@@ -1,6 +1,7 @@
 import { createSharedTextures } from "./textures.js";
 import { createExplosionEffect } from "./effects/explosion.js";
 import { createMissileHitEffect } from "./effects/missileHit.js";
+import { createMissileTrailEffect } from "./effects/missileTrail.js";
 import { VFX_CONFIG } from "./vfxConfig.js";
 
 const { Vector3 } = BABYLON;
@@ -12,6 +13,7 @@ export function createVfxManager(scene) {
   const explosionEffect = createExplosionEffect(scene, sharedTextures, VFX_CONFIG, {
     missileHit: missileHitEffect,
   });
+  const trailEffect = createMissileTrailEffect(scene, sharedTextures, VFX_CONFIG);
 
   const effectMap = {
     "explosion": explosionEffect,
@@ -30,10 +32,15 @@ export function createVfxManager(scene) {
     }
   }
 
+  function syncTrails(missileIds, visualObjects) {
+    trailEffect.syncTrails(missileIds, visualObjects);
+  }
+
   function clearEffects() {
     for (const effect of Object.values(effectMap)) {
       effect.clear();
     }
+    trailEffect.clear();
   }
 
   function dispose() {
@@ -41,8 +48,9 @@ export function createVfxManager(scene) {
     for (const effect of Object.values(effectMap)) {
       effect.dispose();
     }
+    trailEffect.dispose();
     sharedTextures.dispose();
   }
 
-  return { handleEvent, clearEffects, dispose };
+  return { handleEvent, syncTrails, clearEffects, dispose };
 }
