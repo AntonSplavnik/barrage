@@ -5,11 +5,11 @@ export const VFX_CONFIG = {
 
   missileHit: {
     count: 5,
-    durationMs: 1200,
-    speed: 15,
+    durationMs: 900,
+    speed: 25,
     gravity: -7.5,
-    size: 0.5,
-    minScale: 0.1,
+    size: 1.5,
+    minScale: 0.4,
   },
 
   explosion: {
