@@ -17,7 +17,7 @@ import { SERVER_CONFIG } from "./config/server.js";
 import { BARRAGE_CONFIG } from "./public/config.js";
 import { firstLevel, nextLevel } from "./server/levelCatalog.js";
 import { RoomManager } from "./server/roomManager.js";
-import { playerSide, canGrab, isInPlayerZone, zoneLimitX, checkKingKnockout } from "./server/gameManager.js";
+import { playerSide, canGrab, isInPlayerZone, zoneLimitX, checkKingKnockout, isMatchWin } from "./server/gameManager.js";
 import { createFragmentSystem } from "./server/fragments.js";
 import { createInputHandler } from "./server/input.js";
 import { createNetworkMessenger } from "./server/network-messages.js";
@@ -485,6 +485,8 @@ function recordRoundWin(loserPlayerId) {
   activeRoom.scores[winner] = (activeRoom.scores[winner] ?? 0) + 1;
 
   const room = activeRoom;
+  const matchWin = isMatchWin(activeRoom.scores, winner);
+
   setTimeout(() => { room.paused = true; }, BARRAGE_CONFIG.postWinSimulationMs ?? 1000);
 
   broadcast({
@@ -495,13 +497,24 @@ function recordRoundWin(loserPlayerId) {
     loser: loserPlayerId,
     roundNumber: activeRoom.roundNumber,
     scores: activeRoom.scores,
+    ...(matchWin && { matchWon: true }),
   });
 
-  setTimeout(() => {
-    advanceRoomAfterRound(room).catch((error) => {
-      console.error(`Failed to advance ${room.id} after round.`, error);
-    });
-  }, BARRAGE_CONFIG.roundEndDelayMs ?? 5000);
+  if (matchWin) {
+    const matchEndDelayMs = BARRAGE_CONFIG.matchEndDelayMs ?? 14000;
+    setTimeout(() => {
+      for (const client of room.clients.values()) {
+        try { client.socket.send(JSON.stringify({ type: "matchOver" })); } catch { /* ignore */ }
+        closeSocket(client.socket);
+      }
+    }, matchEndDelayMs);
+  } else {
+    setTimeout(() => {
+      advanceRoomAfterRound(room).catch((error) => {
+        console.error(`Failed to advance ${room.id} after round.`, error);
+      });
+    }, BARRAGE_CONFIG.roundEndDelayMs ?? 5000);
+  }
 }
 
 async function reloadRoom() {

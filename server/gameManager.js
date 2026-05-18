@@ -30,6 +30,11 @@ export function zoneLimitX(side) {
   return side === "left" ? NO_MANS_LAND_X : -NO_MANS_LAND_X;
 }
 
+// Returns true if the given player has reached the rounds-to-win threshold.
+export function isMatchWin(scores, playerId) {
+  return (scores[playerId] ?? 0) >= (BARRAGE_CONFIG.roundsToWin ?? 10);
+}
+
 // Returns the first king whose tilt angle exceeds the knockout threshold, or null.
 export function checkKingKnockout(gameObjects) {
   const threshold = BARRAGE_CONFIG.kingKnockoutAngle ?? 75;

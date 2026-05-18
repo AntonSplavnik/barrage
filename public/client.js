@@ -223,7 +223,21 @@ function newCrownSlotRect(targetEl, scores, isLeft) {
   return rect ?? targetEl.getBoundingClientRect();
 }
 
-function animateWinCrown(winnerPlayerId, scores) {
+function showMatchWinnerScreen(winnerPlayerId) {
+  const num = parseInt(winnerPlayerId.split("_")[1], 10);
+  const isLeft = Number.isFinite(num) && num % 2 === 1;
+  const portraitSrc = isLeft ? "/backgrounds/player1.webp" : "/backgrounds/player2.webp";
+
+  const overlay = document.getElementById("match-winner-overlay");
+  const portraitImg = document.getElementById("match-winner-portrait");
+  const messageEl = document.getElementById("match-winner-message");
+
+  portraitImg.src = portraitSrc;
+  overlay.classList.add("is-visible");
+  messageEl.classList.add("is-visible");
+}
+
+function animateWinCrown(winnerPlayerId, scores, { onComplete } = {}) {
   if (_flyingCrown) { _flyingCrown.remove(); _flyingCrown = null; }
 
   const num = parseInt(winnerPlayerId.split("_")[1], 10);
@@ -275,6 +289,7 @@ function animateWinCrown(winnerPlayerId, scores) {
       if (_flyingCrown === crown) _flyingCrown = null;
       updateCrowns(scores);
       crown.remove();
+      onComplete?.();
     };
   }, PAUSE_MS);
 }
@@ -1235,8 +1250,12 @@ socket.addEventListener("message", (event) => {
 
   if (message.type === "roundEnded") {
     isMatched = false;
-    animateWinCrown(message.winner, message.scores ?? {});
-    cameraControl.onRoundWin(message.winner);
+    const matchWon = message.matchWon;
+    const roundWinner = message.winner;
+    animateWinCrown(roundWinner, message.scores ?? {}, {
+      onComplete: matchWon ? () => showMatchWinnerScreen(roundWinner) : undefined,
+    });
+    cameraControl.onRoundWin(roundWinner);
   }
 
   if (message.type === "levelChanged") {
@@ -1334,10 +1353,12 @@ socket.addEventListener("message", (event) => {
 });
 
 let idleDisconnected = false;
+let matchOver = false;
 socket.addEventListener("message", (event) => {
   try {
     const msg = JSON.parse(event.data);
     if (msg.type === "idleDisconnect") idleDisconnected = true;
+    if (msg.type === "matchOver") matchOver = true;
   } catch { /* handled by main message listener */ }
 }, { capture: true });
 
@@ -1345,6 +1366,7 @@ socket.addEventListener("close", () => {
   setStatus("Disconnected");
   isMatched = false;
   hudOpponentEl.style.display = "none";
+  if (matchOver) return;
   if (idleDisconnected) {
     setLobbyStatus("Disconnected due to inactivity. Refresh to reconnect.");
   } else {
