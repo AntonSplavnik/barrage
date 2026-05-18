@@ -16,6 +16,18 @@ export function shatterBlock(block, missile) {
   const missileSpeed = Math.hypot(missile.vx ?? 0, missile.vy ?? 0, missile.vz ?? 0);
   broadcastSfx("missile_fragments_block", { speed: missileSpeed, x: block.x });
 
+  broadcast({
+    type: "event",
+    tick: gameState.tick,
+    events: [{
+      kind: "missileHit",
+      x: block.x,
+      y: block.y,
+      z: block.z,
+      speed: missileSpeed,
+    }],
+  });
+
   const template = getTemplate(block.fragmentTemplate);
   if (!template?.fragments || template.fragments.length === 0) {
     deleteBlock(block);
