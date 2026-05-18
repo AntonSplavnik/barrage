@@ -232,6 +232,9 @@ function showMatchWinnerScreen(winnerPlayerId) {
   const portraitImg = document.getElementById("match-winner-portrait");
   const messageEl = document.getElementById("match-winner-message");
 
+  const outcome = winnerPlayerId === myPlayerId ? "You have won." : "You have lost.";
+  messageEl.innerHTML = `Your battle is over.<br>${outcome}<br>To play again refresh your browser.`;
+
   portraitImg.src = portraitSrc;
   overlay.classList.add("is-visible");
   messageEl.classList.add("is-visible");
