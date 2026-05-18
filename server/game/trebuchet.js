@@ -13,6 +13,14 @@ import {
 import { clamp, lerp } from "../math.js";
 import { setPhysicsBodyTrigger, syncPhysicsBodyFromObject } from "./physics.js";
 import { getActiveLevel, getHookContext, callHook } from "./modeRunner.js";
+import { computeArcPoints } from "./trajectoryArc.js";
+
+function clearArcFields(trebuchet) {
+  trebuchet.shotVelocity = null;
+  trebuchet.shotStartPoint = null;
+  trebuchet.shotArcPoints = null;
+  trebuchet.powerRatio = null;
+}
 
 export function updateTrebuchetFireState(dt) {
   for (const trebuchet of gameObjects.values()) {
@@ -169,6 +177,47 @@ export function updateTrebuchetAim(trebuchet, point) {
   const restAngle = Math.abs(getConfig("trebuchetArmRestRotationZDegrees"));
 
   trebuchet.armAngle = restAngle + pullRatio * maxExtra;
+
+  if (isWrongDirection) {
+    clearArcFields(trebuchet);
+    return;
+  }
+
+  const powerScale = getConfig("aimPowerScale");
+  const shotDirectionX = trebuchet.player === 1 ? 1 : -1;
+  const shotVelocity = releaseVelocityForObject({ id: "missile" }, {
+    x: Math.abs(start.x - current.x) * powerScale * shotDirectionX,
+    y: (start.y - current.y) * powerScale,
+    z: (start.z - current.z) * powerScale,
+  }, trebuchetFireVelocityMax());
+
+  const prevAngle = trebuchet.armAngle;
+  trebuchet.armAngle = restArmAngleForTrebuchet();
+  const shotStartPoint = loadTargetForTrebuchet(trebuchet);
+  trebuchet.armAngle = prevAngle;
+  loadTargetForTrebuchet(trebuchet);
+
+  if (!shotStartPoint) {
+    clearArcFields(trebuchet);
+    return;
+  }
+
+  trebuchet.shotVelocity = shotVelocity;
+  trebuchet.shotStartPoint = shotStartPoint;
+  const physicsTimeScale = getConfig("physicsTimeScale");
+  trebuchet.shotArcPoints = computeArcPoints({
+    startPoint: shotStartPoint,
+    velocity: shotVelocity,
+    gravity: getConfig("gravity"),
+    damping: getConfig("missileLinearDamping"),
+    dotCount: getConfig("shotArcDotCount"),
+    arcFraction: getConfig("shotArcFraction"),
+    maxDuration: getConfig("shotArcMaxDuration") * physicsTimeScale,
+    groundY: getConfig("shotArcGroundY"),
+  });
+
+  const speed = Math.hypot(shotVelocity.x, shotVelocity.y, shotVelocity.z);
+  trebuchet.powerRatio = Math.min(1, speed / trebuchetFireVelocityMax());
 }
 
 export function beginTrebuchetRelease(trebuchet) {
@@ -191,6 +240,7 @@ export function beginTrebuchetRelease(trebuchet) {
     startArmAngle: trebuchet.armAngle ?? getConfig("trebuchetArmRestRotationZDegrees"),
   };
   trebuchet.releaseElapsedMs = 0;
+  clearArcFields(trebuchet);
 }
 
 function targetPointForTrebuchetAtArmAngle(trebuchet, armAngle) {
@@ -229,8 +279,23 @@ export function releaseLoadedMissileFromTrebuchet(trebuchet, velocity, armAngle 
   trebuchet.aimedBy = null;
   trebuchet.aimStart = null;
   trebuchet.aimCurrent = null;
+  clearArcFields(trebuchet);
 
   callHook(getActiveLevel()?.def?.hooks?.onMissileFired, getHookContext(), trebuchet, missile);
 
   return true;
+}
+
+export function releaseAimForClient(clientId) {
+  for (const trebuchet of gameObjects.values()) {
+    if (!isTrebuchetName(trebuchet.id)) continue;
+    if (trebuchet.aimedBy !== clientId) continue;
+
+    trebuchet.fireState = ARM_STATE_IDLE;
+    trebuchet.armAngle = restArmAngleForTrebuchet();
+    trebuchet.aimedBy = null;
+    trebuchet.aimStart = null;
+    trebuchet.aimCurrent = null;
+    clearArcFields(trebuchet);
+  }
 }

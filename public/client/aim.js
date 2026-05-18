@@ -2,6 +2,7 @@ import { scene, CONFIG } from "./engine.js";
 import { getServerConfig } from "./network.js";
 import { latestObjectStates, trebuchetLoadTargets, setOnAimUpdate } from "./state.js";
 import { degreesToRadians, isForwardPullPoint, clampAimTailPoint } from "./utils.js";
+import { getShotArcRenderer } from "./level.js";
 
 const { Color3, MeshBuilder, StandardMaterial, Vector3 } = BABYLON;
 
@@ -13,6 +14,7 @@ let aimArrowMaterial = null;
 let pointerModeRef = () => "drag";
 let selectedEntityIdRef = () => null;
 let aimWorldPointRef = () => null;
+let wasShowingArc = false;
 
 export function setAimRefs(getPointerMode, getSelectedEntityId, getAimWorldPoint) {
   pointerModeRef = getPointerMode;
@@ -77,6 +79,14 @@ export function hideAimArrow() {
   aimArrowHeadRight?.setEnabled(false);
 }
 
+function hideArc() {
+  const renderer = getShotArcRenderer();
+  if (renderer) {
+    renderer.hide();
+    wasShowingArc = false;
+  }
+}
+
 function updateAimArrowColor(extensionRatio) {
   if (!aimArrowMaterial) return;
 
@@ -126,6 +136,7 @@ export function updateAimArrow() {
 
   if (pointerMode !== "aim" || !selectedEntityId || !aimWorldPoint) {
     hideAimArrow();
+    hideArc();
     return;
   }
 
@@ -133,18 +144,21 @@ export function updateAimArrow() {
   const trebuchetId = missileState?.loadedInto;
   if (!trebuchetId) {
     hideAimArrow();
+    hideArc();
     return;
   }
 
   const headPoint = releasePointForTrebuchet(trebuchetId);
   if (!headPoint) {
     hideAimArrow();
+    hideArc();
     return;
   }
 
   const trebuchetState = latestObjectStates.get(trebuchetId);
   if (!trebuchetState || !isForwardPullPoint(trebuchetState, aimWorldPoint, headPoint)) {
     hideAimArrow();
+    hideArc();
     return;
   }
 
@@ -157,6 +171,7 @@ export function updateAimArrow() {
   const arrowLength = backVector.length();
   if (arrowLength < (CONFIG.aimArrowMinLength ?? 0.12)) {
     hideAimArrow();
+    hideArc();
     return;
   }
 
@@ -191,6 +206,20 @@ export function updateAimArrow() {
   aimArrowShaft.setEnabled(true);
   aimArrowHeadLeft.setEnabled(true);
   aimArrowHeadRight.setEnabled(true);
+
+  const renderer = getShotArcRenderer();
+  if (renderer) {
+    if (trebuchetState?.shotArcPoints) {
+      renderer.update(trebuchetState.shotArcPoints, trebuchetState.powerRatio ?? 0);
+      wasShowingArc = true;
+    } else if (wasShowingArc && (trebuchetState?.fireState === "releasing" || trebuchetState?.fireState === "returning")) {
+      renderer.fadeOut();
+      wasShowingArc = false;
+    } else {
+      renderer.hide();
+      wasShowingArc = false;
+    }
+  }
 }
 
 setOnAimUpdate(() => {

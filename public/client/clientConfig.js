@@ -32,4 +32,12 @@ export const CLIENT_CONFIG = {
   aimArrowHeadLengthScale: 0.18,
   aimArrowHeadWidth: 0.12,
   aimArrowHeadWidthScale: 0.45,
+
+  // Shot arc visuals
+  shotArcDotCount: 32,
+  shotArcDotSize: 0.18,
+  shotArcFadeMs: 1500,
+  shotArcZOffset: 0.08,
+  shotArcDimColor: "#262626",
+  shotArcBrightColor: "#ffffff",
 };

@@ -68,12 +68,19 @@ export const SERVER_CONFIG = {
 
   // Missiles
   missileDamageMinSpeed: 10,
+  missileLinearDamping: 0.15,
 
   // Bombs
   bombBlastRadius: 5,
   bombMaxDamage: 3,
   bombMaxForce: 200,
   bombDetonationMinSpeed: 10,
+
+  // Shot arc
+  shotArcDotCount: 32,
+  shotArcFraction: 0.67,
+  shotArcMaxDuration: 4,
+  shotArcGroundY: 0,
 };
 
 let activeLevelConfig = null;

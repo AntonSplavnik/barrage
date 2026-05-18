@@ -11,12 +11,17 @@ export function broadcast(message) {
 }
 
 export function sendState() {
-  broadcast({
+  const base = {
     type: "state",
     tick: gameState.tick,
     serverTime: Date.now(),
     roundNumber: gameState.roundNumber,
     scores: gameState.scores,
-    objects: [...gameObjects.values()].map(toWireObject),
-  });
+  };
+
+  for (const client of clients.values()) {
+    if (client.socket.readyState !== client.socket.OPEN) continue;
+    const objects = [...gameObjects.values()].map(o => toWireObject(o, client.id));
+    client.socket.send(JSON.stringify({ ...base, objects }));
+  }
 }
