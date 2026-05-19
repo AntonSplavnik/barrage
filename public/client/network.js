@@ -177,10 +177,10 @@ socket.addEventListener("message", async (event) => {
   }
 
   if (message.type === "state") {
-    const missileIds = (message.objects ?? [])
-      .filter(o => o.id.startsWith("missiles/"))
+    const trailMissileIds = (message.objects ?? [])
+      .filter(o => o.trailing)
       .map(o => o.id);
-    vfxManager?.syncTrails(missileIds, visualObjects);
+    vfxManager?.syncTrails(trailMissileIds, visualObjects);
 
     updateScores(message.scores, false);
     const prevStates = new Map(latestObjectStates);

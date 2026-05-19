@@ -165,6 +165,7 @@ export function initCollisions() {
       const otherId = missileA ? idB : idA;
 
       if (!missile) return;
+      missile.trailing = false;
 
       const missileSpeed = Math.hypot(missile.vx ?? 0, missile.vy ?? 0, missile.vz ?? 0);
 

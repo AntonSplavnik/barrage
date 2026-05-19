@@ -21,9 +21,7 @@ export const VFX_CONFIG = {
 
   trail: {
     enabled: true,
-    style: "wind",
-    wind: { count: 15, durationMs: 200, speed: 0.5, size: 0.15, scaleX: 0.3, gravity: 0 },
-    dust: { count: 10, durationMs: 600, speed: 1.5, size: 0.4, gravity: -1.5 },
-    blur: { count: 6, durationMs: 150, speed: 0, size: 0.8, gravity: 0 },
+    width: 0.15,
+    length: 60,
   },
 };

@@ -20,6 +20,7 @@ export function toWireObject(object, clientId) {
     ...(object.loaded !== undefined ? { loaded: object.loaded } : {}),
     ...(object.loadedInto ? { loadedInto: object.loadedInto } : {}),
     ...(object.missileType ? { missileType: object.missileType } : {}),
+    ...(object.trailing ? { trailing: true } : {}),
     ...(object.armAngle !== undefined ? { armAngle: object.armAngle, fireState: object.fireState } : {}),
     ...(object.fireState === ARM_STATE_AIMING && object.aimedBy === clientId
       ? { shotArcPoints: object.shotArcPoints, powerRatio: object.powerRatio }
