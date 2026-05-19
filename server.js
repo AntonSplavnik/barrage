@@ -114,6 +114,7 @@ let tick = 0;
 let gameObjects = null;
 let dragState = null;
 let initialBlockObjects = null;
+let initialMissileObjects = null;
 let kingConvexPositions = new Map();
 let loadTargets = null;
 let physicsAggregates = null;
@@ -862,8 +863,10 @@ function registerMeshRoots() {
   createPhysicsBodies();
 
   initialBlockObjects = new Map();
+  initialMissileObjects = new Map();
   for (const [id, obj] of gameObjects) {
     if (isBlockName(id)) initialBlockObjects.set(id, { ...obj });
+    if (isMissileName(id)) initialMissileObjects.set(id, { ...obj });
   }
 }
 
@@ -924,6 +927,47 @@ function resetGameState() {
     agg.body.setAngularDamping(angularDampingForObject(restored));
     registerPhysicsAggregate(restored, agg);
     teleportPhysicsBody(agg);
+  }
+
+  // Restore missiles that were detonated and deleted from gameObjects
+  for (const [id, initial] of (initialMissileObjects ?? [])) {
+    if (gameObjects.has(id)) continue;
+    const restored = {
+      ...initial,
+      x: initial.originX,
+      y: initial.originY,
+      z: initial.originZ,
+      rot: 0,
+      loadedInto: null,
+      pendingBombDetonate: null,
+      pendingDispose: undefined,
+      usedToFragment: false,
+      lastBlockHitTick: null,
+      hitBlockIds: new Set(),
+      hitFragIds: new Set(),
+      hitKingIds: new Set(),
+      vx: 0, vy: 0, vz: 0,
+      angularVelocity: 0,
+      dragVx: 0, dragVy: 0, dragVz: 0,
+      draggedBy: null,
+    };
+    gameObjects.set(id, restored);
+    const node = new TransformNode(`physics-${id}-restored`, scene);
+    node.position.set(restored.x, restored.y, restored.z);
+    node.rotationQuaternion = rotationQuaternionForObject(restored);
+    const agg = new PhysicsAggregate(node, PhysicsShapeType.SPHERE, {
+      mass: restored.mass,
+      friction: restored.friction,
+      restitution: restored.restitution,
+      center: new Vector3(restored.offsetX, restored.offsetY, restored.offsetZ),
+      radius: Math.max(restored.halfX, restored.halfY, restored.halfZ),
+    }, scene);
+    agg.body.disablePreStep = true;
+    agg.body.setLinearDamping(BARRAGE_CONFIG.missileLinearDamping ?? 0.15);
+    agg.body.setAngularDamping(angularDampingForObject(restored));
+    registerPhysicsAggregate(restored, agg);
+    teleportPhysicsBody(agg);
+    console.log(`[resetGameState] restored deleted missile ${id} to origin`);
   }
 
   for (const object of gameObjects.values()) {

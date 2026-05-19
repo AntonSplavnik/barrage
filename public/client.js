@@ -1021,6 +1021,27 @@ function updateAimArrow() {
   aimArrowHeadRight.setEnabled(true);
 }
 
+function restoreDisabledMissileVisuals() {
+  for (const mesh of scene.meshes) {
+    if (!isMissileName(mesh.name)) continue;
+    const root = findGameplayRoot(mesh);
+    if (!root) continue;
+    if (visualObjects.has(root.name)) continue;
+    root.setEnabled(true);
+    visualObjects.set(root.name, root);
+    latestObjectStates.delete(root.name);
+  }
+  for (const transform of scene.transformNodes) {
+    if (!isMissileName(transform.name)) continue;
+    const root = findGameplayRoot(transform);
+    if (!root) continue;
+    if (visualObjects.has(root.name)) continue;
+    root.setEnabled(true);
+    visualObjects.set(root.name, root);
+    latestObjectStates.delete(root.name);
+  }
+}
+
 function disposeLevelScene() {
   vfxManager.clearEffects();
   shotArcPrediction?.dispose();
@@ -1245,6 +1266,7 @@ socket.addEventListener("message", (event) => {
     updateCrowns(message.scores ?? {});
     setLobbyStatus("Loading match...");
     switchLevelIfNeeded(currentLevelUrl).then(() => {
+      restoreDisabledMissileVisuals();
       isMatched = true;
       lobbyPanelEl.classList.add("panel-hidden");
       _lobbyFadeTimer = setTimeout(() => {
