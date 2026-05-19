@@ -280,6 +280,7 @@ body {
   border: 1px solid rgb(255 255 255 / 16%);
   border-radius: 8px;
   text-align: center;
+  transition: opacity 1s ease;
 }
 
 

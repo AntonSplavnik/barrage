@@ -1,7 +1,0 @@
-
-plyers touches other treb
-
-i want to change the explosion vfx, i want to add black smoke, and sparks that shoot out
-
-
-anton spotted an issue.  apparently the sound volume is being handled by the server and sent every tick.  this is not needed at all, sound can be handled on frontend only by client. server responsibilities need to be minimised for performance

@@ -236,7 +236,7 @@ function showMatchWinnerScreen(winnerPlayerId) {
   const messageEl = document.getElementById("match-winner-message");
 
   const outcome = winnerPlayerId === myPlayerId ? "You have won." : "You have lost.";
-  messageEl.innerHTML = `Your battle is over.<br>${outcome}<br><a class="play-again-btn" href="/">Play again?</a>`;
+  messageEl.innerHTML = `Your war is over.<br>${outcome}<br><a class="play-again-btn" href="/">Play again?</a>`;
 
   portraitImg.src = portraitSrc;
   overlay.classList.add("is-visible");
@@ -1245,9 +1245,7 @@ socket.addEventListener("message", (event) => {
     setLobbyStatus(message.status === "spectating"
       ? `A two player battle. You are spectating. You are in queue position ${spectatorNum} waiting to play a match.`
       : `A two player battle. You are waiting for an opponent. <button class="copy-url-btn" data-copy-url="https://game-show.cloud-ip.cc/">Copy game URL</button> and give to a friend and prepare for combat!`);
-    if (message.status === "spectating") {
-      switchLevelIfNeeded(currentLevelUrl);
-    }
+    switchLevelIfNeeded(currentLevelUrl);
   }
 
   if (message.type === "matched") {
@@ -1282,18 +1280,6 @@ socket.addEventListener("message", (event) => {
     isMatched = false;
     const matchWon = message.matchWon;
     const roundWinner = message.winner;
-    if (message.forfeit) {
-      const iWon = roundWinner === myPlayerId;
-      const text = iWon
-        ? "You won the battle — your opponent refreshed."
-        : "You refreshed — your opponent wins this battle.";
-      setLobbyStatus(text, true, iWon ? myPlayerId : roundWinner);
-      lobbyTitleEl.style.opacity = "0";
-      _lobbyFadeTimer = setTimeout(() => {
-        lobbyTitleEl.style.opacity = "0";
-        _lobbyHideTimer = setTimeout(() => setLobbyStatus("", false), 1000);
-      }, 7000);
-    }
     animateWinCrown(roundWinner, message.scores ?? {}, {
       onComplete: matchWon ? () => showMatchWinnerScreen(roundWinner) : undefined,
     });
@@ -1307,9 +1293,26 @@ socket.addEventListener("message", (event) => {
     updateRoundCounter(message.roundNumber);
     updateCrowns(message.scores ?? {});
     setLobbyStatus(message.forceReload ? "Reloading..." : "Loading next level...");
+    const _forfeitLoser = message.forfeitLoser ?? null;
     switchLevelIfNeeded(currentLevelUrl, { force: Boolean(message.forceReload) }).then(() => {
       isMatched = true;
-      setLobbyStatus("", false);
+      if (_forfeitLoser) {
+        const iLost = _forfeitLoser === myPlayerId;
+        const text = iLost
+          ? "You forfeited the last battle via a browser refresh.<br>Now the war continues."
+          : "You won the last battle because your opponent refreshed.<br>Now the war continues.";
+        setLobbyStatus(text);
+        lobbyTitleEl.style.opacity = "0";
+        _lobbyFadeTimer = setTimeout(() => {
+          lobbyPanelEl.style.opacity = "0";
+          _lobbyHideTimer = setTimeout(() => {
+            setLobbyStatus("", false);
+            lobbyPanelEl.style.opacity = "";
+          }, 1000);
+        }, 7000);
+      } else {
+        setLobbyStatus("", false);
+      }
     });
   }
 
@@ -1410,9 +1413,9 @@ socket.addEventListener("close", () => {
   hudOpponentEl.style.display = "none";
   if (matchOver) return;
   if (idleDisconnected) {
-    setLobbyStatus("Disconnected due to inactivity. Refresh to reconnect.");
+    setLobbyStatus(`Disconnected due to inactivity. <a class="copy-url-btn" href="/">Reconnect.</a>`);
   } else {
-    setLobbyStatus("You have been disconnected for inactivity. To requeue for a game refresh your browser.");
+    setLobbyStatus(`Disconnected due to inactivity. <a class="copy-url-btn" href="/">Reconnect.</a>`);
   }
 });
 
@@ -1762,18 +1765,10 @@ scene.onPointerObservable.add((pointerInfo) => {
   }
 });
 
-const initialLevelUrl = currentLevelUrl;
-loadingLevelUrl = initialLevelUrl;
-levelSwitchPromise = loadLevel(initialLevelUrl).finally(() => {
-  if (loadingLevelUrl === initialLevelUrl) {
-    loadingLevelUrl = null;
+engine.runRenderLoop(() => {
+  if (scene.activeCamera) {
+    scene.render();
   }
-}).then(() => {
-  engine.runRenderLoop(() => {
-    if (scene.activeCamera) {
-      scene.render();
-    }
-  });
 });
 
 const interpolator = createInterpolator({

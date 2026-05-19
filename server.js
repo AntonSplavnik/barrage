@@ -100,18 +100,6 @@ app.use((_request, response, next) => {
   next();
 });
 
-const recentLogs = [];
-const _origLog = console.log.bind(console);
-console.log = (...args) => {
-  _origLog(...args);
-  recentLogs.push(`[${new Date().toISOString()}] ${args.join(" ")}`);
-  if (recentLogs.length > 200) recentLogs.shift();
-};
-
-app.get("/debug/logs", (_req, res) => {
-  res.setHeader("Content-Type", "text/plain; charset=utf-8");
-  res.send(recentLogs.join("\n") || "(no logs yet)");
-});
 
 const httpServer = http.createServer(app);
 const wss = new WebSocketServer({ server: httpServer });
@@ -491,14 +479,12 @@ const {
 });
 
 function endMatchByDisconnect(room, loserPlayerId, opponentId) {
-  console.log(`[endMatchByDisconnect] room=${room.id} loser=${loserPlayerId} opponent=${opponentId} roundWinner=${room.roundWinner} matchEnded=${room.matchEnded} clientsHasOpponent=${room.clients.has(opponentId)}`);
   if (room.roundWinner || room.matchEnded) return;
-  if (!room.clients.has(opponentId)) return; // opponent also left during grace period
+  if (!room.clients.has(opponentId)) return;
   room.roundWinner = opponentId;
   room.matchEnded = true;
   room.paused = true;
   bindRoom(room);
-  console.log(`[endMatchByDisconnect] broadcasting roundEnded matchWon to ${room.clients.size} clients`);
   broadcast({
     type: "roundEnded",
     roomId: room.id,
@@ -518,7 +504,55 @@ function endMatchByDisconnect(room, loserPlayerId, opponentId) {
   }, matchEndDelayMs);
 }
 
-function recordRoundWin(loserPlayerId, { forfeit = false } = {}) {
+async function handleForfeitRoundWin(room, loserPlayerId) {
+  const winner = room.playerIds.find((id) => id !== loserPlayerId) ?? null;
+  if (!winner) return;
+
+  room.roundWinner = winner;
+  room.scores[winner] = (room.scores[winner] ?? 0) + 1;
+  room.paused = true;
+
+  const matchWin = isMatchWin(room.scores, winner);
+  bindRoom(room);
+
+  if (matchWin) {
+    room.matchEnded = true;
+    broadcast({ type: "roundEnded", roomId: room.id, tick, winner, loser: loserPlayerId, roundNumber: room.roundNumber, scores: room.scores, matchWon: true });
+    const matchEndDelayMs = BARRAGE_CONFIG.matchEndDelayMs ?? 4000;
+    setTimeout(() => {
+      for (const c of room.clients.values()) {
+        try { c.socket.send(JSON.stringify({ type: "matchOver" })); } catch { /* ignore */ }
+        closeSocket(c.socket);
+      }
+    }, matchEndDelayMs);
+    return;
+  }
+
+  room.level = nextLevel(room.level.id);
+  room.roundNumber += 1;
+  room.roundWinner = null;
+
+  // Tell both clients immediately — they load in parallel with the server
+  broadcast({
+    type: "levelChanged",
+    roomId: room.id,
+    level: room.level.url,
+    roundNumber: room.roundNumber,
+    scores: room.scores,
+    forfeitLoser: loserPlayerId,
+  });
+
+  createRoomRuntime(room);
+  bindRoom(room);
+  await enableHavokPhysics();
+  await loadLevelIfPresent();
+  await loadFragmentTemplates();
+  room.paused = false;
+  saveActiveRoomTick();
+  sendState();
+}
+
+function recordRoundWin(loserPlayerId) {
   if (activeRoom.roundWinner) return;
 
   const winner = opponentPlayerId(loserPlayerId);
@@ -541,7 +575,6 @@ function recordRoundWin(loserPlayerId, { forfeit = false } = {}) {
     roundNumber: activeRoom.roundNumber,
     scores: activeRoom.scores,
     ...(matchWin && { matchWon: true }),
-    ...(forfeit && { forfeit: true }),
   });
 
   if (matchWin) {
@@ -1290,32 +1323,23 @@ wss.on("connection", (socket, req) => {
     clients.delete(clientId);
     if (!assignmentDone) return; // assignment will clean up when it resolves and sees socket closed
 
-    console.log(`[onClientClose] client=${clientId} playerId=${client.playerId} sessionId=${client.sessionId} hasRoom=${Boolean(client.room)} isMatched=${client.room ? roomManager.isMatched(client.room) : "n/a"} roundWinner=${client.room?.roundWinner ?? "n/a"} matchEnded=${client.room?.matchEnded ?? "n/a"}`);
-
     let usingGracePeriod = false;
     if (client.room && roomManager.isMatched(client.room) && !client.room.roundWinner && !client.room.matchEnded) {
       bindRoom(client.room);
       const opponentId = opponentPlayerId(client.playerId);
-      console.log(`[onClientClose] eligible for grace period, opponentId=${opponentId}`);
       if (opponentId) {
         usingGracePeriod = true;
         const room = client.room;
         const loserPlayerId = client.playerId;
         const sessionId = client.sessionId;
-        console.log(`[onClientClose] setting grace period for ${loserPlayerId} sessionId=${sessionId}`);
         const timer = setTimeout(() => {
-          console.log(`[onClientClose] grace timer fired for ${loserPlayerId}, pendingReconnect=${JSON.stringify(room.pendingReconnect)}`);
           if (room.pendingReconnect?.sessionId === sessionId) {
             room.pendingReconnect = null;
             endMatchByDisconnect(room, loserPlayerId, opponentId);
-          } else {
-            console.log(`[onClientClose] grace timer: pendingReconnect sessionId mismatch, not ending match`);
           }
         }, BARRAGE_CONFIG.disconnectGraceMs ?? 2000);
         room.pendingReconnect = { sessionId, playerId: loserPlayerId, timer };
       }
-    } else {
-      console.log(`[onClientClose] NOT eligible for grace period: hasRoom=${Boolean(client.room)} isMatched=${client.room ? roomManager.isMatched(client.room) : false} roundWinner=${client.room?.roundWinner}`);
     }
 
     const removal = roomManager.removeClient(client);
@@ -1366,8 +1390,9 @@ wss.on("connection", (socket, req) => {
       }
 
       if (isForfeitReconnect) {
-        bindRoom(room);
-        recordRoundWin(client.playerId, { forfeit: true }); // refreshing player forfeits the round
+        handleForfeitRoundWin(room, client.playerId).catch((error) => {
+          console.error("Failed to handle forfeit round win.", error);
+        });
       } else if (becameMatched) {
         notifyRoomStatus(room).catch((error) => {
           console.error("Failed to notify room status on match.", error);
