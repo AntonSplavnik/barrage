@@ -1292,7 +1292,7 @@ wss.on("connection", (socket, req) => {
     console.log(`[onClientClose] client=${clientId} playerId=${client.playerId} sessionId=${client.sessionId} hasRoom=${Boolean(client.room)} isMatched=${client.room ? roomManager.isMatched(client.room) : "n/a"} roundWinner=${client.room?.roundWinner ?? "n/a"} matchEnded=${client.room?.matchEnded ?? "n/a"}`);
 
     let usingGracePeriod = false;
-    if (client.room && roomManager.isMatched(client.room) && !client.room.roundWinner) {
+    if (client.room && roomManager.isMatched(client.room) && !client.room.roundWinner && !client.room.matchEnded) {
       bindRoom(client.room);
       const opponentId = opponentPlayerId(client.playerId);
       console.log(`[onClientClose] eligible for grace period, opponentId=${opponentId}`);
@@ -1346,21 +1346,28 @@ wss.on("connection", (socket, req) => {
       sendLobby(client);
     } else {
       // Track session per slot so we can detect when a genuinely new player fills a slot
+      let isForfeitReconnect = false;
       if (client.playerId && client.sessionId) {
         room.playerSessions = room.playerSessions ?? {};
         const prevSession = room.playerSessions[client.playerId];
         if (room.pendingReconnect?.playerId === client.playerId
             && room.pendingReconnect?.sessionId === client.sessionId) {
-          // Same session reconnected within grace period — it was a refresh, not a disconnect
+          // Same session reconnected within grace period — player refreshed, forfeit the round
           clearTimeout(room.pendingReconnect.timer);
           room.pendingReconnect = null;
+          if (becameMatched && !room.roundWinner && !room.matchEnded) {
+            isForfeitReconnect = true;
+          }
         } else if (becameMatched && prevSession && prevSession !== client.sessionId) {
           room.pendingFullReset = true;
         }
         room.playerSessions[client.playerId] = client.sessionId;
       }
 
-      if (becameMatched) {
+      if (isForfeitReconnect) {
+        bindRoom(room);
+        recordRoundWin(client.playerId); // refreshing player forfeits the round
+      } else if (becameMatched) {
         notifyRoomStatus(room).catch((error) => {
           console.error("Failed to notify room status on match.", error);
         });
