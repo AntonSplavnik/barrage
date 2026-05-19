@@ -322,14 +322,14 @@ body {
 }
 
 .match-winner-crown {
-  font-size: 110px;
+  font-size: 88px;
   line-height: 1;
   display: block;
   margin-bottom: 6px;
 }
 
 #match-winner-portrait {
-  height: 260px;
+  height: min(260px, 50vh);
   width: auto;
   border-radius: 10px;
 }
