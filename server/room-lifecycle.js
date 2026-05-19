@@ -4,6 +4,7 @@ export function createRoomLifecycle({
   createRoomRuntime,
   enableHavokPhysics,
   isMatched,
+  loadFragmentTemplates,
   loadLevelIfPresent,
   notifySpectatorRenames,
   promoteSpectatorToSlot,
@@ -21,15 +22,21 @@ export function createRoomLifecycle({
     bindRoom(room);
     await enableHavokPhysics();
     await loadLevelIfPresent();
+    await loadFragmentTemplates();
     saveActiveRoomTick();
   }
 
-  function notifyRoomStatus(room) {
+  async function notifyRoomStatus(room) {
     if (isMatched(room)) {
-      bindRoom(room);
-      room.paused = false;
-      room.roundWinner = null;
-      resetGameState();
+      if (room.pendingFullReset) {
+        room.pendingFullReset = false;
+        await resetRoomToFirstLevel(room);
+      } else {
+        bindRoom(room);
+        room.paused = false;
+        room.roundWinner = null;
+        resetGameState();
+      }
       saveActiveRoomTick();
       sendMatched(room);
       sendState();
@@ -55,25 +62,26 @@ export function createRoomLifecycle({
       if (isMatched(room)) {
         await resetRoomToFirstLevel(room);
       }
-      notifyRoomStatus(room);
+      await notifyRoomStatus(room);
     }
 
     return true;
   }
 
   async function handlePlayerVacancy({ room, playerId }) {
+    if (isMatched(room)) return; // player may have reconnected before the vacancy delay fired
     const promotion = promoteSpectatorToSlot(room, playerId);
     if (promotion) {
       const { spectator: promoted, spectatorRenames } = promotion;
       sendWelcome(promoted);
       notifySpectatorRenames(spectatorRenames);
       await resetRoomToFirstLevel(room);
-      notifyRoomStatus(room);
+      await notifyRoomStatus(room);
       return;
     }
 
     if (!await compactAndNotifyWaitingRooms()) {
-      notifyRoomStatus(room);
+      await notifyRoomStatus(room);
     }
   }
 

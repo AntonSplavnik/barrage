@@ -464,6 +464,7 @@ const {
   createRoomRuntime,
   enableHavokPhysics,
   isMatched: (room) => roomManager.isMatched(room),
+  loadFragmentTemplates,
   loadLevelIfPresent,
   notifySpectatorRenames,
   promoteSpectatorToSlot: (room, playerId) => roomManager.promoteSpectatorToSlot(room, playerId),
@@ -475,6 +476,34 @@ const {
   sendState,
   sendWelcome,
 });
+
+function endMatchByDisconnect(room, loserPlayerId, opponentId) {
+  console.log(`[endMatchByDisconnect] room=${room.id} loser=${loserPlayerId} opponent=${opponentId} roundWinner=${room.roundWinner} matchEnded=${room.matchEnded} clientsHasOpponent=${room.clients.has(opponentId)}`);
+  if (room.roundWinner || room.matchEnded) return;
+  if (!room.clients.has(opponentId)) return; // opponent also left during grace period
+  room.roundWinner = opponentId;
+  room.matchEnded = true;
+  room.paused = true;
+  bindRoom(room);
+  console.log(`[endMatchByDisconnect] broadcasting roundEnded matchWon to ${room.clients.size} clients`);
+  broadcast({
+    type: "roundEnded",
+    roomId: room.id,
+    tick,
+    winner: opponentId,
+    loser: loserPlayerId,
+    roundNumber: room.roundNumber,
+    scores: room.scores,
+    matchWon: true,
+  });
+  const matchEndDelayMs = BARRAGE_CONFIG.matchEndDelayMs ?? 14000;
+  setTimeout(() => {
+    for (const c of room.clients.values()) {
+      try { c.socket.send(JSON.stringify({ type: "matchOver" })); } catch { /* ignore */ }
+      closeSocket(c.socket);
+    }
+  }, matchEndDelayMs);
+}
 
 function recordRoundWin(loserPlayerId) {
   if (activeRoom.roundWinner) return;
@@ -1235,9 +1264,10 @@ async function enableHavokPhysics() {
   scene.enablePhysics(new Vector3(0, SERVER_CONFIG.gravity, 0), havokPlugin);
 }
 
-wss.on("connection", (socket) => {
+wss.on("connection", (socket, req) => {
   const clientId = nextClientId++;
-  const client = { id: clientId, playerId: null, room: null, socket, lastInputAt: Date.now() };
+  const sessionId = new URL(req.url, "http://localhost").searchParams.get("sid") ?? null;
+  const client = { id: clientId, playerId: null, room: null, socket, sessionId, lastInputAt: Date.now() };
   clients.set(clientId, client);
 
   let assignmentDone = false;
@@ -1245,8 +1275,37 @@ wss.on("connection", (socket) => {
   function onClientClose() {
     clients.delete(clientId);
     if (!assignmentDone) return; // assignment will clean up when it resolves and sees socket closed
+
+    console.log(`[onClientClose] client=${clientId} playerId=${client.playerId} sessionId=${client.sessionId} hasRoom=${Boolean(client.room)} isMatched=${client.room ? roomManager.isMatched(client.room) : "n/a"} roundWinner=${client.room?.roundWinner ?? "n/a"} matchEnded=${client.room?.matchEnded ?? "n/a"}`);
+
+    let usingGracePeriod = false;
+    if (client.room && roomManager.isMatched(client.room) && !client.room.roundWinner) {
+      bindRoom(client.room);
+      const opponentId = opponentPlayerId(client.playerId);
+      console.log(`[onClientClose] eligible for grace period, opponentId=${opponentId}`);
+      if (opponentId) {
+        usingGracePeriod = true;
+        const room = client.room;
+        const loserPlayerId = client.playerId;
+        const sessionId = client.sessionId;
+        console.log(`[onClientClose] setting grace period for ${loserPlayerId} sessionId=${sessionId}`);
+        const timer = setTimeout(() => {
+          console.log(`[onClientClose] grace timer fired for ${loserPlayerId}, pendingReconnect=${JSON.stringify(room.pendingReconnect)}`);
+          if (room.pendingReconnect?.sessionId === sessionId) {
+            room.pendingReconnect = null;
+            endMatchByDisconnect(room, loserPlayerId, opponentId);
+          } else {
+            console.log(`[onClientClose] grace timer: pendingReconnect sessionId mismatch, not ending match`);
+          }
+        }, BARRAGE_CONFIG.disconnectGraceMs ?? 2000);
+        room.pendingReconnect = { sessionId, playerId: loserPlayerId, timer };
+      }
+    } else {
+      console.log(`[onClientClose] NOT eligible for grace period: hasRoom=${Boolean(client.room)} isMatched=${client.room ? roomManager.isMatched(client.room) : false} roundWinner=${client.room?.roundWinner}`);
+    }
+
     const removal = roomManager.removeClient(client);
-    if (removal?.room) {
+    if (!usingGracePeriod && removal?.room) {
       const delay = removal.room.roundWinner ? (BARRAGE_CONFIG.roundEndDelayMs ?? 5000) : 0;
       setTimeout(() => {
         handlePlayerVacancy(removal).catch((error) => {
@@ -1272,10 +1331,29 @@ wss.on("connection", (socket) => {
     sendWelcome(client);
     if (spectator) {
       sendLobby(client);
-    } else if (becameMatched) {
-      notifyRoomStatus(room);
-    } else if (!roomManager.isMatched(room)) {
-      sendLobby(client);
+    } else {
+      // Track session per slot so we can detect when a genuinely new player fills a slot
+      if (client.playerId && client.sessionId) {
+        room.playerSessions = room.playerSessions ?? {};
+        const prevSession = room.playerSessions[client.playerId];
+        if (room.pendingReconnect?.playerId === client.playerId
+            && room.pendingReconnect?.sessionId === client.sessionId) {
+          // Same session reconnected within grace period — it was a refresh, not a disconnect
+          clearTimeout(room.pendingReconnect.timer);
+          room.pendingReconnect = null;
+        } else if (becameMatched && prevSession && prevSession !== client.sessionId) {
+          room.pendingFullReset = true;
+        }
+        room.playerSessions[client.playerId] = client.sessionId;
+      }
+
+      if (becameMatched) {
+        notifyRoomStatus(room).catch((error) => {
+          console.error("Failed to notify room status on match.", error);
+        });
+      } else if (!roomManager.isMatched(room)) {
+        sendLobby(client);
+      }
     }
 
     socket.on("message", (raw) => {

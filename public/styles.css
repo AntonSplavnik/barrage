@@ -346,3 +346,10 @@ body {
 #match-winner-message.is-visible {
   opacity: 1;
 }
+
+.play-again-btn {
+  color: #ffd166;
+  text-decoration: underline;
+  cursor: pointer;
+  pointer-events: auto;
+}

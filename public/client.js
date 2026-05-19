@@ -236,7 +236,7 @@ function showMatchWinnerScreen(winnerPlayerId) {
   const messageEl = document.getElementById("match-winner-message");
 
   const outcome = winnerPlayerId === myPlayerId ? "You have won." : "You have lost.";
-  messageEl.innerHTML = `Your battle is over.<br>${outcome}<br>To play again refresh your browser.`;
+  messageEl.innerHTML = `Your battle is over.<br>${outcome}<br><a class="play-again-btn" href="/">Play again?</a>`;
 
   portraitImg.src = portraitSrc;
   overlay.classList.add("is-visible");
@@ -1209,7 +1209,9 @@ function startFragmentShrink(fragId, durationMs, { detachFromState = false } = {
 }
 
 const socketProtocol = window.location.protocol === "https:" ? "wss" : "ws";
-const socket = new WebSocket(`${socketProtocol}://${window.location.host}`);
+let _sessionId = sessionStorage.getItem("barrage_sid");
+if (!_sessionId) { _sessionId = crypto.randomUUID(); sessionStorage.setItem("barrage_sid", _sessionId); }
+const socket = new WebSocket(`${socketProtocol}://${window.location.host}/?sid=${_sessionId}`);
 
 socket.addEventListener("open", () => {
   setStatus("Connected");

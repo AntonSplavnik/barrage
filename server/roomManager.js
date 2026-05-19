@@ -88,7 +88,7 @@ export class RoomManager {
   }
 
   compactWaitingRooms() {
-    const waitingRooms = this.rooms.filter((room) => room.clients.size === 1);
+    const waitingRooms = this.rooms.filter((room) => room.clients.size === 1 && !room.matchEnded);
     const moves = [];
 
     while (waitingRooms.length >= ROOM_SIZE) {
@@ -149,7 +149,7 @@ export class RoomManager {
   }
 
   async openRoom() {
-    const existing = this.rooms.find((room) => room.clients.size < ROOM_SIZE);
+    const existing = this.rooms.find((room) => room.clients.size < ROOM_SIZE && !room.matchEnded);
     if (existing) return existing;
 
     if (this.pendingRoom) return this.pendingRoom;
