@@ -1,6 +1,6 @@
 import { connectionEl, playerEl, scoreLeftEl, scoreRightEl, matchEndEl, matchEndTextEl, rematchEl, sfxToggleEl, engine, scene } from "./engine.js";
 import { createSoundSystem } from "./sound.js";
-import { applyState, latestObjectStates } from "./state.js";
+import { applyState, latestObjectStates, visualObjects } from "./state.js";
 import { loadLevel, reloadLevel, ensureVisualsForState, removeStaleVisuals, hideBlockVisual, shrinkAndDisposeFragment, clearDestructionVisuals, updateCrackStage } from "./level.js";
 
 let seq = 0;
@@ -177,6 +177,11 @@ socket.addEventListener("message", async (event) => {
   }
 
   if (message.type === "state") {
+    const trailMissileIds = (message.objects ?? [])
+      .filter(o => o.trailing)
+      .map(o => o.id);
+    vfxManager?.syncTrails(trailMissileIds, visualObjects);
+
     updateScores(message.scores, false);
     const prevStates = new Map(latestObjectStates);
     removeStaleVisuals(message.objects ?? []);

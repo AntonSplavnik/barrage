@@ -18,4 +18,10 @@ export const VFX_CONFIG = {
     sparks: { count: 60, durationMs: 900, speed: 18, size: 0.22, gravity: -14, width: 0.12 },
     fragments: true,
   },
+
+  trail: {
+    enabled: true,
+    width: 0.15,
+    length: 60,
+  },
 };

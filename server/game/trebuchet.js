@@ -268,6 +268,7 @@ export function releaseLoadedMissileFromTrebuchet(trebuchet, velocity, armAngle 
   }
 
   missile.loadedInto = null;
+  missile.trailing = true;
   setPhysicsBodyTrigger(missile, false);
   missile.vx = velocity.x;
   missile.vy = velocity.y;

@@ -5,8 +5,9 @@ export function createSharedTextures(scene) {
   const smoke = createSmokeTexture(scene);
   const spark = createSparkTexture(scene);
   const fragmentMaterial = createFragmentMaterial(scene);
-
   const fragment = createFragmentTexture(scene);
+  const windStreak = createWindStreakTexture(scene);
+  const blur = createBlurTexture(scene);
 
   function dispose() {
     explosion.dispose();
@@ -14,9 +15,11 @@ export function createSharedTextures(scene) {
     spark.dispose();
     fragment.dispose();
     fragmentMaterial.dispose();
+    windStreak.dispose();
+    blur.dispose();
   }
 
-  return { explosion, smoke, spark, fragment, fragmentMaterial, dispose };
+  return { explosion, smoke, spark, fragment, fragmentMaterial, windStreak, blur, dispose };
 }
 
 function createExplosionTexture(scene) {
@@ -118,4 +121,34 @@ function createFragmentMaterial(scene) {
   mat.emissiveColor = new Color3(0.18, 0.18, 0.18);
   mat.specularColor = new Color3(0, 0, 0);
   return mat;
+}
+
+function createWindStreakTexture(scene) {
+  const tex = new DynamicTexture("vfx_windStreak", { width: 8, height: 64 }, scene, false);
+  const ctx = tex.getContext();
+  const grad = ctx.createLinearGradient(4, 0, 4, 64);
+  grad.addColorStop(0, "rgba(255,255,255,0)");
+  grad.addColorStop(0.3, "rgba(255,255,255,0.8)");
+  grad.addColorStop(0.7, "rgba(255,255,255,0.8)");
+  grad.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 8, 64);
+  tex.update();
+  tex.hasAlpha = true;
+  return tex;
+}
+
+function createBlurTexture(scene) {
+  const tex = new DynamicTexture("vfx_blur", 32, scene, false);
+  const ctx = tex.getContext();
+  const cx = 16, cy = 16;
+  const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, 16);
+  grad.addColorStop(0, "rgba(140,140,140,0.4)");
+  grad.addColorStop(0.6, "rgba(140,140,140,0.2)");
+  grad.addColorStop(1, "rgba(140,140,140,0)");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 32, 32);
+  tex.update();
+  tex.hasAlpha = true;
+  return tex;
 }
