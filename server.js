@@ -100,6 +100,19 @@ app.use((_request, response, next) => {
   next();
 });
 
+const recentLogs = [];
+const _origLog = console.log.bind(console);
+console.log = (...args) => {
+  _origLog(...args);
+  recentLogs.push(`[${new Date().toISOString()}] ${args.join(" ")}`);
+  if (recentLogs.length > 200) recentLogs.shift();
+};
+
+app.get("/debug/logs", (_req, res) => {
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
+  res.send(recentLogs.join("\n") || "(no logs yet)");
+});
+
 const httpServer = http.createServer(app);
 const wss = new WebSocketServer({ server: httpServer });
 
