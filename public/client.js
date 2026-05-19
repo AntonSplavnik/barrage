@@ -1759,9 +1759,8 @@ const resizeEngine = () => {
   applyRenderResolutionLimit(engine, CONFIG);
   engine.resize();
 };
-window.addEventListener("resize", resizeEngine);
+new ResizeObserver(resizeEngine).observe(canvas);
 window.addEventListener("orientationchange", resizeEngine);
-document.addEventListener("fullscreenchange", resizeEngine);
 
 window.addEventListener("blur", () => {
   stopReleaseVelocitySampling();
