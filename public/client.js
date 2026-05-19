@@ -1282,6 +1282,18 @@ socket.addEventListener("message", (event) => {
     isMatched = false;
     const matchWon = message.matchWon;
     const roundWinner = message.winner;
+    if (message.forfeit) {
+      const iWon = roundWinner === myPlayerId;
+      const text = iWon
+        ? "You won the battle — your opponent refreshed."
+        : "You refreshed — your opponent wins this battle.";
+      setLobbyStatus(text, true, iWon ? myPlayerId : roundWinner);
+      lobbyTitleEl.style.opacity = "0";
+      _lobbyFadeTimer = setTimeout(() => {
+        lobbyTitleEl.style.opacity = "0";
+        _lobbyHideTimer = setTimeout(() => setLobbyStatus("", false), 1000);
+      }, 7000);
+    }
     animateWinCrown(roundWinner, message.scores ?? {}, {
       onComplete: matchWon ? () => showMatchWinnerScreen(roundWinner) : undefined,
     });

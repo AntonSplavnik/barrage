@@ -518,7 +518,7 @@ function endMatchByDisconnect(room, loserPlayerId, opponentId) {
   }, matchEndDelayMs);
 }
 
-function recordRoundWin(loserPlayerId) {
+function recordRoundWin(loserPlayerId, { forfeit = false } = {}) {
   if (activeRoom.roundWinner) return;
 
   const winner = opponentPlayerId(loserPlayerId);
@@ -541,6 +541,7 @@ function recordRoundWin(loserPlayerId) {
     roundNumber: activeRoom.roundNumber,
     scores: activeRoom.scores,
     ...(matchWin && { matchWon: true }),
+    ...(forfeit && { forfeit: true }),
   });
 
   if (matchWin) {
@@ -1366,7 +1367,7 @@ wss.on("connection", (socket, req) => {
 
       if (isForfeitReconnect) {
         bindRoom(room);
-        recordRoundWin(client.playerId); // refreshing player forfeits the round
+        recordRoundWin(client.playerId, { forfeit: true }); // refreshing player forfeits the round
       } else if (becameMatched) {
         notifyRoomStatus(room).catch((error) => {
           console.error("Failed to notify room status on match.", error);
