@@ -54,9 +54,7 @@ lobbyStatusEl.addEventListener("click", (e) => {
     btn.textContent = "Copied!";
     setTimeout(() => { btn.textContent = prev; }, 1500);
   };
-  if (navigator.clipboard) {
-    navigator.clipboard.writeText(url).then(flash);
-  } else {
+  const execCopy = () => {
     const ta = document.createElement("textarea");
     ta.value = url;
     ta.style.cssText = "position:fixed;opacity:0";
@@ -65,6 +63,11 @@ lobbyStatusEl.addEventListener("click", (e) => {
     document.execCommand("copy");
     document.body.removeChild(ta);
     flash();
+  };
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(url).then(flash).catch(execCopy);
+  } else {
+    execCopy();
   }
 });
 const crownsLeftEl = document.getElementById("crowns-left");
