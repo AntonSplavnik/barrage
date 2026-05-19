@@ -56,6 +56,27 @@ body {
   display: none !important;
 }
 
+#fullscreen-btn {
+  position: fixed;
+  bottom: 12px;
+  right: 12px;
+  width: 36px;
+  height: 36px;
+  background: rgb(18 23 25 / 78%);
+  border: 1px solid rgb(255 255 255 / 16%);
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+  z-index: 10;
+  padding: 0;
+}
+#fullscreen-btn:hover { opacity: 1; }
+#fullscreen-btn svg { width: 18px; height: 18px; fill: #fff; }
+
 #media-controls {
   position: fixed;
   top: 100px;

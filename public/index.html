@@ -18,6 +18,14 @@
       <button id="reset" type="button">Reset</button>
       <button id="restart-server" type="button">Restart Server</button>
     </div>
+    <button id="fullscreen-btn" title="Fullscreen" aria-label="Toggle fullscreen">
+      <svg id="icon-expand" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M3 3h6v2H5v4H3V3zm12 0h6v6h-2V5h-4V3zM3 15h2v4h4v2H3v-6zm16 4h-4v2h6v-6h-2v4z"/>
+      </svg>
+      <svg id="icon-compress" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="display:none">
+        <path d="M9 3H7v4H3v2h6V3zm6 0v6h6V7h-4V3h-2zM3 13v2h4v4h2v-6H3zm14 6v-4h4v-2h-6v6h2z"/>
+      </svg>
+    </button>
     <div id="media-controls">
       <button id="music-toggle" type="button" aria-label="Enable music" title="Enable music">
         <span class="music-note" aria-hidden="true">♪</span>
@@ -48,5 +56,23 @@
     <script src="https://cdn.babylonjs.com/inspector/babylon.inspector.bundle.js"></script>
     <script src="https://unpkg.com/@strudel/web@1.2.3"></script>
     <script type="module" src="/client.js"></script>
+    <script>
+      const fsBtn = document.getElementById('fullscreen-btn');
+      if (!document.fullscreenEnabled) {
+        fsBtn.style.display = 'none';
+      } else {
+        const fsExpand = document.getElementById('icon-expand');
+        const fsCompress = document.getElementById('icon-compress');
+        fsBtn.addEventListener('click', () => {
+          if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
+          else document.exitFullscreen();
+        });
+        document.addEventListener('fullscreenchange', () => {
+          const fs = !!document.fullscreenElement;
+          fsExpand.style.display = fs ? 'none' : '';
+          fsCompress.style.display = fs ? '' : 'none';
+        });
+      }
+    </script>
   </body>
 </html>

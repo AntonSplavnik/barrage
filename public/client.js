@@ -1755,10 +1755,13 @@ const interpolator = createInterpolator({
 });
 scene.onBeforeRenderObservable.add(interpolator.applyInterpolatedPositions);
 
-window.addEventListener("resize", () => {
+const resizeEngine = () => {
   applyRenderResolutionLimit(engine, CONFIG);
   engine.resize();
-});
+};
+window.addEventListener("resize", resizeEngine);
+window.addEventListener("orientationchange", resizeEngine);
+document.addEventListener("fullscreenchange", resizeEngine);
 
 window.addEventListener("blur", () => {
   stopReleaseVelocitySampling();
