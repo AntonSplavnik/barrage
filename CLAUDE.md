@@ -28,17 +28,23 @@
 - Cron entries MUST be single lines — line breaks silently break them
 - URL and flags are case-sensitive (`-O` not `-o`, `dynamicURL` not `dynamicurl`)
 
+## Caddy (HTTPS Reverse Proxy)
+
+- Caddy handles HTTPS termination and auto-renews Let's Encrypt certificates
+- Listens on ports 80 and 443, reverse proxies to Node on localhost:3000
+- Config: `/etc/caddy/Caddyfile`
+- Managed via systemd: `sudo systemctl restart caddy`
+
 ## PM2 (Process Manager)
 
-- Server runs on **port 80** via `sudo pm2`
+- Server runs on **port 3000** (default) via user-level `pm2` (no sudo)
 - Process name: `barrage`
-- `sudo pm2` and `pm2` are separate daemons — only use `sudo pm2` (port 80 needs root)
-- Auto-start configured: `sudo pm2 save` + `sudo pm2 startup`
-- User-level pm2 was cleaned up (`pm2 kill`, `pm2 unstartup`)
+- Caddy handles ports 80/443, so Node no longer needs root
+- Auto-start configured: `pm2 save` + `pm2 startup`
 
 ## Firewall (Google Cloud)
 
-- TCP port 80 allowed (HTTP)
+- TCP ports 80 (HTTP) and 443 (HTTPS) allowed
 - ICMP (ping) may not be allowed — doesn't affect game functionality
 
 ## Auto-Deploy (GitHub Actions)
@@ -46,7 +52,7 @@
 - Workflow: `.github/workflows/deploy.yml`
 - Triggers on push to `main`
 - Uses `appleboy/ssh-action` to SSH into `game-show.cloud-ip.cc`
-- Runs: `git pull origin main` → `npm install` → `sudo pm2 restart barrage`
+- Runs: `git pull origin main` → `npm install` → `pm2 restart barrage`
 - Dedicated deploy key (`deploy-barrage`) stored in GitHub Secrets as `VM_SSH_KEY`
 - VM has `~/.ssh/config` entry for `github.com` pointing to custom key name (`github`)
 
@@ -77,6 +83,6 @@ Detailed reference files for each topic are in:
 ## Notes
 
 - e2-small has ~1.2-1.5GB free RAM after OS and one Node server
-- Ports below 1024 need root — either `sudo pm2` or `sudo setcap` on node binary
+- Caddy owns privileged ports (80/443), so Node runs unprivileged on 3000
 - DNS flush on Mac: `sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder`
 - Mac may ignore custom DNS settings if router overrides via IPv6
