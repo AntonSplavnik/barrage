@@ -1,6 +1,6 @@
 import { connectionEl, playerEl, scoreLeftEl, scoreRightEl, matchEndEl, matchEndTextEl, rematchEl, sfxToggleEl, engine, scene } from "./engine.js";
 import { createSoundSystem } from "./sound.js";
-import { applyState, latestObjectStates } from "./state.js";
+import { applyState, latestObjectStates, visualObjects } from "./state.js";
 import { loadLevel, reloadLevel, ensureVisualsForState, removeStaleVisuals, hideBlockVisual, shrinkAndDisposeFragment, clearDestructionVisuals, updateCrackStage } from "./level.js";
 
 let seq = 0;
@@ -8,6 +8,8 @@ let displayedScores = { P1: 0, P2: 0 };
 let ready = false;
 
 const soundSystem = createSoundSystem();
+
+let vfxManager = null;
 
 sfxToggleEl.addEventListener("click", () => {
   soundSystem.toggle();
@@ -115,6 +117,8 @@ socket.addEventListener("message", async (event) => {
     const { initTemplateRegistry } = await import("./templateRegistry.js");
     await initTemplateRegistry(message.templates ?? []);
     await loadLevel(message.level);
+    const { createVfxManager } = await import("./vfx/vfxManager.js");
+    vfxManager = createVfxManager(scene);
     engine.runRenderLoop(() => { scene.render(); });
     ready = true;
     return;
@@ -129,6 +133,7 @@ socket.addEventListener("message", async (event) => {
   if (message.type === "roundStarted") {
     if (message.config) serverConfig = message.config;
     clearDestructionVisuals();
+    vfxManager?.clearEffects();
     if (message.level) reloadLevel(message.level);
   }
 
@@ -143,6 +148,7 @@ socket.addEventListener("message", async (event) => {
   if (message.type === "matchReset") {
     if (message.config) serverConfig = message.config;
     matchEndEl.classList.add("hidden");
+    vfxManager?.clearEffects();
     scoreLeftEl.innerHTML = "";
     scoreRightEl.innerHTML = "";
     displayedScores = { P1: 0, P2: 0 };
@@ -159,14 +165,23 @@ socket.addEventListener("message", async (event) => {
       }
       if (evt.kind === "reset") {
         clearDestructionVisuals();
+        vfxManager?.clearEffects();
       }
       if (evt.kind === "sfx" || evt.kind === "sfxStart" || evt.kind === "sfxStop") {
         soundSystem.handleSfxEvent(evt);
+      }
+      if (evt.kind === "explosion" || evt.kind === "missileHit") {
+        vfxManager?.handleEvent(evt);
       }
     }
   }
 
   if (message.type === "state") {
+    const trailMissileIds = (message.objects ?? [])
+      .filter(o => o.trailing)
+      .map(o => o.id);
+    vfxManager?.syncTrails(trailMissileIds, visualObjects);
+
     updateScores(message.scores, false);
     const prevStates = new Map(latestObjectStates);
     removeStaleVisuals(message.objects ?? []);

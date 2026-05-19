@@ -62,6 +62,18 @@ function handleMissileBlockHit(missile, block) {
 
   if (speed < getConfig("missileDamageMinSpeed")) return;
 
+  broadcast({
+    type: "event",
+    tick: gameState.tick,
+    events: [{
+      kind: "missileHit",
+      x: block.x + (missile.x < block.x ? -block.halfX : block.halfX),
+      y: missile.y,
+      z: block.z,
+      speed,
+    }],
+  });
+
   if (!block.maxHits) {
     broadcastSfx("missile_hit_block", { speed, x });
     return;
@@ -153,6 +165,7 @@ export function initCollisions() {
       const otherId = missileA ? idB : idA;
 
       if (!missile) return;
+      missile.trailing = false;
 
       const missileSpeed = Math.hypot(missile.vx ?? 0, missile.vy ?? 0, missile.vz ?? 0);
 

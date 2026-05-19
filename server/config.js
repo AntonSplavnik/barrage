@@ -73,7 +73,7 @@ export const SERVER_CONFIG = {
   // Bombs
   bombBlastRadius: 5,
   bombMaxDamage: 3,
-  bombMaxForce: 200,
+  bombMaxForce: 100,
   bombDetonationMinSpeed: 10,
 
   // Shot arc
