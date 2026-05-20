@@ -18,6 +18,7 @@ export function getShotArcRenderer() {
 const {
   ArcRotateCamera,
   Color3,
+  DirectionalLight,
   HemisphericLight,
   MeshBuilder,
   SceneLoader,
@@ -26,37 +27,71 @@ const {
   Vector3,
 } = BABYLON;
 
-let activeShadowGenerator = null;
+let activeShadowGenerators = [];
 
-function ensureCameraAndLight() {
-  if (scene.cameras.length > 0) {
-    scene.activeCamera = scene.cameras[0];
-  } else {
-    scene.activeCamera = new ArcRotateCamera("FallbackCamera", Math.PI / 2, Math.PI / 3, 14, Vector3.Zero(), scene);
-  }
+const FIELD_WIDTH = 90;
+const FIELD_HEIGHT = 30;
+const FIELD_CENTER_Y = 14.7;
+const BASE_RADIUS = 100;
+const BASE_FOV = 0.3996;
+
+function setupCameraAndLight() {
+  for (const cam of [...scene.cameras]) cam.dispose();
+
+  const camera = new ArcRotateCamera(
+    "GameCamera",
+    Math.PI / 2,
+    Math.PI / 2,
+    BASE_RADIUS,
+    new Vector3(0, FIELD_CENTER_Y, 0),
+    scene,
+  );
+  camera.fov = BASE_FOV;
+  camera.minZ = 0.1;
+  camera.maxZ = 500;
+  scene.activeCamera = camera;
 
   if (CONFIG.cameraControlsEnabled) {
-    scene.activeCamera.attachControl(canvas, true);
+    camera.attachControl(canvas, true);
   } else {
-    scene.activeCamera.detachControl();
+    camera.detachControl();
   }
 
-  if (scene.lights.length === 0) {
-    const fallbackLight = new HemisphericLight("FallbackLight", new Vector3(0, 1, 0), scene);
-    fallbackLight.intensity = CONFIG.fallbackLightIntensity ?? 0.8;
-  } else {
-    const scale = CONFIG.importedLightIntensityScale ?? 1.0;
-    for (const light of scene.lights) {
-      light.intensity *= scale;
-    }
+  fitCameraToAspect();
+
+  const scale = CONFIG.importedLightIntensityScale ?? 1.0;
+  for (const light of scene.lights) {
+    light.intensity *= scale;
   }
 
-  console.info("Scene setup", {
-    activeCamera: scene.activeCamera.name,
-    cameraControlsEnabled: Boolean(CONFIG.cameraControlsEnabled),
-    cameras: scene.cameras.map((camera) => camera.name),
-    lights: scene.lights.map((light) => ({ name: light.name, intensity: light.intensity })),
-  });
+  for (const mat of scene.materials) {
+    mat.maxSimultaneousLights = 8;
+  }
+
+  const hemi = new HemisphericLight("AmbientFill", new Vector3(0, 1, 0), scene);
+  hemi.intensity = 0.15;
+  hemi.groundColor = new Color3(0.15, 0.15, 0.2);
+}
+
+export function fitCameraToAspect() {
+  const camera = scene.activeCamera;
+  if (!camera) return;
+
+  const aspect = engine.getRenderWidth() / engine.getRenderHeight();
+  const fovV = camera.fov;
+  const visibleH = 2 * BASE_RADIUS * Math.tan(fovV / 2);
+  const visibleW = visibleH * aspect;
+
+  let radius = BASE_RADIUS;
+  if (visibleW < FIELD_WIDTH) {
+    radius = (FIELD_WIDTH / 2) / (Math.tan(fovV / 2) * aspect);
+  }
+  if (visibleH < FIELD_HEIGHT) {
+    const radiusForHeight = (FIELD_HEIGHT / 2) / Math.tan(fovV / 2);
+    radius = Math.max(radius, radiusForHeight);
+  }
+
+  camera.radius = radius;
 }
 
 let missilePickColliderMat = null;
@@ -128,31 +163,37 @@ export function createMissilePickCollider(root) {
   pickCollider.receiveShadows = false;
 }
 
-function isShadowCapableLight(light) {
-  return light.getClassName() !== "HemisphericLight";
-}
-
 function shouldReceiveShadows(mesh) {
   const name = mesh.name.toLowerCase();
   return name.includes("ground") || name.includes("plane");
 }
 
 function setupShadows() {
-  activeShadowGenerator = null;
+  activeShadowGenerators = [];
 
   if (!CONFIG.shadowsEnabled) return;
 
-  const light = scene.lights.find(isShadowCapableLight);
-  if (!light) {
-    console.info("Shadows disabled: no shadow-capable light found.");
-    return;
+  // Point light shadow generators cause coverage artifacts on large meshes:
+  // areas outside the shadow map are treated as fully shadowed, blocking
+  // illumination from that light entirely. Use a directional light instead.
+  let shadowLight = scene.lights.find(l => l.getClassName() === "DirectionalLight");
+
+  if (!shadowLight) {
+    shadowLight = new DirectionalLight("ShadowLight", new Vector3(-0.3, -1, -0.2), scene);
+    shadowLight.intensity = 0.3;
   }
 
-  const shadowGenerator = new ShadowGenerator(CONFIG.shadowMapSize ?? 2048, light);
-  shadowGenerator.useBlurExponentialShadowMap = true;
-  shadowGenerator.blurKernel = 16;
-  shadowGenerator.bias = CONFIG.shadowBias ?? 0.0005;
-  shadowGenerator.normalBias = CONFIG.shadowNormalBias ?? 0.02;
+  // For directional lights, position only affects the shadow camera placement.
+  // The GLB's Sun node is far behind the scene — reposition above the field.
+  shadowLight.position = new Vector3(0, 50, 30);
+  shadowLight.autoCalcShadowZBounds = true;
+  shadowLight.shadowFrustumSize = FIELD_WIDTH + 20;
+
+  const sg = new ShadowGenerator(CONFIG.shadowMapSize ?? 2048, shadowLight);
+  sg.useBlurExponentialShadowMap = true;
+  sg.blurKernel = 16;
+  sg.bias = CONFIG.shadowBias ?? 0.0005;
+  sg.normalBias = CONFIG.shadowNormalBias ?? 0.02;
 
   for (const mesh of scene.meshes) {
     if (!mesh.getTotalVertices || mesh.getTotalVertices() === 0) continue;
@@ -165,18 +206,12 @@ function setupShadows() {
 
     mesh.receiveShadows = shouldReceiveShadows(mesh);
 
-    if (role === "Vis" || role === "ColVis") {
-      shadowGenerator.addShadowCaster(mesh, true);
+    if (role === "Vis" || role === "ColVis" || !role) {
+      sg.addShadowCaster(mesh, true);
     }
   }
 
-  activeShadowGenerator = shadowGenerator;
-
-  console.info("Shadows enabled", {
-    light: light.name,
-    casters: shadowGenerator.getShadowMap().renderList.length,
-    mapSize: CONFIG.shadowMapSize ?? 2048,
-  });
+  activeShadowGenerators.push(sg);
 }
 
 function templatePathFromId(objectId) {
@@ -186,16 +221,16 @@ function templatePathFromId(objectId) {
 }
 
 function registerCloneShadows(clone) {
-  if (!activeShadowGenerator) return;
+  if (activeShadowGenerators.length === 0) return;
+  const sg = activeShadowGenerators[0];
   const descendants = descendantsOf(clone);
   for (const node of descendants) {
     if (!node.getTotalVertices || node.getTotalVertices() === 0) continue;
     const role = childRole(node.name);
-    if (role === "Vis" || role === "ColVis") {
-      activeShadowGenerator.addShadowCaster(node, true);
-    }
     if (role === "Col") {
       if (node.setEnabled) node.setEnabled(false);
+    } else {
+      sg.addShadowCaster(node, true);
     }
     node.receiveShadows = shouldReceiveShadows(node);
   }
@@ -463,7 +498,7 @@ function clearLevel() {
   for (const generator of scene.shadowGenerators?.slice() ?? []) {
     generator.dispose();
   }
-  activeShadowGenerator = null;
+  activeShadowGenerators = [];
 
   const arenaRoots = scene.rootNodes.filter((n) => n.name === "__root__");
   for (const root of arenaRoots) {
@@ -480,7 +515,7 @@ export async function loadLevel(url) {
     console.error("Failed to load arena GLB:", error);
   }
 
-  ensureCameraAndLight();
+  setupCameraAndLight();
   setupShadows();
   createAimArrowMeshes();
   shotArcRenderer = createShotArcRenderer(scene, CONFIG);
