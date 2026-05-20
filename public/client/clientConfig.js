@@ -6,6 +6,7 @@ export const CLIENT_CONFIG = {
   shadowBias: 0.0005,
   shadowNormalBias: 0.02,
   shadowLightIntensityScale: 3,
+  pointShadowMapSize: 1024,
   exposure: 1.0,
   contrast: 1.1,
 

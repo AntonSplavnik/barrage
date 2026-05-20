@@ -218,33 +218,7 @@ function setupShadows() {
 
   if (!CONFIG.shadowsEnabled) return;
 
-  // Point light shadow generators cause coverage artifacts on large meshes:
-  // areas outside the shadow map are treated as fully shadowed, blocking
-  // illumination from that light entirely. Use a directional light instead.
-  let shadowLight = scene.lights.find(l => l.getClassName() === "DirectionalLight");
-
-  if (!shadowLight) {
-    shadowLight = new DirectionalLight("ShadowLight", new Vector3(-0.3, -1, -0.2), scene);
-    shadowLight.intensity = 0.3;
-  }
-
-  shadowLight.intensity *= CONFIG.shadowLightIntensityScale ?? 1;
-
-  const sceneCenter = new Vector3(0, FIELD_CENTER_Y, 0);
-  const dir = shadowLight.direction.normalizeToNew();
-  shadowLight.position = sceneCenter.subtract(dir.scale(200));
-
-  shadowLight.shadowMinZ = 1;
-  shadowLight.shadowMaxZ = 500;
-  shadowLight.shadowFrustumSize = 300;
-
-  const sg = new ShadowGenerator(CONFIG.shadowMapSize ?? 2048, shadowLight);
-  sg.usePercentageCloserFiltering = true;
-  sg.filteringQuality = ShadowGenerator.QUALITY_MEDIUM;
-  sg.forceBackFacesOnly = true;
-  sg.bias = CONFIG.shadowBias ?? 0.0005;
-  sg.normalBias = CONFIG.shadowNormalBias ?? 0.02;
-
+  const casterMeshes = [];
   for (const mesh of scene.meshes) {
     if (!mesh.getTotalVertices || mesh.getTotalVertices() === 0) continue;
     if (!mesh.isEnabled()) continue;
@@ -262,11 +236,53 @@ function setupShadows() {
     mesh.receiveShadows = shouldReceiveShadows(mesh);
 
     if (role === "Vis" || role === "ColVis" || !role) {
-      sg.addShadowCaster(mesh, true);
+      casterMeshes.push(mesh);
     }
   }
 
-  activeShadowGenerators.push(sg);
+  let dirLight = scene.lights.find(l => l.getClassName() === "DirectionalLight");
+  if (!dirLight) {
+    dirLight = new DirectionalLight("ShadowLight", new Vector3(-0.3, -1, -0.2), scene);
+    dirLight.intensity = 0.3;
+  }
+
+  dirLight.intensity *= CONFIG.shadowLightIntensityScale ?? 1;
+
+  const sceneCenter = new Vector3(0, FIELD_CENTER_Y, 0);
+  const dir = dirLight.direction.normalizeToNew();
+  dirLight.position = sceneCenter.subtract(dir.scale(200));
+
+  dirLight.shadowMinZ = 1;
+  dirLight.shadowMaxZ = 500;
+  dirLight.shadowFrustumSize = 300;
+
+  const dirSg = new ShadowGenerator(CONFIG.shadowMapSize ?? 2048, dirLight);
+  dirSg.usePercentageCloserFiltering = true;
+  dirSg.filteringQuality = ShadowGenerator.QUALITY_MEDIUM;
+  dirSg.forceBackFacesOnly = true;
+  dirSg.bias = CONFIG.shadowBias ?? 0.0005;
+  dirSg.normalBias = CONFIG.shadowNormalBias ?? 0.02;
+
+  for (const mesh of casterMeshes) dirSg.addShadowCaster(mesh, true);
+  activeShadowGenerators.push(dirSg);
+
+  const pointLights = scene.lights.filter(l => l.getClassName() === "PointLight");
+  const pointMapSize = CONFIG.pointShadowMapSize ?? 1024;
+
+  for (const pl of pointLights) {
+    pl.shadowMinZ = 0.5;
+    pl.shadowMaxZ = 150;
+
+    const sg = new ShadowGenerator(pointMapSize, pl);
+    sg.usePercentageCloserFiltering = true;
+    sg.filteringQuality = ShadowGenerator.QUALITY_MEDIUM;
+    sg.forceBackFacesOnly = true;
+    sg.bias = CONFIG.shadowBias ?? 0.0005;
+    sg.normalBias = CONFIG.shadowNormalBias ?? 0.02;
+
+    for (const mesh of casterMeshes) sg.addShadowCaster(mesh, true);
+    activeShadowGenerators.push(sg);
+  }
 }
 
 function templatePathFromId(objectId) {
@@ -277,7 +293,6 @@ function templatePathFromId(objectId) {
 
 function registerCloneShadows(clone) {
   if (activeShadowGenerators.length === 0) return;
-  const sg = activeShadowGenerators[0];
   const descendants = descendantsOf(clone);
   for (const node of descendants) {
     if (!node.getTotalVertices || node.getTotalVertices() === 0) continue;
@@ -285,7 +300,7 @@ function registerCloneShadows(clone) {
     if (role === "Col") {
       if (node.setEnabled) node.setEnabled(false);
     } else {
-      sg.addShadowCaster(node, true);
+      for (const sg of activeShadowGenerators) sg.addShadowCaster(node, true);
     }
     node.receiveShadows = shouldReceiveShadows(node);
   }
@@ -554,6 +569,8 @@ function clearLevel() {
     generator.dispose();
   }
   activeShadowGenerators = [];
+
+  for (const light of [...scene.lights]) light.dispose();
 
   if (skyMesh) {
     skyMesh.dispose(false, true);
