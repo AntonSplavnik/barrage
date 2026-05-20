@@ -1592,6 +1592,20 @@ function averageReleaseVelocity() {
   }, CONFIG.normalReleaseVelocityMax ?? CONFIG.releaseVelocityMax ?? 8);
 }
 
+function myZoneSide() {
+  const num = parseInt(myPlayerId?.split("_")[1], 10);
+  if (!Number.isFinite(num)) return null;
+  return num % 2 === 1 ? "left" : "right";
+}
+
+function isInMyZone(x) {
+  const side = myZoneSide();
+  const limit = CONFIG.noMansLandX ?? 5;
+  if (side === "left") return x <= limit;
+  if (side === "right") return x >= -limit;
+  return false;
+}
+
 function pickDraggableRoot() {
   const pick = scene.pick(scene.pointerX, scene.pointerY, (mesh) => {
     const root = findGameplayRoot(mesh);
@@ -1602,6 +1616,9 @@ function pickDraggableRoot() {
 
   const root = findGameplayRoot(pick.pickedMesh);
   if (!root || !isDraggableRoot(root)) return null;
+
+  const objectState = latestObjectStates.get(root.name);
+  if (objectState && !isInMyZone(objectState.x)) return null;
 
   return root;
 }

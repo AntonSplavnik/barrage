@@ -70,6 +70,7 @@ export function createInputHandler({
     if (message.action === "aimStart") {
       const missile = gameObjects().get(message.entityId);
       if (!missile || !message.point || !missile.loadedInto) return;
+      if (!canGrab(client.playerId, missile)) return;
 
       const trebuchet = gameObjects().get(missile.loadedInto);
       if (!trebuchet || !trebuchet.loaded || trebuchet.fireState === armStateReleasing) return;
