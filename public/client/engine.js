@@ -21,6 +21,6 @@ export const sfxToggleEl = document.getElementById("sfx-toggle");
 
 export const engine = new Engine(canvas, true);
 export const scene = new Scene(engine);
-scene.clearColor.set(0.62, 0.72, 0.78, 1);
+window.__scene = scene;
 scene.imageProcessingConfiguration.exposure = CONFIG.exposure ?? 1.0;
 scene.imageProcessingConfiguration.contrast = CONFIG.contrast ?? 1.0;

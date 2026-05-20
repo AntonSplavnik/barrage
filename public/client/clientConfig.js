@@ -5,8 +5,9 @@ export const CLIENT_CONFIG = {
   shadowMapSize: 2048,
   shadowBias: 0.0005,
   shadowNormalBias: 0.02,
+  shadowLightIntensityScale: 3,
   exposure: 1.0,
-  contrast: 1.0,
+  contrast: 1.1,
 
   // Input
   inputInvertX: false,

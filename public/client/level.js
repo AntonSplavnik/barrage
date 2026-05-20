@@ -5,6 +5,7 @@ import { visualObjects, visualBaseRotations, trebuchetArmNodes, trebuchetLoadTar
 import { createAimArrowMeshes } from "./aim.js";
 import { getTemplateRoot } from "./templateRegistry.js";
 import { createShotArcRenderer } from "./shotArcRenderer.js";
+import { vertexShader, fragmentShader } from "../shaders/skyGradient.js";
 
 const crackStageVisuals = new Map();
 const fragmentVisuals = new Map();
@@ -22,12 +23,14 @@ const {
   HemisphericLight,
   MeshBuilder,
   SceneLoader,
+  ShaderMaterial,
   ShadowGenerator,
   StandardMaterial,
   Vector3,
 } = BABYLON;
 
 let activeShadowGenerators = [];
+let skyMesh = null;
 
 const FIELD_WIDTH = 90;
 const FIELD_HEIGHT = 30;
@@ -62,6 +65,15 @@ function setupCameraAndLight() {
   const scale = CONFIG.importedLightIntensityScale ?? 1.0;
   for (const light of scene.lights) {
     light.intensity *= scale;
+    if (light.parent) {
+      light.parent.computeWorldMatrix(true);
+      const worldMatrix = light.parent.getWorldMatrix();
+      light.position = light.parent.getAbsolutePosition().clone();
+      if (light.direction) {
+        light.direction = Vector3.TransformNormal(new Vector3(0, 0, -1), worldMatrix).normalize();
+      }
+      light.parent = null;
+    }
   }
 
   for (const mat of scene.materials) {
@@ -69,8 +81,8 @@ function setupCameraAndLight() {
   }
 
   const hemi = new HemisphericLight("AmbientFill", new Vector3(0, 1, 0), scene);
-  hemi.intensity = 0.15;
-  hemi.groundColor = new Color3(0.15, 0.15, 0.2);
+  hemi.intensity = 0.4;
+  hemi.groundColor = new Color3(0.2, 0.2, 0.25);
 }
 
 export function fitCameraToAspect() {
@@ -92,6 +104,39 @@ export function fitCameraToAspect() {
   }
 
   camera.radius = radius;
+}
+
+function setupSkyGradient() {
+  if (skyMesh) {
+    skyMesh.dispose(false, true);
+  }
+
+  const glbBg = scene.getMeshByName("bg");
+  if (glbBg) glbBg.setEnabled(false);
+
+  BABYLON.Effect.ShadersStore["skyGradientVertexShader"] = vertexShader;
+  BABYLON.Effect.ShadersStore["skyGradientFragmentShader"] = fragmentShader;
+
+  const mat = new ShaderMaterial("skyGradientMat", scene, {
+    vertex: "skyGradient",
+    fragment: "skyGradient",
+  }, {
+    attributes: ["position", "uv"],
+    uniforms: ["worldViewProjection", "topColor", "midColor", "horizonColor", "midPoint", "exponent"],
+  });
+
+  mat.setColor3("topColor", new Color3(0.25, 0.47, 0.75));
+  mat.setColor3("midColor", new Color3(0.55, 0.72, 0.88));
+  mat.setColor3("horizonColor", new Color3(0.78, 0.85, 0.92));
+  mat.setFloat("midPoint", 0.3);
+  mat.setFloat("exponent", 0.8);
+  mat.backFaceCulling = false;
+
+  skyMesh = MeshBuilder.CreatePlane("skyPlane", { width: 500, height: 300 }, scene);
+  skyMesh.material = mat;
+  skyMesh.position.set(0, 80, -315);
+  skyMesh.isPickable = false;
+  skyMesh.receiveShadows = false;
 }
 
 let missilePickColliderMat = null;
@@ -183,20 +228,30 @@ function setupShadows() {
     shadowLight.intensity = 0.3;
   }
 
-  // For directional lights, position only affects the shadow camera placement.
-  // The GLB's Sun node is far behind the scene — reposition above the field.
-  shadowLight.position = new Vector3(0, 50, 30);
-  shadowLight.autoCalcShadowZBounds = true;
-  shadowLight.shadowFrustumSize = FIELD_WIDTH + 20;
+  shadowLight.intensity *= CONFIG.shadowLightIntensityScale ?? 1;
+
+  const sceneCenter = new Vector3(0, FIELD_CENTER_Y, 0);
+  const dir = shadowLight.direction.normalizeToNew();
+  shadowLight.position = sceneCenter.subtract(dir.scale(200));
+
+  shadowLight.shadowMinZ = 1;
+  shadowLight.shadowMaxZ = 500;
+  shadowLight.shadowFrustumSize = 300;
 
   const sg = new ShadowGenerator(CONFIG.shadowMapSize ?? 2048, shadowLight);
-  sg.useBlurExponentialShadowMap = true;
-  sg.blurKernel = 16;
+  sg.usePercentageCloserFiltering = true;
+  sg.filteringQuality = ShadowGenerator.QUALITY_MEDIUM;
+  sg.forceBackFacesOnly = true;
   sg.bias = CONFIG.shadowBias ?? 0.0005;
   sg.normalBias = CONFIG.shadowNormalBias ?? 0.02;
 
   for (const mesh of scene.meshes) {
     if (!mesh.getTotalVertices || mesh.getTotalVertices() === 0) continue;
+    if (!mesh.isEnabled()) continue;
+    if (mesh === skyMesh) {
+      mesh.receiveShadows = false;
+      continue;
+    }
 
     const role = childRole(mesh.name);
     if (role === "Col") {
@@ -500,6 +555,11 @@ function clearLevel() {
   }
   activeShadowGenerators = [];
 
+  if (skyMesh) {
+    skyMesh.dispose(false, true);
+    skyMesh = null;
+  }
+
   const arenaRoots = scene.rootNodes.filter((n) => n.name === "__root__");
   for (const root of arenaRoots) {
     root.dispose(false, true);
@@ -516,6 +576,7 @@ export async function loadLevel(url) {
   }
 
   setupCameraAndLight();
+  setupSkyGradient();
   setupShadows();
   createAimArrowMeshes();
   shotArcRenderer = createShotArcRenderer(scene, CONFIG);
