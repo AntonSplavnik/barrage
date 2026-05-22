@@ -2,7 +2,6 @@ import { engine, scene, canvas, CONFIG } from "./engine.js";
 import { getServerConfig } from "./network.js";
 import { childRole, descendantsOf, isTrebuchetArmRoot, isMissileName, colliderNodesFor } from "./utils.js";
 import { visualObjects, visualBaseRotations, trebuchetArmNodes, trebuchetLoadTargets, latestObjectStates, findGameplayRoot } from "./state.js";
-import { createAimArrowMeshes } from "./aim.js";
 import { getTemplateRoot } from "./templateRegistry.js";
 import { createShotArcRenderer } from "./shotArcRenderer.js";
 import { vertexShader, fragmentShader } from "../shaders/skyGradient.js";
@@ -595,7 +594,6 @@ export async function loadLevel(url) {
   setupCameraAndLight();
   setupSkyGradient();
   setupShadows();
-  createAimArrowMeshes();
   shotArcRenderer = createShotArcRenderer(scene, CONFIG);
   engine.resize();
 }

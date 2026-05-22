@@ -95,18 +95,6 @@ export function isForwardPullPoint(trebuchetState, point, releasePoint) {
   return point.x > releasePoint.x;
 }
 
-export function clampAimTailPoint(headPoint, tailPoint, config) {
-  const backVector = tailPoint.subtract(headPoint);
-  const arrowLength = backVector.length();
-  const maxArrowLength = config.aimArrowMaxLength ?? config.aimMaxPullDistance ?? 6;
-
-  if (arrowLength <= maxArrowLength || arrowLength <= 0.0001) {
-    return tailPoint;
-  }
-
-  return headPoint.add(backVector.scale(maxArrowLength / arrowLength));
-}
-
 export function clampMagnitude(vector, maxMagnitude) {
   const magnitude = Math.hypot(vector.x, vector.y, vector.z);
   if (magnitude <= maxMagnitude || magnitude === 0) return vector;

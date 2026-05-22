@@ -2,7 +2,7 @@ import { scene, canvas, resetEl, restartServerEl, connectionEl, CONFIG } from ".
 import { isDraggableRoot } from "./utils.js";
 import { visualObjects, latestObjectStates, findGameplayRoot } from "./state.js";
 import { sendInput } from "./network.js";
-import { setAimRefs, updateAimArrow, hideAimArrow } from "./aim.js";
+import { setAimRefs, updateAim } from "./aim.js";
 import { getShotArcRenderer } from "./level.js";
 
 const { Vector3 } = BABYLON;
@@ -77,7 +77,7 @@ function beginDrag() {
   if (objectState?.loadedInto) {
     pointerMode = "aim";
     aimWorldPoint = world.clone();
-    updateAimArrow();
+    updateAim();
     sendInput("aimStart", {
       entityId: selectedEntityId,
       trebuchetId: objectState.loadedInto,
@@ -100,7 +100,7 @@ function moveDrag() {
 
   if (pointerMode === "aim") {
     aimWorldPoint = world.clone();
-    updateAimArrow();
+    updateAim();
     const point = protocolPointFromWorld(world, selectedEntityId);
     sendInput("aimMove", {
       entityId: selectedEntityId,
@@ -130,7 +130,7 @@ function endDrag() {
 
   if (pointerMode === "aim") {
     aimWorldPoint = point.clone();
-    updateAimArrow();
+    updateAim();
     const finalPoint = protocolPointFromWorld(point, selectedEntityId);
     sendInput("aimRelease", {
       entityId: selectedEntityId,
@@ -140,7 +140,6 @@ function endDrag() {
     selectedEntityId = null;
     pointerMode = "drag";
     aimWorldPoint = null;
-    hideAimArrow();
     getShotArcRenderer()?.fadeOut();
     return;
   }
@@ -159,7 +158,6 @@ function endDrag() {
   selectedEntityId = null;
   pointerMode = "drag";
   aimWorldPoint = null;
-  hideAimArrow();
 
   if (CONFIG.cameraControlsEnabled) {
     scene.activeCamera.attachControl(canvas, true);

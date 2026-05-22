@@ -1,15 +1,9 @@
-import { scene, CONFIG } from "./engine.js";
 import { getServerConfig } from "./network.js";
 import { latestObjectStates, trebuchetLoadTargets, setOnAimUpdate } from "./state.js";
-import { degreesToRadians, isForwardPullPoint, clampAimTailPoint } from "./utils.js";
+import { degreesToRadians, isForwardPullPoint } from "./utils.js";
 import { getShotArcRenderer } from "./level.js";
 
-const { Color3, MeshBuilder, StandardMaterial, Vector3 } = BABYLON;
-
-let aimArrowShaft = null;
-let aimArrowHeadLeft = null;
-let aimArrowHeadRight = null;
-let aimArrowMaterial = null;
+const { Vector3 } = BABYLON;
 
 let pointerModeRef = () => "drag";
 let selectedEntityIdRef = () => null;
@@ -22,84 +16,12 @@ export function setAimRefs(getPointerMode, getSelectedEntityId, getAimWorldPoint
   aimWorldPointRef = getAimWorldPoint;
 }
 
-export function createAimArrowMeshes() {
-  if (!aimArrowMaterial) {
-    aimArrowMaterial = new StandardMaterial("AimArrowMaterial", scene);
-    aimArrowMaterial.diffuseColor = Color3.FromHexString(CONFIG.aimArrowStartColor ?? "#ffffff");
-    aimArrowMaterial.emissiveColor = Color3.FromHexString(CONFIG.aimArrowStartColor ?? "#ffffff");
-    aimArrowMaterial.specularColor = Color3.Black();
-    aimArrowMaterial.disableLighting = true;
-    aimArrowMaterial.disableDepthWrite = true;
-    aimArrowMaterial.depthFunction = BABYLON.Engine.ALWAYS;
-  }
-
-  if (!aimArrowShaft) {
-    aimArrowShaft = MeshBuilder.CreateTube("AimArrowShaft", {
-      path: [Vector3.Zero(), Vector3.Right()],
-      radius: CONFIG.aimArrowRadius ?? 0.06,
-      updatable: true,
-    }, scene);
-    aimArrowShaft.material = aimArrowMaterial;
-    aimArrowShaft.isPickable = false;
-    aimArrowShaft.renderingGroupId = 2;
-    aimArrowShaft.alwaysSelectAsActiveMesh = true;
-    aimArrowShaft.setEnabled(false);
-  }
-
-  if (!aimArrowHeadLeft) {
-    aimArrowHeadLeft = MeshBuilder.CreateTube("AimArrowHeadLeft", {
-      path: [Vector3.Zero(), Vector3.Right()],
-      radius: CONFIG.aimArrowRadius ?? 0.06,
-      updatable: true,
-    }, scene);
-    aimArrowHeadLeft.material = aimArrowMaterial;
-    aimArrowHeadLeft.isPickable = false;
-    aimArrowHeadLeft.renderingGroupId = 2;
-    aimArrowHeadLeft.alwaysSelectAsActiveMesh = true;
-    aimArrowHeadLeft.setEnabled(false);
-  }
-
-  if (!aimArrowHeadRight) {
-    aimArrowHeadRight = MeshBuilder.CreateTube("AimArrowHeadRight", {
-      path: [Vector3.Zero(), Vector3.Right()],
-      radius: CONFIG.aimArrowRadius ?? 0.06,
-      updatable: true,
-    }, scene);
-    aimArrowHeadRight.material = aimArrowMaterial;
-    aimArrowHeadRight.isPickable = false;
-    aimArrowHeadRight.renderingGroupId = 2;
-    aimArrowHeadRight.alwaysSelectAsActiveMesh = true;
-    aimArrowHeadRight.setEnabled(false);
-  }
-}
-
-export function hideAimArrow() {
-  aimArrowShaft?.setEnabled(false);
-  aimArrowHeadLeft?.setEnabled(false);
-  aimArrowHeadRight?.setEnabled(false);
-}
-
 function hideArc() {
   const renderer = getShotArcRenderer();
   if (renderer) {
     renderer.hide();
     wasShowingArc = false;
   }
-}
-
-function updateAimArrowColor(extensionRatio) {
-  if (!aimArrowMaterial) return;
-
-  const startColor = Color3.FromHexString(CONFIG.aimArrowStartColor ?? "#ffffff");
-  const endColor = Color3.FromHexString(CONFIG.aimArrowEndColor ?? "#39ff14");
-  const t = Math.min(1, Math.max(0, extensionRatio));
-  const color = new Color3(
-    startColor.r + (endColor.r - startColor.r) * t,
-    startColor.g + (endColor.g - startColor.g) * t,
-    startColor.b + (endColor.b - startColor.b) * t,
-  );
-  aimArrowMaterial.diffuseColor = color;
-  aimArrowMaterial.emissiveColor = color;
 }
 
 function releasePointForTrebuchet(trebuchetId) {
@@ -129,13 +51,12 @@ function releasePointForTrebuchet(trebuchetId) {
   return target.targetNode.getAbsolutePosition().clone();
 }
 
-export function updateAimArrow() {
+export function updateAim() {
   const pointerMode = pointerModeRef();
   const selectedEntityId = selectedEntityIdRef();
   const aimWorldPoint = aimWorldPointRef();
 
   if (pointerMode !== "aim" || !selectedEntityId || !aimWorldPoint) {
-    hideAimArrow();
     hideArc();
     return;
   }
@@ -143,69 +64,21 @@ export function updateAimArrow() {
   const missileState = latestObjectStates.get(selectedEntityId);
   const trebuchetId = missileState?.loadedInto;
   if (!trebuchetId) {
-    hideAimArrow();
     hideArc();
     return;
   }
 
   const headPoint = releasePointForTrebuchet(trebuchetId);
   if (!headPoint) {
-    hideAimArrow();
     hideArc();
     return;
   }
 
   const trebuchetState = latestObjectStates.get(trebuchetId);
   if (!trebuchetState || !isForwardPullPoint(trebuchetState, aimWorldPoint, headPoint)) {
-    hideAimArrow();
     hideArc();
     return;
   }
-
-  const maxArrowLength = getServerConfig("aimMaxPullDistance") ?? CONFIG.aimArrowMaxLength ?? 4.5;
-  const tailPoint = clampAimTailPoint(headPoint, aimWorldPoint.clone(), { aimArrowMaxLength: maxArrowLength });
-  tailPoint.z = headPoint.z + (CONFIG.aimArrowZOffset ?? 0.05);
-  headPoint.z += CONFIG.aimArrowZOffset ?? 0.05;
-
-  const backVector = tailPoint.subtract(headPoint);
-  const arrowLength = backVector.length();
-  if (arrowLength < (CONFIG.aimArrowMinLength ?? 0.12)) {
-    hideAimArrow();
-    hideArc();
-    return;
-  }
-
-  const backDir = backVector.scale(1 / arrowLength);
-  const extensionRatio = arrowLength / Math.max(0.001, maxArrowLength);
-  updateAimArrowColor(extensionRatio);
-  const headLength = Math.min(
-    CONFIG.aimArrowHeadLengthMax ?? 0.75,
-    Math.max(CONFIG.aimArrowHeadLengthMin ?? 0.2, arrowLength * (CONFIG.aimArrowHeadLengthScale ?? 0.18)),
-  );
-  const headWidth = Math.max(CONFIG.aimArrowHeadWidth ?? 0.12, headLength * (CONFIG.aimArrowHeadWidthScale ?? 0.45));
-  const sideDir = new Vector3(-backDir.y, backDir.x, 0);
-  const leftWing = headPoint.add(backDir.scale(headLength)).add(sideDir.scale(headWidth));
-  const rightWing = headPoint.add(backDir.scale(headLength)).subtract(sideDir.scale(headWidth));
-
-  MeshBuilder.CreateTube("AimArrowShaft", {
-    path: [tailPoint, headPoint],
-    radius: CONFIG.aimArrowRadius ?? 0.06,
-    instance: aimArrowShaft,
-  });
-  MeshBuilder.CreateTube("AimArrowHeadLeft", {
-    path: [leftWing, headPoint],
-    radius: CONFIG.aimArrowRadius ?? 0.06,
-    instance: aimArrowHeadLeft,
-  });
-  MeshBuilder.CreateTube("AimArrowHeadRight", {
-    path: [rightWing, headPoint],
-    radius: CONFIG.aimArrowRadius ?? 0.06,
-    instance: aimArrowHeadRight,
-  });
-
-  aimArrowShaft.setEnabled(true);
-  aimArrowHeadLeft.setEnabled(true);
-  aimArrowHeadRight.setEnabled(true);
 
   const renderer = getShotArcRenderer();
   if (renderer) {
@@ -224,6 +97,6 @@ export function updateAimArrow() {
 
 setOnAimUpdate(() => {
   if (pointerModeRef() === "aim" && selectedEntityIdRef()) {
-    updateAimArrow();
+    updateAim();
   }
 });
