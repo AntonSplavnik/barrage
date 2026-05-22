@@ -4,6 +4,7 @@ export const CONFIG = CLIENT_CONFIG;
 
 const {
   Engine,
+  WebGPUEngine,
   Scene,
 } = BABYLON;
 
@@ -19,8 +20,21 @@ export const matchEndTextEl = document.getElementById("match-end-text");
 export const rematchEl = document.getElementById("rematch");
 export const sfxToggleEl = document.getElementById("sfx-toggle");
 
-export const engine = new Engine(canvas, true);
+async function createEngine(canvas) {
+  if (navigator.gpu && WebGPUEngine) {
+    try {
+      const eng = new WebGPUEngine(canvas, { antialias: true });
+      await eng.initAsync();
+      return eng;
+    } catch {
+      // WebGPU unavailable, fall back to WebGL
+    }
+  }
+  return new Engine(canvas, true);
+}
+
+export const engine = await createEngine(canvas);
 export const scene = new Scene(engine);
-scene.clearColor.set(0.62, 0.72, 0.78, 1);
+window.__scene = scene;
 scene.imageProcessingConfiguration.exposure = CONFIG.exposure ?? 1.0;
 scene.imageProcessingConfiguration.contrast = CONFIG.contrast ?? 1.0;

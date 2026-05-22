@@ -1,13 +1,14 @@
 export const CLIENT_CONFIG = {
   // Rendering
-  importedLightIntensityScale: 0.01,
-  fallbackLightIntensity: 0.1,
+  importedLightIntensityScale: 1.0,
   shadowsEnabled: true,
   shadowMapSize: 2048,
   shadowBias: 0.0005,
   shadowNormalBias: 0.02,
+  shadowLightIntensityScale: 3,
+  pointShadowMapSize: 1024,
   exposure: 1.0,
-  contrast: 1.0,
+  contrast: 1.1,
 
   // Input
   inputInvertX: false,
