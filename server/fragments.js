@@ -15,6 +15,7 @@ export function createFragmentSystem({
   broadcastImpactSoundEffect,
   config,
   disposePhysicsAggregate,
+  fetchBuffer,
   fs,
   gameObjects,
   getActiveRoom,
@@ -38,9 +39,14 @@ export function createFragmentSystem({
 
     fragmentTemplateData = {};
     for (const [side, file] of [["L", "fragmented_blockL.glb"], ["R", "fragmented_blockR.glb"]]) {
-      const fragPath = path.join(assetsDir, file);
       try {
-        const glbBuffer = await fs.readFile(fragPath);
+        let glbBuffer;
+        if (fetchBuffer) {
+          glbBuffer = await fetchBuffer(`${assetsDir}/${file}`);
+        } else {
+          const fragPath = path.join(assetsDir, file);
+          glbBuffer = await fs.readFile(fragPath);
+        }
         fragmentTemplateData[side] = parseFragmentGlb(glbBuffer);
         console.log(`Loaded ${fragmentTemplateData[side].length} fragment templates from ${file}.`);
       } catch (err) {

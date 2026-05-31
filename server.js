@@ -1,6 +1,9 @@
 import express from "express";
 import http from "node:http";
 import { spawn } from "node:child_process";
+import authRouter from "./src/server/auth.js";
+import lobbyRouter from "./src/server/lobby.js";
+import signalingRouter from "./src/server/signaling.js";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import fs from "node:fs/promises";
@@ -227,6 +230,11 @@ async function restartServerProcess() {
   child.unref();
   process.exit(0);
 }
+
+app.use(express.json());
+app.use("/api", authRouter);
+app.use("/api", lobbyRouter);
+app.use("/api", signalingRouter);
 
 app.post("/admin/restart", (request, response) => {
   if (!isLocalRequest(request)) {

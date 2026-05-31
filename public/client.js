@@ -1,4 +1,24 @@
+// Route guard — must come first, before any Babylon initialization
+{
+  const _token = sessionStorage.getItem("barrage_token");
+  const _p = new URLSearchParams(window.location.search);
+  const _mode = _p.get("mode");
+  const _sess = _p.get("session");
+  if (!_mode || !_sess) {
+    window.location.replace(_token ? "/lobby.html" : "/login.html");
+    // Stop module execution so Babylon never initializes
+    document.body.innerHTML = "";
+    throw new Error("redirecting");
+  }
+  if (!_token) {
+    window.location.replace("/login.html");
+    document.body.innerHTML = "";
+    throw new Error("redirecting");
+  }
+}
+
 import { createMusicController } from "./music.js";
+import { RtcHost, RtcGuest } from "./rtc.js";
 
 const isMobile = window.matchMedia?.("(pointer: coarse)").matches ?? false;
 import { createSoundEffectsController } from "./sound_manager.js";
@@ -1208,10 +1228,131 @@ function startFragmentShrink(fragId, durationMs, { detachFromState = false } = {
   shrinkObservers.set(fragId, { observer, mesh });
 }
 
-const socketProtocol = window.location.protocol === "https:" ? "wss" : "ws";
-let _sessionId = sessionStorage.getItem("barrage_sid");
-if (!_sessionId) { _sessionId = crypto.randomUUID(); sessionStorage.setItem("barrage_sid", _sessionId); }
-const socket = new WebSocket(`${socketProtocol}://${window.location.host}/?sid=${_sessionId}`);
+// ---------------------------------------------------------------------------
+// Transport abstraction — WebSocket, Worker (host), or WebRTC DataChannel (guest)
+// ---------------------------------------------------------------------------
+
+class VirtualSocket {
+  constructor() {
+    this._listeners = {};
+    this.readyState = 0;
+    this.OPEN = 1;
+    this.CLOSED = 3;
+    this._queue = [];
+  }
+  addEventListener(type, fn, opts) {
+    (this._listeners[type] ??= []).push({ fn, capture: opts?.capture ?? false });
+  }
+  _fire(type, event) {
+    for (const { fn } of (this._listeners[type] ?? [])) fn(event);
+  }
+  send(data) {
+    if (this.readyState === 1) this._doSend(data);
+    else this._queue.push(data);
+  }
+  _doSend(_data) {}
+  _open() {
+    this.readyState = 1;
+    this._fire("open", {});
+    for (const d of this._queue.splice(0)) this._doSend(d);
+  }
+  _close() {
+    this.readyState = 3;
+    this._fire("close", {});
+  }
+  _recv(data) {
+    this._fire("message", { data });
+  }
+}
+
+class WorkerSocket extends VirtualSocket {
+  constructor(sessionId, token) {
+    super();
+    const worker = new Worker("/game-worker.js", { type: "module" });
+    this._worker = worker;
+    const rtc = new RtcHost(sessionId, token);
+    this._rtc = rtc;
+
+    worker.onmessage = ({ data }) => {
+      if (data.type === "ready") {
+        console.log("[host] worker ready → starting RTC signaling");
+        worker.postMessage({ type: "playerConnect", role: "host" });
+        rtc.start()
+          .then(() => console.log("[host] RTC DataChannel open — guest connected"))
+          .catch((err) => console.error("[rtc/host]", err.message));
+        this._open();
+      } else if (data.type === "toPlayer") {
+        if (data.role === "host") {
+          this._recv(data.data);       // → host's game client
+        } else if (data.role === "guest") {
+          rtc.send(data.data);         // → guest via WebRTC DataChannel
+        }
+      } else if (data.type === "error") {
+        console.error("[worker]", data.message);
+        this._close();
+      }
+    };
+    worker.onerror = (e) => { console.error("[worker] fatal:", e); this._close(); };
+
+    // Guest connects via WebRTC → tell worker
+    rtc.onConnected = () => {
+      console.log("[host] RTC onConnected → notifying worker");
+      worker.postMessage({ type: "playerConnect", role: "guest" });
+    };
+    // Message from guest → forward to worker
+    rtc.onMessage = (data) => {
+      worker.postMessage({ type: "playerMessage", role: "guest", data });
+    };
+    // Guest disconnects
+    rtc.onDisconnected = () => {
+      worker.postMessage({ type: "playerDisconnect", role: "guest" });
+    };
+
+    worker.postMessage({ type: "init", serverBaseUrl: window.location.origin });
+  }
+  _doSend(data) {
+    this._worker.postMessage({ type: "playerMessage", role: "host", data });
+  }
+}
+
+class GuestSocket extends VirtualSocket {
+  constructor(rtc) {
+    super();
+    this._rtc = rtc;
+    rtc.onMessage = (data) => this._recv(data);
+    rtc.onDisconnected = () => this._close();
+  }
+  _doSend(data) { this._rtc.send(data); }
+}
+
+// ---------------------------------------------------------------------------
+// Select transport (guard at top of file already ensures mode/session/token exist)
+// ---------------------------------------------------------------------------
+
+const _authToken = sessionStorage.getItem("barrage_token");
+const _rtcParams = new URLSearchParams(window.location.search);
+const _rtcMode = _rtcParams.get("mode");
+const _rtcSession = _rtcParams.get("session");
+
+let socket;
+
+if (_rtcMode === "host") {
+  socket = new WorkerSocket(_rtcSession, _authToken);
+} else if (_rtcMode === "guest") {
+  console.log("[guest] starting RTC handshake for session", _rtcSession);
+  const _rtcGuest = new RtcGuest(_rtcSession, _authToken);
+  socket = new GuestSocket(_rtcGuest);
+  _rtcGuest.start()
+    .then(() => {
+      console.log("[guest] RTC DataChannel open → socket open");
+      socket._open();
+    })
+    .catch((err) => {
+      console.error("[guest] WebRTC connection failed:", err.message);
+      setStatus("Connection failed: " + err.message);
+      socket._close();
+    });
+}
 
 socket.addEventListener("open", () => {
   setStatus("Connected");
@@ -1220,9 +1361,20 @@ socket.addEventListener("open", () => {
 socket.addEventListener("message", (event) => {
   const message = JSON.parse(event.data);
 
+  // Lag-compensation ping from game worker — echo immediately
+  if (message.type === "ping") {
+    socket.send(JSON.stringify({ type: "pong", ts: message.ts }));
+    return;
+  }
+
   if (message.type === "welcome") {
+    const prevId = myPlayerId;
     myPlayerId = message.playerId;
     playerEl.textContent = message.playerId;
+    // If "matched" already fired and loaded the level, re-snap camera now that we know our side
+    if (prevId !== myPlayerId && loadedLevelUrl) {
+      cameraControl.snapshotAndPan();
+    }
     const playerNum = parseInt(message.playerId?.split("_")[1], 10);
     if (Number.isFinite(playerNum)) {
       const isOdd = playerNum % 2 === 1;
@@ -1252,6 +1404,7 @@ socket.addEventListener("message", (event) => {
     currentRoomId = message.roomId;
     currentLevelUrl = message.level ?? currentLevelUrl;
     isMatched = false;
+    myPlayerId = message.playerId;
     playerEl.textContent = message.playerId;
     if (message.opponentId) {
       const oppNum = parseInt(message.opponentId.split("_")[1], 10);
@@ -1420,7 +1573,7 @@ socket.addEventListener("close", () => {
 });
 
 function sendInput(action, payload) {
-  if (socket.readyState !== WebSocket.OPEN) return;
+  if (socket.readyState !== (socket.OPEN ?? WebSocket.OPEN)) return;
   if (!isMatched) return;
 
   socket.send(JSON.stringify({

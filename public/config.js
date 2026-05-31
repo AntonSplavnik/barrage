@@ -75,7 +75,7 @@ export const BARRAGE_CONFIG = {
   shadowMapSize: 2048,                    // px
   shadowBlurEnabled: true,
   shadowBlurKernel: 16,
-  renderMaxHeightPx: 900,                // px, cap internal render height while keeping fullscreen CSS size
+  renderMaxHeightPx: 1024,                // px, cap internal render height while keeping fullscreen CSS size
   shadowBias: 0.0005,
   shadowNormalBias: 0.02,
   exposure: 1.0,                          // multiplier
@@ -96,7 +96,7 @@ export const BARRAGE_CONFIG = {
   staticFriction: 1.0,                    // 0–1
 
   // UI.
-  hideHud: true,                          // hides player name and buttons panel
+  hideHud: false,                          // hides player name and buttons panel
 
   // Input.
   inputInvertX: true,

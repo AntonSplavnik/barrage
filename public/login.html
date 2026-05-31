@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Barrage — Login</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0a0a0f;
+      color: #e0e0e0;
+      font-family: system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      gap: 2rem;
+    }
+
+    h1 {
+      font-size: 2.5rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: #fff;
+    }
+
+    .card {
+      background: #14141e;
+      border: 1px solid #2a2a3e;
+      border-radius: 10px;
+      padding: 2rem;
+      width: 100%;
+      max-width: 360px;
+      display: flex;
+      flex-direction: column;
+      gap: 1.2rem;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 0;
+      border-bottom: 1px solid #2a2a3e;
+      margin-bottom: 0.5rem;
+    }
+
+    .tab {
+      flex: 1;
+      background: none;
+      border: none;
+      color: #888;
+      font-size: 0.9rem;
+      padding: 0.6rem 0.4rem;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: color 0.15s, border-color 0.15s;
+      white-space: nowrap;
+    }
+    .tab.active {
+      color: #fff;
+      border-bottom-color: #6c63ff;
+    }
+
+    label { font-size: 0.85rem; color: #aaa; }
+
+    input[type="text"],
+    input[type="password"] {
+      width: 100%;
+      background: #0d0d17;
+      border: 1px solid #2a2a3e;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 1rem;
+      padding: 0.55rem 0.75rem;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input:focus { border-color: #6c63ff; }
+
+    .field { display: flex; flex-direction: column; gap: 0.3rem; }
+
+    .quick-hint {
+      font-size: 0.8rem;
+      color: #666;
+      line-height: 1.4;
+    }
+
+    button[type="submit"] {
+      width: 100%;
+      background: #6c63ff;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 1rem;
+      font-weight: 600;
+      padding: 0.65rem;
+      cursor: pointer;
+      transition: background 0.15s;
+      margin-top: 0.4rem;
+    }
+    button[type="submit"]:hover { background: #574fd6; }
+    button[type="submit"]:disabled { background: #333; cursor: default; }
+
+    .error {
+      color: #f56565;
+      font-size: 0.85rem;
+      min-height: 1.2em;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <h1>Barrage</h1>
+
+  <div class="card">
+    <div class="tabs">
+      <button class="tab active" id="tab-quick" type="button">Quick Play</button>
+      <button class="tab" id="tab-login" type="button">Login</button>
+      <button class="tab" id="tab-register" type="button">Register</button>
+    </div>
+
+    <form id="form" autocomplete="off">
+      <!-- Quick Play -->
+      <div id="section-quick">
+        <div class="field">
+          <label for="quick-name">Display name</label>
+          <input id="quick-name" type="text" name="name" required maxlength="24" placeholder="e.g. Alice">
+        </div>
+        <p class="quick-hint" style="margin-top:0.6rem">No password needed — just pick a name and play. Your session won't persist after the tab closes.</p>
+      </div>
+
+      <!-- Login -->
+      <div id="section-login" style="display:none">
+        <div class="field">
+          <label for="login-username">Username</label>
+          <input id="login-username" type="text" name="username" maxlength="24" autocomplete="username">
+        </div>
+        <div class="field" style="margin-top:1rem">
+          <label for="login-password">Password</label>
+          <input id="login-password" type="password" name="password" autocomplete="current-password">
+        </div>
+      </div>
+
+      <!-- Register -->
+      <div id="section-register" style="display:none">
+        <div class="field">
+          <label for="reg-username">Username</label>
+          <input id="reg-username" type="text" name="username" maxlength="24" autocomplete="username">
+        </div>
+        <div class="field" style="margin-top:1rem">
+          <label for="reg-password">Password</label>
+          <input id="reg-password" type="password" name="password" autocomplete="new-password" minlength="6">
+        </div>
+      </div>
+
+      <p class="error" id="error-msg" style="margin-top:0.8rem"></p>
+      <button type="submit" id="submit-btn">Play</button>
+    </form>
+  </div>
+
+  <script>
+    const tabs = {
+      quick:    { tab: document.getElementById("tab-quick"),    section: document.getElementById("section-quick") },
+      login:    { tab: document.getElementById("tab-login"),    section: document.getElementById("section-login") },
+      register: { tab: document.getElementById("tab-register"), section: document.getElementById("section-register") },
+    };
+
+    const submitBtn = document.getElementById("submit-btn");
+    const errorMsg  = document.getElementById("error-msg");
+    let mode = "quick";
+
+    function switchTab(next) {
+      mode = next;
+      for (const [key, { tab, section }] of Object.entries(tabs)) {
+        tab.classList.toggle("active", key === next);
+        section.style.display = key === next ? "" : "none";
+      }
+      submitBtn.textContent = next === "quick" ? "Play" : next === "login" ? "Login" : "Register";
+      errorMsg.textContent = "";
+    }
+
+    tabs.quick.tab.addEventListener("click",    () => switchTab("quick"));
+    tabs.login.tab.addEventListener("click",    () => switchTab("login"));
+    tabs.register.tab.addEventListener("click", () => switchTab("register"));
+
+    document.getElementById("form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      errorMsg.textContent = "";
+      submitBtn.disabled = true;
+
+      const messages = {
+        "username-taken":         "That username is already taken.",
+        "invalid-credentials":    "Incorrect username or password.",
+        "username-length":        "Name must be 2–24 characters.",
+        "username-invalid-chars": "Name can only contain letters, numbers, _ and -.",
+        "password-too-short":     "Password must be at least 6 characters.",
+        "username-and-password-required": "Please enter a username and password.",
+      };
+
+      try {
+        let body, endpoint;
+
+        if (mode === "quick") {
+          endpoint = "/api/quickplay";
+          body = { name: document.getElementById("quick-name").value.trim() };
+        } else if (mode === "login") {
+          endpoint = "/api/login";
+          body = {
+            username: document.getElementById("login-username").value.trim(),
+            password: document.getElementById("login-password").value,
+          };
+        } else {
+          endpoint = "/api/register";
+          body = {
+            username: document.getElementById("reg-username").value.trim(),
+            password: document.getElementById("reg-password").value,
+          };
+        }
+
+        const res = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+
+        if (!data.ok) {
+          errorMsg.textContent = messages[data.error] ?? "Something went wrong.";
+          submitBtn.disabled = false;
+          return;
+        }
+
+        sessionStorage.setItem("barrage_token", data.token);
+        sessionStorage.setItem("barrage_username", data.username);
+        window.location.href = "/lobby.html";
+      } catch {
+        errorMsg.textContent = "Network error. Please try again.";
+        submitBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

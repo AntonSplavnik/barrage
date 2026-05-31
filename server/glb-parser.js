@@ -149,14 +149,19 @@ export function findTrebuchetArmAncestor(node) {
   return null;
 }
 
-export function parseFragmentGlb(buffer, { childRole = defaultChildRole } = {}) {
-  if (buffer.readUInt32LE(0) !== 0x46546C67) throw new Error("Not a GLB file");
+export function parseFragmentGlb(input, { childRole = defaultChildRole } = {}) {
+  // Normalise to Uint8Array so this works in both Node.js (Buffer) and browser Workers (ArrayBuffer).
+  const bytes = input instanceof ArrayBuffer ? new Uint8Array(input) : input;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 
-  const jsonChunkLen = buffer.readUInt32LE(12);
-  const gltf = JSON.parse(buffer.subarray(20, 20 + jsonChunkLen).toString("utf8"));
+  if (view.getUint32(0, true) !== 0x46546C67) throw new Error("Not a GLB file");
+
+  const jsonChunkLen = view.getUint32(12, true);
+  const gltf = JSON.parse(new TextDecoder().decode(bytes.subarray(20, 20 + jsonChunkLen)));
 
   const binStart = (20 + jsonChunkLen + 3) & ~3;
-  const binData = buffer.subarray(binStart + 8);
+  const binData = bytes.subarray(binStart + 8);
+  const binView = new DataView(binData.buffer, binData.byteOffset, binData.byteLength);
 
   const templates = [];
 
@@ -179,9 +184,9 @@ export function parseFragmentGlb(buffer, { childRole = defaultChildRole } = {}) 
     const positions = new Float32Array(count * 3);
     for (let i = 0; i < count; i += 1) {
       const off = byteOffset + i * stride;
-      positions[i * 3] = binData.readFloatLE(off);
-      positions[i * 3 + 1] = binData.readFloatLE(off + 4);
-      positions[i * 3 + 2] = binData.readFloatLE(off + 8);
+      positions[i * 3] = binView.getFloat32(off, true);
+      positions[i * 3 + 1] = binView.getFloat32(off + 4, true);
+      positions[i * 3 + 2] = binView.getFloat32(off + 8, true);
     }
 
     const [lx = 0, ly = 0, lz = 0] = node.translation ?? [0, 0, 0];
@@ -214,8 +219,9 @@ export function parseFragmentGlb(buffer, { childRole = defaultChildRole } = {}) 
   return templates;
 }
 
-export async function appendServerLevelGlb({ levelFile, port, scene }) {
-  return SceneLoader.AppendAsync(`http://localhost:${port}/assets/`, levelFile, scene);
+export async function appendServerLevelGlb({ levelFile, port, baseUrl, scene }) {
+  const base = baseUrl ?? `http://localhost:${port}/assets/`;
+  return SceneLoader.AppendAsync(base, levelFile, scene);
 }
 
 export function extractConvexPositions(rootTransform, {

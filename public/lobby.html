@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Barrage — Lobby</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0a0a0f;
+      color: #e0e0e0;
+      font-family: system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    header {
+      width: 100%;
+      max-width: 700px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1.2rem 1.5rem;
+      border-bottom: 1px solid #1e1e2e;
+    }
+
+    .logo { font-size: 1.4rem; font-weight: 700; letter-spacing: 0.15em; color: #fff; text-transform: uppercase; }
+
+    .user-bar { display: flex; align-items: center; gap: 0.8rem; color: #aaa; font-size: 0.9rem; }
+    .username { color: #fff; font-weight: 600; }
+    .logout-btn {
+      background: none; border: 1px solid #333; color: #888;
+      border-radius: 4px; padding: 0.3rem 0.7rem; cursor: pointer; font-size: 0.8rem;
+    }
+    .logout-btn:hover { border-color: #555; color: #ccc; }
+
+    main {
+      width: 100%;
+      max-width: 700px;
+      padding: 2rem 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 2rem;
+    }
+
+    .section { display: flex; flex-direction: column; gap: 1rem; }
+    .section-title { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.12em; color: #666; }
+
+    /* Host card */
+    .host-card {
+      background: #14141e;
+      border: 1px solid #2a2a3e;
+      border-radius: 10px;
+      padding: 1.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+    }
+    .host-desc { color: #aaa; font-size: 0.9rem; max-width: 340px; line-height: 1.5; }
+    .host-desc strong { color: #fff; display: block; font-size: 1rem; margin-bottom: 0.3rem; }
+
+    .btn-primary {
+      background: #6c63ff;
+      color: #fff;
+      border: none;
+      border-radius: 7px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      padding: 0.65rem 1.4rem;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.15s;
+    }
+    .btn-primary:hover { background: #574fd6; }
+    .btn-primary:disabled { background: #333; cursor: default; }
+
+    /* Sessions list */
+    .sessions-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .refresh-btn {
+      background: none; border: 1px solid #2a2a3e; color: #888;
+      border-radius: 5px; padding: 0.3rem 0.7rem; cursor: pointer; font-size: 0.8rem;
+    }
+    .refresh-btn:hover { border-color: #444; color: #ccc; }
+
+    .session-row {
+      background: #14141e;
+      border: 1px solid #2a2a3e;
+      border-radius: 8px;
+      padding: 1rem 1.2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+    .session-host { font-weight: 600; color: #fff; }
+    .session-age { font-size: 0.8rem; color: #666; }
+
+    .btn-join {
+      background: none;
+      border: 1px solid #6c63ff;
+      color: #8b85ff;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      padding: 0.45rem 1rem;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .btn-join:hover { background: #6c63ff; color: #fff; }
+
+    .empty-state { color: #555; font-size: 0.9rem; text-align: center; padding: 1.5rem 0; }
+    .error-msg { color: #f56565; font-size: 0.85rem; }
+
+    .status-msg { color: #888; font-size: 0.85rem; text-align: center; }
+  </style>
+</head>
+<body>
+
+<header>
+  <span class="logo">Barrage</span>
+  <div class="user-bar">
+    Playing as <span class="username" id="username-display">…</span>
+    <button class="logout-btn" id="logout-btn">Logout</button>
+  </div>
+</header>
+
+<main>
+  <!-- Host section -->
+  <div class="section">
+    <div class="section-title">Start a game</div>
+    <div class="host-card">
+      <div class="host-desc">
+        <strong>Host a Game</strong>
+        Create a room and wait for an opponent to join.
+        The game runs directly in your browser — no server lag.
+      </div>
+      <button class="btn-primary" id="host-btn">Host Game</button>
+    </div>
+    <p class="error-msg" id="host-error" style="display:none"></p>
+  </div>
+
+  <!-- Join section -->
+  <div class="section">
+    <div class="sessions-header">
+      <div class="section-title">Join a game</div>
+      <button class="refresh-btn" id="refresh-btn">↻ Refresh</button>
+    </div>
+    <div id="sessions-list">
+      <p class="status-msg">Loading…</p>
+    </div>
+    <p class="error-msg" id="join-error" style="display:none"></p>
+  </div>
+</main>
+
+<script>
+  const token = sessionStorage.getItem("barrage_token");
+  const username = sessionStorage.getItem("barrage_username");
+
+  if (!token) {
+    window.location.replace("/login.html");
+  }
+
+  document.getElementById("username-display").textContent = username ?? "?";
+
+  document.getElementById("logout-btn").addEventListener("click", () => {
+    sessionStorage.removeItem("barrage_token");
+    sessionStorage.removeItem("barrage_username");
+    window.location.href = "/login.html";
+  });
+
+  // ---------------------------------------------------------------------------
+  // Host
+  // ---------------------------------------------------------------------------
+
+  document.getElementById("host-btn").addEventListener("click", async () => {
+    const btn = document.getElementById("host-btn");
+    const errEl = document.getElementById("host-error");
+    btn.disabled = true;
+    errEl.style.display = "none";
+
+    try {
+      const res = await fetch("/api/sessions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+
+      if (!data.ok) throw new Error(data.error ?? "Failed to create session");
+
+      window.location.href = `/?mode=host&session=${data.sessionId}`;
+    } catch (err) {
+      errEl.textContent = err.message;
+      errEl.style.display = "";
+      btn.disabled = false;
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Join — session list
+  // ---------------------------------------------------------------------------
+
+  function timeAgo(ts) {
+    const s = Math.round((Date.now() - ts) / 1000);
+    if (s < 5) return "just now";
+    if (s < 60) return `${s}s ago`;
+    return `${Math.round(s / 60)}m ago`;
+  }
+
+  async function loadSessions() {
+    const listEl = document.getElementById("sessions-list");
+    const errEl = document.getElementById("join-error");
+    errEl.style.display = "none";
+
+    try {
+      const res = await fetch("/api/lobby", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+
+      if (!data.ok) throw new Error(data.error ?? "Failed to load sessions");
+
+      const sessions = data.sessions ?? [];
+
+      if (sessions.length === 0) {
+        listEl.innerHTML = `<p class="empty-state">No games available — host one!</p>`;
+        return;
+      }
+
+      listEl.innerHTML = sessions.map((s) => `
+        <div class="session-row">
+          <div>
+            <span class="session-host">${escHtml(s.hostUsername)}</span>
+            <span class="session-age"> · ${timeAgo(s.createdAt)}</span>
+          </div>
+          <button class="btn-join" data-session="${escHtml(s.id)}">Join</button>
+        </div>
+      `).join("");
+
+      listEl.querySelectorAll(".btn-join").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          window.location.href = `/?mode=guest&session=${btn.dataset.session}`;
+        });
+      });
+
+    } catch (err) {
+      errEl.textContent = err.message;
+      errEl.style.display = "";
+      listEl.innerHTML = "";
+    }
+  }
+
+  function escHtml(str) {
+    return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  document.getElementById("refresh-btn").addEventListener("click", loadSessions);
+
+  // Auto-refresh every 5s while on the page
+  loadSessions();
+  setInterval(loadSessions, 5000);
+</script>
+</body>
+</html>

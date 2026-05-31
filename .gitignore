@@ -3,3 +3,8 @@ node_modules/
 npm-debug.log*
 *.log
 blender/*.blend1
+public/game-worker.js
+public/assets/*.js
+barrage.db
+barrage.db-shm
+barrage.db-wal
