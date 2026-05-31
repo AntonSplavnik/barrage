@@ -1285,6 +1285,8 @@ class WorkerSocket extends VirtualSocket {
         if (data.role === "host") {
           this._recv(data.data);       // → host's game client
         } else if (data.role === "guest") {
+          const msg = JSON.parse(data.data);
+          console.log(`[host→guest] forwarding ${msg.type}, channel state=${rtc.channel?.readyState}`);
           rtc.send(data.data);         // → guest via WebRTC DataChannel
         }
       } else if (data.type === "error") {
@@ -1771,7 +1773,10 @@ function pickDraggableRoot() {
   if (!root || !isDraggableRoot(root)) return null;
 
   const objectState = latestObjectStates.get(root.name);
-  if (objectState && !isInMyZone(objectState.x)) return null;
+  if (objectState && !isInMyZone(objectState.x)) {
+    console.log("[drag] isInMyZone rejected", root.name, "x=", objectState.x, "myPlayerId=", myPlayerId);
+    return null;
+  }
 
   return root;
 }
@@ -1787,10 +1792,10 @@ function pointerWorldAtDragDepth() {
 }
 
 function beginDrag() {
-  if (!isMatched) return;
+  if (!isMatched) { console.log("[drag] blocked: not matched"); return; }
 
   const root = pickDraggableRoot();
-  if (!root) return;
+  if (!root) { console.log("[drag] no draggable root, myPlayerId=", myPlayerId, "readyState=", socket.readyState); return; }
 
   selectedEntityId = root.name;
   pointerMode = "drag";

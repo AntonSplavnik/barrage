@@ -67,9 +67,7 @@ class RtcPeer {
 
     this.pc.onconnectionstatechange = () => {
       const state = this.pc.connectionState;
-      if (state === "connected") {
-        this._onChannelOpen();
-      } else if (state === "failed" || state === "disconnected" || state === "closed") {
+      if (state === "failed" || state === "disconnected" || state === "closed") {
         this._stopPolling();
         if (this._connected) {
           this._connected = false;
@@ -171,6 +169,7 @@ export class RtcHost extends RtcPeer {
       this._pollTimer = setInterval(async () => {
         if (Date.now() > deadline) {
           this._stopPolling();
+          console.error("[rtc/host] timeout. pc.signalingState=", this.pc?.signalingState, "pc.iceConnectionState=", this.pc?.iceConnectionState);
           reject(new Error("WebRTC handshake timed out — guest did not join within 15 seconds."));
           return;
         }
@@ -253,6 +252,7 @@ export class RtcGuest extends RtcPeer {
       this._pollTimer = setInterval(async () => {
         if (Date.now() > deadline) {
           this._stopPolling();
+          console.error("[rtc/guest] timeout. pc.signalingState=", this.pc?.signalingState, "pc.iceConnectionState=", this.pc?.iceConnectionState, "pc.connectionState=", this.pc?.connectionState);
           reject(new Error("WebRTC handshake timed out — connection did not open."));
           return;
         }
@@ -262,6 +262,7 @@ export class RtcGuest extends RtcPeer {
             "GET",
             `/sessions/${this.sessionId}/ice/host`,
           );
+          if (candidates?.length) console.log("[rtc/guest] got", candidates.length, "host ICE candidates, iceState=", this.pc?.iceConnectionState);
           for (const c of candidates ?? []) {
             await this.pc.addIceCandidate(new RTCIceCandidate(c)).catch(() => {});
           }

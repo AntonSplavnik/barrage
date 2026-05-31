@@ -12,6 +12,19 @@
 //   { type: "ready" }
 //   { type: "error", message }
 
+// Babylon.js shader compilation paths check for `document` even in NullEngine.
+// Stub it out so those code paths fail silently instead of spamming the console.
+if (typeof document === "undefined") {
+  globalThis.document = {
+    createElement: () => ({ getContext: () => null, style: {}, setAttribute() {}, addEventListener() {}, removeEventListener() {} }),
+    createElementNS: () => ({}),
+    getElementById: () => null,
+    addEventListener() {},
+    removeEventListener() {},
+    dispatchEvent() {},
+  };
+}
+
 import HavokPhysics from "@babylonjs/havok";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode.js";
@@ -114,6 +127,7 @@ const connectedRoles = new Set(); // "host" | "guest"
 
 function sendToRole(role, msg) {
   if (!connectedRoles.has(role)) return;
+  console.log(`[worker] sendToRole ${role}:`, msg.type);
   self.postMessage({ type: "toPlayer", role, data: JSON.stringify(msg) });
 }
 
@@ -1127,6 +1141,7 @@ function _flushHostInputQueue() {
 // ---------------------------------------------------------------------------
 
 async function handlePlayerConnect(role) {
+  console.log(`[worker] handlePlayerConnect(${role}), connectedRoles=`, [...connectedRoles]);
   connectedRoles.add(role);
   const playerId = playerIdForRole(role);
 
@@ -1152,15 +1167,21 @@ async function handlePlayerConnect(role) {
   }
 
   // Both players connected — start the game
+  console.log("[worker] both connected — initializing room...");
   activeRoom.paused = true;
   createRoomRuntime(activeRoom);
   bindRoom(activeRoom);
 
   try {
+    console.log("[worker] enableHavokPhysics...");
     await enableHavokPhysics();
+    console.log("[worker] loadLevelIfPresent...");
     await loadLevelIfPresent();
+    console.log("[worker] loadFragmentTemplates...");
     await loadFragmentTemplates();
+    console.log("[worker] room init complete");
   } catch (err) {
+    console.error("[worker] room init failed:", err);
     self.postMessage({ type: "error", message: `Room init failed: ${err.message}` });
     return;
   }
