@@ -4,7 +4,8 @@
   const _p = new URLSearchParams(window.location.search);
   const _mode = _p.get("mode");
   const _sess = _p.get("session");
-  if (!_mode || !_sess) {
+  const _isAiMode = _mode === "ai";
+  if (!_mode || (!_sess && !_isAiMode)) {
     window.location.replace(_token ? "/lobby.html" : "/login.html");
     // Stop module execution so Babylon never initializes
     document.body.innerHTML = "";
@@ -33,7 +34,8 @@ import {
   registerTrebuchetLoadTargetsFromGlb,
   registerVisualRootsFromGlb,
 } from "./client-glb-parser.js";
-import { BARRAGE_CONFIG } from "./config.js";
+import { BARRAGE_CONFIG, AI_OPPONENTS } from "./config.js";
+import { AiPlayer } from "./ai-player.js";
 import { createInterpolator } from "./interpolation.js";
 
 const {
@@ -1370,6 +1372,50 @@ class GuestSocket extends VirtualSocket {
 }
 
 // ---------------------------------------------------------------------------
+class AiSocket extends VirtualSocket {
+  constructor(aiConfig) {
+    super();
+    const worker = new Worker("/game-worker.js", { type: "module" });
+    this._worker = worker;
+    this._ai = null;
+
+    worker.onmessage = ({ data }) => {
+      if (data.type === "ready") {
+        worker.postMessage({ type: "playerConnect", role: "host", username: _myUsername });
+        worker.postMessage({ type: "playerConnect", role: "guest", username: aiConfig.name });
+        this._open();
+      } else if (data.type === "toPlayer") {
+        if (data.role === "host") {
+          this._recv(data.data);
+        } else if (data.role === "guest" && this._ai) {
+          const msg = JSON.parse(data.data);
+          if (msg.type === "state") this._ai.onState(msg.objects);
+          if (msg.type === "matched") this._ai.start();
+          if (msg.type === "roundEnded" || msg.type === "matchOver") this._ai.stop();
+          if (msg.type === "levelChanged") this._ai.reset();
+        }
+      } else if (data.type === "error") {
+        console.error("[worker]", data.message);
+        this._close();
+      }
+    };
+    worker.onerror = (e) => { console.error("[worker] fatal:", e); this._close(); };
+
+    const postToWorker = (msg) => {
+      worker.postMessage({ type: "playerMessage", role: "guest", data: JSON.stringify(msg) });
+    };
+    this._ai = new AiPlayer(postToWorker, aiConfig, "Player_2");
+
+    worker.postMessage({ type: "init", serverBaseUrl: window.location.origin });
+  }
+  _doSend(data) {
+    this._worker.postMessage({ type: "playerMessage", role: "host", data });
+  }
+  tickAi(now) {
+    this._ai?.tick(now);
+  }
+}
+
 // Select transport (guard at top of file already ensures mode/session/token exist)
 // ---------------------------------------------------------------------------
 
@@ -1381,7 +1427,11 @@ const _rtcSession = _rtcParams.get("session");
 
 let socket;
 
-if (_rtcMode === "host") {
+if (_rtcMode === "ai") {
+  const _opponentId = _rtcParams.get("opponent");
+  const _aiConfig = AI_OPPONENTS.find((a) => a.id === _opponentId) ?? AI_OPPONENTS[0];
+  socket = new AiSocket(_aiConfig);
+} else if (_rtcMode === "host") {
   socket = new WorkerSocket(_rtcSession, _authToken);
 } else if (_rtcMode === "guest") {
   console.log("[guest] starting RTC handshake for session", _rtcSession);
@@ -2046,6 +2096,7 @@ engine.runRenderLoop(() => {
   if (scene.activeCamera) {
     scene.render();
   }
+  if (socket instanceof AiSocket) socket.tickAi(performance.now());
 });
 
 const interpolator = createInterpolator({

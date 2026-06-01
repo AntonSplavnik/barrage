@@ -191,6 +191,32 @@
     .enemy-row:last-child { border-bottom: none; }
     .enemy-name { color: #e0e0e0; }
     .enemy-date { font-size: 0.75rem; color: #555; }
+
+    /* AI section */
+    .ai-row {
+      border-top: 1px solid rgba(62, 52, 20, 0.6);
+      padding: 0.9rem 0 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+    .ai-row:first-child { border-top: none; padding-top: 0; }
+    .ai-name { font-weight: 600; color: #f0c060; }
+    .ai-desc { font-size: 0.8rem; color: #888; }
+    .btn-challenge {
+      background: none;
+      border: 1px solid #c09030;
+      color: #d4a840;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      padding: 0.45rem 1rem;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.15s, color 0.15s;
+    }
+    .btn-challenge:hover { background: #c09030; color: #fff; }
   </style>
 </head>
 <body>
@@ -253,6 +279,12 @@
         <p class="error-msg" id="join-error" style="display:none"></p>
       </div>
     </div>
+    <div class="section">
+      <div class="section-title">Challenge an AI</div>
+      <div class="panel-card join-card" id="ai-list">
+      </div>
+    </div>
+
     </div> <!-- #game-sections -->
   </main>
 </div>
@@ -260,7 +292,7 @@
 <script src="https://cdn.babylonjs.com/babylon.js"></script>
 <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
 <script type="module">
-  import { BARRAGE_CONFIG } from "/config.js";
+  import { BARRAGE_CONFIG, AI_OPPONENTS } from "/config.js";
 
   // ---------------------------------------------------------------------------
   // Auth guard
@@ -380,6 +412,27 @@
       btn.disabled        = false;
     }
   });
+
+  // ---------------------------------------------------------------------------
+  // AI opponents
+  // ---------------------------------------------------------------------------
+  {
+    const aiList = document.getElementById("ai-list");
+    aiList.innerHTML = AI_OPPONENTS.map((ai) => `
+      <div class="ai-row">
+        <div>
+          <span class="ai-name">${escHtml(ai.title)}</span>
+          <span class="ai-desc"> · ${escHtml(ai.description)}</span>
+        </div>
+        <button class="btn-challenge" data-ai="${escHtml(ai.id)}">Challenge</button>
+      </div>
+    `).join("");
+    aiList.querySelectorAll(".btn-challenge").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        window.location.href = `/?mode=ai&opponent=${btn.dataset.ai}`;
+      });
+    });
+  }
 
   // ---------------------------------------------------------------------------
   // Join — session list

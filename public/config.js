@@ -216,3 +216,26 @@ export const BARRAGE_CONFIG = {
 if (typeof window !== "undefined") {
   window.BARRAGE_CONFIG = BARRAGE_CONFIG;
 }
+
+export const AI_OPPONENTS = [
+  {
+    id: "genghis-ai",
+    name: "Genghis",
+    title: "Genghis",
+    description: "Aggressive but imprecise",
+    speed: 0.5,                // 0–1, higher = faster drags
+    accuracy: 0.6,             // 0–1, higher = less aim scatter
+    pauseMs: 1000,             // ms pause between actions
+    correctionAggression: 0.7, // 0–1, how fast aim corrects after each shot
+  },
+  {
+    id: "caesar-ai",
+    name: "Caesar",
+    title: "Caesar",
+    description: "Methodical and precise",
+    speed: 0.4,
+    accuracy: 0.9,
+    pauseMs: 1000,
+    correctionAggression: 0.4,
+  },
+];
