@@ -6,4 +6,4 @@ pages_build_output_dir = "public"
 [[d1_databases]]
 binding = "DB"
 database_name = "barrage"
-database_id = "placeholder"  # replace after: wrangler d1 create barrage
+database_id = "585041a6-feb1-4625-8b41-2b666543eba4"
