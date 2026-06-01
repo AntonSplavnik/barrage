@@ -41,7 +41,21 @@ app.use(express.static(publicDir));
 
 const httpServer = http.createServer(app);
 
-await initDb();
+let dbError = null;
+try {
+  await initDb();
+} catch (err) {
+  dbError = err;
+  console.error("[startup] initDb failed:", err);
+}
+
+app.use("/api", (_req, res) => {
+  if (dbError) {
+    res.status(500).json({ ok: false, error: "db-init-failed", detail: dbError.message });
+  }
+});
+
 httpServer.listen(PORT, () => {
   console.log(`Barrage server running on port ${PORT}`);
+  if (dbError) console.error("[startup] WARNING: DB not available, all API calls will fail");
 });
