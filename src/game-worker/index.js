@@ -124,6 +124,7 @@ const ROOM_INFO = {
 // ---------------------------------------------------------------------------
 
 const connectedRoles = new Set(); // "host" | "guest"
+const playerUsernames = {}; // role → display username
 
 function sendToRole(role, msg) {
   if (!connectedRoles.has(role)) return;
@@ -1140,16 +1141,17 @@ function _flushHostInputQueue() {
 // Player connection lifecycle
 // ---------------------------------------------------------------------------
 
-async function handlePlayerConnect(role) {
+async function handlePlayerConnect(role, username) {
   console.log(`[worker] handlePlayerConnect(${role}), connectedRoles=`, [...connectedRoles]);
   connectedRoles.add(role);
+  if (username) playerUsernames[role] = username;
   const playerId = playerIdForRole(role);
 
   // Send welcome
   sendToRole(role, {
     type: "welcome",
     clientId: role === "host" ? 1 : 2,
-    playerId,
+    playerId: playerUsernames[role] ?? playerId,
     tickRate: TICK_RATE,
   });
 
@@ -1192,12 +1194,13 @@ async function handlePlayerConnect(role) {
   // Send matched to both players
   for (const r of ["host", "guest"]) {
     const pid = playerIdForRole(r);
-    const opponentPid = playerIdForRole(r === "host" ? "guest" : "host");
+    const oppRole = r === "host" ? "guest" : "host";
+    const opponentPid = playerIdForRole(oppRole);
     sendToRole(r, {
       type: "matched",
       roomId: activeRoom.id,
-      playerId: pid,
-      opponentId: opponentPid,
+      playerId: playerUsernames[r] ?? pid,
+      opponentId: playerUsernames[oppRole] ?? opponentPid,
       level: activeRoom.level.url,
       roundNumber: activeRoom.roundNumber,
       scores: activeRoom.scores,
@@ -1287,7 +1290,7 @@ self.onmessage = ({ data }) => {
       break;
 
     case "playerConnect":
-      handlePlayerConnect(data.role).catch((err) => {
+      handlePlayerConnect(data.role, data.username).catch((err) => {
         self.postMessage({ type: "error", message: err.message });
       });
       break;

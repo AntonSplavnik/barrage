@@ -1306,7 +1306,7 @@ class WorkerSocket extends VirtualSocket {
     worker.onmessage = ({ data }) => {
       if (data.type === "ready") {
         console.log("[host] worker ready → starting RTC signaling");
-        worker.postMessage({ type: "playerConnect", role: "host" });
+        worker.postMessage({ type: "playerConnect", role: "host", username: _myUsername });
         rtc.start()
           .then(() => console.log("[host] RTC DataChannel open — guest connected"))
           .catch((err) => console.error("[rtc/host]", err.message));
@@ -1329,7 +1329,7 @@ class WorkerSocket extends VirtualSocket {
     // Guest connects via WebRTC → tell worker
     rtc.onConnected = () => {
       console.log("[host] RTC onConnected → notifying worker");
-      worker.postMessage({ type: "playerConnect", role: "guest" });
+      worker.postMessage({ type: "playerConnect", role: "guest", username: _myUsername });
     };
     // Message from guest → forward to worker
     rtc.onMessage = (data) => {
@@ -1362,6 +1362,7 @@ class GuestSocket extends VirtualSocket {
 // ---------------------------------------------------------------------------
 
 const _authToken = sessionStorage.getItem("barrage_token");
+const _myUsername = sessionStorage.getItem("barrage_username") ?? undefined;
 const _rtcParams = new URLSearchParams(window.location.search);
 const _rtcMode = _rtcParams.get("mode");
 const _rtcSession = _rtcParams.get("session");
