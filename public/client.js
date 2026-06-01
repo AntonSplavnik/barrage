@@ -94,8 +94,17 @@ const crownsLeftEl = document.getElementById("crowns-left");
 const crownsRightEl = document.getElementById("crowns-right");
 const portraitLeftEl = document.getElementById("player-portrait-left");
 const portraitRightEl = document.getElementById("player-portrait-right");
+const playerNameLeftEl = document.getElementById("player-name-left");
+const playerNameRightEl = document.getElementById("player-name-right");
 const hudOpponentEl = document.getElementById("hud-opponent");
 const opponentPlayerEl = document.getElementById("opponent-player");
+
+function setPortraitNames(myId, oppId) {
+  const myNum = parseInt(myId?.split("_")[1], 10);
+  const iAmLeft = Number.isFinite(myNum) && myNum % 2 === 1;
+  playerNameLeftEl.textContent  = iAmLeft ? (myId ?? '') : (oppId ?? '');
+  playerNameRightEl.textContent = iAmLeft ? (oppId ?? '') : (myId ?? '');
+}
 
 const engine = new Engine(canvas, true, { audioEngine: true });
 if (Engine.audioEngine) Engine.audioEngine.useCustomUnlockedButton = true;
@@ -1373,6 +1382,7 @@ socket.addEventListener("message", (event) => {
     const prevId = myPlayerId;
     myPlayerId = message.playerId;
     playerEl.textContent = message.playerId;
+    setPortraitNames(message.playerId, opponentPlayerEl.textContent || null);
     // If "matched" already fired and loaded the level, re-snap camera now that we know our side
     if (prevId !== myPlayerId && loadedLevelUrl) {
       cameraControl.snapshotAndPan();
@@ -1408,6 +1418,7 @@ socket.addEventListener("message", (event) => {
     isMatched = false;
     myPlayerId = message.playerId;
     playerEl.textContent = message.playerId;
+    setPortraitNames(message.playerId, message.opponentId ?? null);
     if (message.opponentId) {
       const oppNum = parseInt(message.opponentId.split("_")[1], 10);
       opponentPlayerEl.textContent = message.opponentId;

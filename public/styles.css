@@ -116,6 +116,24 @@ body {
 #player-portrait-left  { left: 12px; }
 #player-portrait-right { right: 12px; }
 
+#player-name-left,
+#player-name-right {
+  position: fixed;
+  top: 96px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #f6f2e8;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+  pointer-events: none;
+  z-index: 10;
+  max-width: 90px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#player-name-left  { left: 12px; }
+#player-name-right { right: 12px; text-align: right; }
+
 #crowns-left,
 #crowns-right {
   position: fixed;
