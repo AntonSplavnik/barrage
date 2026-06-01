@@ -40,21 +40,21 @@ router.use((req, res, next) => {
 });
 
 // Quick play — name only, no password, no persistent account
-router.post("/quickplay", (req, res) => {
+router.post("/quickplay", async (req, res) => {
   const { name } = req.body ?? {};
   const err = validateUsername(name);
   if (err) { res.status(400).json({ ok: false, error: err }); return; }
 
-  // Store as a guest user; append random suffix to avoid UNIQUE conflicts
   const suffix = crypto.randomBytes(3).toString("hex");
   const storedUsername = `${name}~${suffix}`;
   const now = Date.now();
 
-  const result = db.prepare(
-    "INSERT INTO users (username, display_name, is_guest, password_hash, created_at) VALUES (?, ?, 1, '', ?)"
-  ).run(storedUsername, name, now);
+  const result = await db.execute({
+    sql: "INSERT INTO users (username, display_name, is_guest, password_hash, created_at) VALUES (?, ?, 1, '', ?)",
+    args: [storedUsername, name, now],
+  });
 
-  const token = createAuthToken(result.lastInsertRowid, name);
+  const token = createAuthToken(Number(result.lastInsertRowid), name);
   res.status(201).json({ ok: true, token, username: name });
 });
 
@@ -73,10 +73,11 @@ router.post("/register", async (req, res) => {
 
   const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
   try {
-    const result = db.prepare(
-      "INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)"
-    ).run(username, passwordHash, Date.now());
-    const token = createAuthToken(result.lastInsertRowid, username);
+    const result = await db.execute({
+      sql: "INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)",
+      args: [username, passwordHash, Date.now()],
+    });
+    const token = createAuthToken(Number(result.lastInsertRowid), username);
     res.status(201).json({ ok: true, token, username });
   } catch (err) {
     if (err.message?.includes("UNIQUE")) {
@@ -95,7 +96,11 @@ router.post("/login", async (req, res) => {
     return;
   }
 
-  const user = db.prepare("SELECT * FROM users WHERE username = ?").get(username);
+  const user = (await db.execute({
+    sql: "SELECT * FROM users WHERE username = ?",
+    args: [username],
+  })).rows[0];
+
   if (!user) {
     res.status(401).json({ ok: false, error: "invalid-credentials" });
     return;
@@ -107,7 +112,7 @@ router.post("/login", async (req, res) => {
     return;
   }
 
-  const token = createAuthToken(user.id, user.username);
+  const token = createAuthToken(Number(user.id), user.username);
   res.json({ ok: true, token, username: user.username });
 });
 

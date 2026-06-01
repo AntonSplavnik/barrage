@@ -3,6 +3,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { BARRAGE_CONFIG } from "./public/config.js";
+import { initDb } from "./src/server/db.js";
 import authRouter from "./src/server/auth.js";
 import lobbyRouter from "./src/server/lobby.js";
 import signalingRouter from "./src/server/signaling.js";
@@ -40,6 +41,7 @@ app.use(express.static(publicDir));
 
 const httpServer = http.createServer(app);
 
+await initDb();
 httpServer.listen(PORT, () => {
   console.log(`Barrage server running on port ${PORT}`);
 });
