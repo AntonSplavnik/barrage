@@ -1151,7 +1151,8 @@ async function handlePlayerConnect(role, username) {
   sendToRole(role, {
     type: "welcome",
     clientId: role === "host" ? 1 : 2,
-    playerId: playerUsernames[role] ?? playerId,
+    playerId,
+    displayName: playerUsernames[role] ?? playerId,
     tickRate: TICK_RATE,
   });
 
@@ -1199,8 +1200,10 @@ async function handlePlayerConnect(role, username) {
     sendToRole(r, {
       type: "matched",
       roomId: activeRoom.id,
-      playerId: playerUsernames[r] ?? pid,
-      opponentId: playerUsernames[oppRole] ?? opponentPid,
+      playerId: pid,
+      opponentId: opponentPid,
+      displayName: playerUsernames[r] ?? pid,
+      opponentDisplayName: playerUsernames[oppRole] ?? opponentPid,
       level: activeRoom.level.url,
       roundNumber: activeRoom.roundNumber,
       scores: activeRoom.scores,

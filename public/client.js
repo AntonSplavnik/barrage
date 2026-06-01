@@ -99,11 +99,13 @@ const playerNameRightEl = document.getElementById("player-name-right");
 const hudOpponentEl = document.getElementById("hud-opponent");
 const opponentPlayerEl = document.getElementById("opponent-player");
 
-function setPortraitNames(myId, oppId) {
+function setPortraitNames(myId, myDisplay, oppId, oppDisplay) {
   const myNum = parseInt(myId?.split("_")[1], 10);
   const iAmLeft = Number.isFinite(myNum) && myNum % 2 === 1;
-  playerNameLeftEl.textContent  = iAmLeft ? (myId ?? '') : (oppId ?? '');
-  playerNameRightEl.textContent = iAmLeft ? (oppId ?? '') : (myId ?? '');
+  const myName  = myDisplay  || myId  || '';
+  const oppName = oppDisplay || oppId || '';
+  playerNameLeftEl.textContent  = iAmLeft ? myName : oppName;
+  playerNameRightEl.textContent = iAmLeft ? oppName : myName;
 }
 
 const engine = new Engine(canvas, true, { audioEngine: true });
@@ -1404,7 +1406,7 @@ socket.addEventListener("message", (event) => {
     const prevId = myPlayerId;
     myPlayerId = message.playerId;
     playerEl.textContent = message.playerId;
-    setPortraitNames(message.playerId, opponentPlayerEl.textContent || null);
+    setPortraitNames(message.playerId, message.displayName, opponentPlayerEl.textContent || null, null);
     // If "matched" already fired and loaded the level, re-snap camera now that we know our side
     if (prevId !== myPlayerId && loadedLevelUrl) {
       cameraControl.snapshotAndPan();
@@ -1440,7 +1442,7 @@ socket.addEventListener("message", (event) => {
     isMatched = false;
     myPlayerId = message.playerId;
     playerEl.textContent = message.playerId;
-    setPortraitNames(message.playerId, message.opponentId ?? null);
+    setPortraitNames(message.playerId, message.displayName ?? null, message.opponentId ?? null, message.opponentDisplayName ?? null);
     if (message.opponentId) {
       const oppNum = parseInt(message.opponentId.split("_")[1], 10);
       opponentPlayerEl.textContent = message.opponentId;
