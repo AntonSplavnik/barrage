@@ -159,6 +159,38 @@
     .empty-state { color: #666; font-size: 0.9rem; text-align: center; padding: 1.5rem 0; }
     .error-msg { color: #f56565; font-size: 0.85rem; }
     .status-msg { color: #888; font-size: 0.85rem; text-align: center; }
+
+    .btn-leaderboard {
+      background: none; border: 1px solid rgba(108,99,255,0.5); color: #8b85ff;
+      border-radius: 4px; padding: 0.3rem 0.7rem; cursor: pointer; font-size: 0.8rem;
+      transition: background 0.15s, color 0.15s;
+    }
+    .btn-leaderboard:hover { background: rgba(108,99,255,0.15); color: #fff; }
+    .btn-leaderboard.active { background: rgba(108,99,255,0.2); color: #fff; border-color: #6c63ff; }
+
+    /* Leaderboard panel */
+    #leaderboard-panel { display: none; flex-direction: column; gap: 1.2rem; }
+    #leaderboard-panel.open { display: flex; }
+
+    .lb-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+    .lb-table th {
+      text-align: left; font-size: 0.7rem; text-transform: uppercase;
+      letter-spacing: 0.1em; color: #666; padding: 0 0.5rem 0.7rem;
+      border-bottom: 1px solid rgba(42,42,62,0.8);
+    }
+    .lb-table th:not(:first-child) { text-align: center; }
+    .lb-table td { padding: 0.6rem 0.5rem; color: #ccc; border-bottom: 1px solid rgba(42,42,62,0.4); }
+    .lb-table td:not(:first-child) { text-align: center; color: #aaa; }
+    .lb-table tr:last-child td { border-bottom: none; }
+    .lb-table .me { color: #fff; font-weight: 600; }
+    .lb-table .rank { color: #555; font-size: 0.8rem; width: 1.5rem; }
+
+    .enemies-list { display: flex; flex-direction: column; gap: 0.4rem; margin-top: 0.3rem; }
+    .enemy-row { display: flex; justify-content: space-between; align-items: center;
+      font-size: 0.85rem; color: #aaa; padding: 0.3rem 0; border-bottom: 1px solid rgba(42,42,62,0.4); }
+    .enemy-row:last-child { border-bottom: none; }
+    .enemy-name { color: #e0e0e0; }
+    .enemy-date { font-size: 0.75rem; color: #555; }
   </style>
 </head>
 <body>
@@ -174,9 +206,28 @@
       <div class="user-bar">
         Playing as <span class="username" id="username-display">…</span>
       </div>
-      <button class="logout-btn" id="logout-btn">Logout</button>
+      <div style="display:flex;gap:0.5rem;align-items:center">
+        <button class="btn-leaderboard" id="leaderboard-btn">🏆 Leaderboard</button>
+        <button class="logout-btn" id="logout-btn">Logout</button>
+      </div>
     </div>
 
+    <!-- Leaderboard panel (toggled) -->
+    <div id="leaderboard-panel">
+      <div class="panel-card" style="display:flex;flex-direction:column;gap:1.2rem">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span class="section-title">Leaderboard</span>
+          <button class="refresh-btn" id="lb-refresh-btn">↻ Refresh</button>
+        </div>
+        <div id="lb-table-wrap"><p class="status-msg">Loading…</p></div>
+      </div>
+      <div class="panel-card" style="display:flex;flex-direction:column;gap:0.8rem">
+        <span class="section-title">Your Enemies Defeated</span>
+        <div id="lb-enemies-wrap"><p class="status-msg">Loading…</p></div>
+      </div>
+    </div>
+
+    <div id="game-sections">
     <div class="section">
       <div class="section-title">Start a game</div>
       <div class="panel-card host-card">
@@ -202,6 +253,7 @@
         <p class="error-msg" id="join-error" style="display:none"></p>
       </div>
     </div>
+    </div> <!-- #game-sections -->
   </main>
 </div>
 
@@ -384,6 +436,89 @@
   document.getElementById("refresh-btn").addEventListener("click", loadSessions);
   loadSessions();
   setInterval(loadSessions, 5000);
+
+  // ---------------------------------------------------------------------------
+  // Leaderboard
+  // ---------------------------------------------------------------------------
+  let leaderboardOpen = false;
+
+  function dateStr(ts) {
+    return new Date(ts).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+  }
+
+  async function loadLeaderboard() {
+    const tableWrap   = document.getElementById("lb-table-wrap");
+    const enemiesWrap = document.getElementById("lb-enemies-wrap");
+    tableWrap.innerHTML   = `<p class="status-msg">Loading…</p>`;
+    enemiesWrap.innerHTML = `<p class="status-msg">Loading…</p>`;
+
+    try {
+      const [lbRes, enRes] = await Promise.all([
+        fetch("/api/leaderboard", { headers: { Authorization: `Bearer ${token}` } }),
+        fetch("/api/me/enemies",  { headers: { Authorization: `Bearer ${token}` } }),
+      ]);
+      const lbData = await lbRes.json();
+      const enData = await enRes.json();
+
+      if (!lbData.ok) throw new Error(lbData.error);
+
+      const rows = lbData.leaderboard ?? [];
+      if (rows.length === 0) {
+        tableWrap.innerHTML = `<p class="empty-state">No registered players yet.</p>`;
+      } else {
+        tableWrap.innerHTML = `
+          <table class="lb-table">
+            <thead>
+              <tr>
+                <th>#</th><th>Player</th>
+                <th>Battles Won</th><th>Battles Lost</th>
+                <th>Wars Won</th><th>Wars Lost</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows.map((r, i) => `
+                <tr>
+                  <td class="rank">${i + 1}</td>
+                  <td class="${r.username === username ? "me" : ""}">${escHtml(r.username)}</td>
+                  <td>${r.battles_won}</td><td>${r.battles_lost}</td>
+                  <td>${r.wars_won}</td><td>${r.wars_lost}</td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>`;
+      }
+
+      const enemies = enData.enemies ?? [];
+      if (enemies.length === 0) {
+        enemiesWrap.innerHTML = `<p class="empty-state">No enemies defeated yet.</p>`;
+      } else {
+        enemiesWrap.innerHTML = `<div class="enemies-list">
+          ${enemies.map(e => `
+            <div class="enemy-row">
+              <span class="enemy-name">${escHtml(e.username)}</span>
+              <span class="enemy-date">${dateStr(e.defeatedAt)}</span>
+            </div>`).join("")}
+        </div>`;
+      }
+    } catch (err) {
+      tableWrap.innerHTML = `<p class="error-msg">${escHtml(err.message)}</p>`;
+    }
+  }
+
+  function toggleLeaderboard() {
+    leaderboardOpen = !leaderboardOpen;
+    const panel      = document.getElementById("leaderboard-panel");
+    const gameSects  = document.getElementById("game-sections");
+    const btn        = document.getElementById("leaderboard-btn");
+    panel.classList.toggle("open", leaderboardOpen);
+    gameSects.style.display = leaderboardOpen ? "none" : "";
+    btn.classList.toggle("active", leaderboardOpen);
+    btn.textContent = leaderboardOpen ? "✕ Close" : "🏆 Leaderboard";
+    if (leaderboardOpen) loadLeaderboard();
+  }
+
+  document.getElementById("leaderboard-btn").addEventListener("click", toggleLeaderboard);
+  document.getElementById("lb-refresh-btn").addEventListener("click", loadLeaderboard);
 </script>
 </body>
 </html>

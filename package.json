@@ -7,6 +7,7 @@
     "setup": "node scripts/install-deps.js",
     "start": "node server.js",
     "dev": "node --watch server.js",
+    "build": "vite build --config vite.worker.config.js",
     "build:worker": "vite build --config vite.worker.config.js"
   },
   "dependencies": {

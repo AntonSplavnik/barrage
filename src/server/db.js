@@ -50,6 +50,36 @@ db.exec(`
   );
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS player_stats (
+    user_id       INTEGER PRIMARY KEY,
+    battles_won   INTEGER NOT NULL DEFAULT 0,
+    battles_lost  INTEGER NOT NULL DEFAULT 0,
+    wars_won      INTEGER NOT NULL DEFAULT 0,
+    wars_lost     INTEGER NOT NULL DEFAULT 0,
+    FOREIGN KEY(user_id) REFERENCES users(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS war_opponents (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    winner_user_id  INTEGER NOT NULL,
+    loser_user_id   INTEGER NOT NULL,
+    created_at      INTEGER NOT NULL,
+    FOREIGN KEY(winner_user_id) REFERENCES users(id),
+    FOREIGN KEY(loser_user_id)  REFERENCES users(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS round_results (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id    TEXT    NOT NULL,
+    round_number  INTEGER NOT NULL,
+    winner_user_id INTEGER,
+    loser_user_id  INTEGER,
+    created_at    INTEGER NOT NULL,
+    UNIQUE(session_id, round_number)
+  );
+`);
+
 // Migrations — safe to run repeatedly (ADD COLUMN is idempotent when column already exists)
 for (const sql of [
   "ALTER TABLE users ADD COLUMN is_guest INTEGER NOT NULL DEFAULT 0",

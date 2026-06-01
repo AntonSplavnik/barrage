@@ -6,6 +6,7 @@ import { BARRAGE_CONFIG } from "./public/config.js";
 import authRouter from "./src/server/auth.js";
 import lobbyRouter from "./src/server/lobby.js";
 import signalingRouter from "./src/server/signaling.js";
+import statsRouter from "./src/server/stats.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -27,6 +28,7 @@ app.use(express.json());
 app.use("/api", authRouter);
 app.use("/api", lobbyRouter);
 app.use("/api", signalingRouter);
+app.use("/api", statsRouter);
 
 // JSON error handler for all /api routes
 app.use("/api", (err, _req, res, _next) => {

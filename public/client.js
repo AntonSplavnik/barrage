@@ -1440,6 +1440,7 @@ socket.addEventListener("message", (event) => {
       onComplete: matchWon ? () => showMatchWinnerScreen(roundWinner) : undefined,
     });
     cameraControl.onRoundWin(roundWinner);
+    reportRoundResult(message);
   }
 
   if (message.type === "levelChanged") {
@@ -1576,6 +1577,21 @@ socket.addEventListener("close", () => {
   }
   setLobbyStatus(`Disconnected. <a class="copy-url-btn" href="/">Reconnect.</a>`);
 });
+
+function reportRoundResult(message) {
+  if (!_rtcSession || !_authToken) return;
+  // Player_1 = host, Player_2 = guest
+  const winnerRole = (message.winner ?? "").includes("_1") ? "host" : "guest";
+  fetch(`/api/sessions/${_rtcSession}/result`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${_authToken}` },
+    body: JSON.stringify({
+      roundNumber: message.roundNumber ?? 1,
+      winnerRole,
+      isFinal: Boolean(message.matchWon),
+    }),
+  }).catch(() => {});
+}
 
 function sendInput(action, payload) {
   if (socket.readyState !== (socket.OPEN ?? WebSocket.OPEN)) return;
