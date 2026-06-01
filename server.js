@@ -42,20 +42,20 @@ app.use(express.static(publicDir));
 const httpServer = http.createServer(app);
 
 let dbError = null;
-try {
-  await initDb();
-} catch (err) {
-  dbError = err;
-  console.error("[startup] initDb failed:", err);
-}
 
-app.use("/api", (_req, res) => {
-  if (dbError) {
-    res.status(500).json({ ok: false, error: "db-init-failed", detail: dbError.message });
-  }
-});
-
+// Start listening immediately so Hostinger's proxy sees a running server.
+// DB init happens async — if it hangs or fails, API routes return a clear error.
 httpServer.listen(PORT, () => {
   console.log(`Barrage server running on port ${PORT}`);
-  if (dbError) console.error("[startup] WARNING: DB not available, all API calls will fail");
+});
+
+initDb()
+  .then(() => console.log("[startup] DB ready"))
+  .catch(err => {
+    dbError = err;
+    console.error("[startup] initDb failed:", err);
+  });
+
+app.use("/api", (_req, res) => {
+  res.status(500).json({ ok: false, error: "db-init-failed", detail: dbError?.message ?? "db not ready" });
 });
