@@ -1,12 +1,11 @@
-import { Router } from "express";
-import db from "./db.js";
-import { requireAuth } from "./auth.js";
+import { Hono } from 'hono'
+import { requireAuth } from './middleware.js'
 
-const router = Router();
+const router = new Hono()
 
-router.get("/lobby", requireAuth, async (req, res) => {
-  const result = await db.execute({
-    sql: `
+router.get('/lobby', requireAuth, async (c) => {
+  const { results } = await c.env.DB
+    .prepare(`
       SELECT gs.id, COALESCE(u.display_name, u.username) AS hostUsername, gs.created_at AS createdAt
       FROM game_sessions gs
       JOIN users u ON u.id = gs.host_user_id
@@ -15,11 +14,11 @@ router.get("/lobby", requireAuth, async (req, res) => {
         AND gs.host_user_id != ?
       ORDER BY gs.created_at DESC
       LIMIT 20
-    `,
-    args: [req.auth.userId],
-  });
+    `)
+    .bind(c.get('auth').userId)
+    .all()
 
-  res.json({ ok: true, sessions: result.rows });
-});
+  return c.json({ ok: true, sessions: results })
+})
 
-export default router;
+export default router

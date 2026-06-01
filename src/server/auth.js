@@ -1,119 +1,79 @@
-import { Router } from "express";
-import crypto from "node:crypto";
-import bcrypt from "bcrypt";
-import jwt from "jsonwebtoken";
-import db from "./db.js";
+import { Hono } from 'hono'
+import bcrypt from 'bcryptjs'
+import { createAuthToken, requireAuth } from './middleware.js'
 
-const SALT_ROUNDS = 10;
-const JWT_SECRET = process.env.JWT_SECRET ?? "change-me-in-production";
-const TOKEN_TTL = "7d";
-
-export function createAuthToken(userId, username) {
-  return jwt.sign({ userId, username }, JWT_SECRET, { expiresIn: TOKEN_TTL });
-}
+const SALT_ROUNDS = 10
 
 function validateUsername(username) {
-  if (!username || username.length < 2 || username.length > 24) return "username-length";
-  if (!/^[a-zA-Z0-9_\-]+$/.test(username)) return "username-invalid-chars";
-  return null;
+  if (!username || username.length < 2 || username.length > 24) return 'username-length'
+  if (!/^[a-zA-Z0-9_\-]+$/.test(username)) return 'username-invalid-chars'
+  return null
 }
 
-export function requireAuth(req, res, next) {
-  const header = req.headers.authorization ?? "";
-  const token = header.startsWith("Bearer ") ? header.slice(7) : null;
-  if (!token) {
-    res.status(401).json({ ok: false, error: "auth-required" });
-    return;
-  }
-  try {
-    req.auth = jwt.verify(token, JWT_SECRET);
-    next();
-  } catch {
-    res.status(401).json({ ok: false, error: "invalid-token" });
-  }
+function randomHex(bytes) {
+  const arr = new Uint8Array(bytes)
+  crypto.getRandomValues(arr)
+  return Array.from(arr, b => b.toString(16).padStart(2, '0')).join('')
 }
 
-const router = Router();
-router.use((req, res, next) => {
-  res.setHeader("Content-Type", "application/json");
-  next();
-});
+const router = new Hono()
 
-// Quick play — name only, no password, no persistent account
-router.post("/quickplay", async (req, res) => {
-  const { name } = req.body ?? {};
-  const err = validateUsername(name);
-  if (err) { res.status(400).json({ ok: false, error: err }); return; }
+router.post('/quickplay', async (c) => {
+  const { name } = await c.req.json().catch(() => ({}))
+  const err = validateUsername(name)
+  if (err) return c.json({ ok: false, error: err }, 400)
 
-  const suffix = crypto.randomBytes(3).toString("hex");
-  const storedUsername = `${name}~${suffix}`;
-  const now = Date.now();
+  const suffix = randomHex(3)
+  const storedUsername = `${name}~${suffix}`
+  const now = Date.now()
 
-  const result = await db.execute({
-    sql: "INSERT INTO users (username, display_name, is_guest, password_hash, created_at) VALUES (?, ?, 1, '', ?)",
-    args: [storedUsername, name, now],
-  });
+  const result = await c.env.DB
+    .prepare('INSERT INTO users (username, display_name, is_guest, password_hash, created_at) VALUES (?, ?, 1, ?, ?)')
+    .bind(storedUsername, name, '', now)
+    .run()
 
-  const token = createAuthToken(Number(result.lastInsertRowid), name);
-  res.status(201).json({ ok: true, token, username: name });
-});
+  const token = await createAuthToken(result.meta.last_row_id, name, c.env)
+  return c.json({ ok: true, token, username: name }, 201)
+})
 
-router.post("/register", async (req, res) => {
-  const { username, password } = req.body ?? {};
-  if (!username || !password) {
-    res.status(400).json({ ok: false, error: "username-and-password-required" });
-    return;
-  }
-  const usernameErr = validateUsername(username);
-  if (usernameErr) { res.status(400).json({ ok: false, error: usernameErr }); return; }
-  if (password.length < 6) {
-    res.status(400).json({ ok: false, error: "password-too-short" });
-    return;
-  }
+router.post('/register', async (c) => {
+  const { username, password } = await c.req.json().catch(() => ({}))
+  if (!username || !password) return c.json({ ok: false, error: 'username-and-password-required' }, 400)
+  const usernameErr = validateUsername(username)
+  if (usernameErr) return c.json({ ok: false, error: usernameErr }, 400)
+  if (password.length < 6) return c.json({ ok: false, error: 'password-too-short' }, 400)
 
-  const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+  const passwordHash = await bcrypt.hash(password, SALT_ROUNDS)
   try {
-    const result = await db.execute({
-      sql: "INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)",
-      args: [username, passwordHash, Date.now()],
-    });
-    const token = createAuthToken(Number(result.lastInsertRowid), username);
-    res.status(201).json({ ok: true, token, username });
+    const result = await c.env.DB
+      .prepare('INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)')
+      .bind(username, passwordHash, Date.now())
+      .run()
+    const token = await createAuthToken(result.meta.last_row_id, username, c.env)
+    return c.json({ ok: true, token, username }, 201)
   } catch (err) {
-    if (err.message?.includes("UNIQUE")) {
-      res.status(409).json({ ok: false, error: "username-taken" });
-    } else {
-      console.error("Register error:", err);
-      res.status(500).json({ ok: false, error: "server-error" });
-    }
+    if (err.message?.includes('UNIQUE')) return c.json({ ok: false, error: 'username-taken' }, 409)
+    console.error('Register error:', err)
+    return c.json({ ok: false, error: 'server-error' }, 500)
   }
-});
+})
 
-router.post("/login", async (req, res) => {
-  const { username, password } = req.body ?? {};
-  if (!username || !password) {
-    res.status(400).json({ ok: false, error: "username-and-password-required" });
-    return;
-  }
+router.post('/login', async (c) => {
+  const { username, password } = await c.req.json().catch(() => ({}))
+  if (!username || !password) return c.json({ ok: false, error: 'username-and-password-required' }, 400)
 
-  const user = (await db.execute({
-    sql: "SELECT * FROM users WHERE username = ?",
-    args: [username],
-  })).rows[0];
+  const user = await c.env.DB
+    .prepare('SELECT * FROM users WHERE username = ?')
+    .bind(username)
+    .first()
 
-  if (!user) {
-    res.status(401).json({ ok: false, error: "invalid-credentials" });
-    return;
-  }
+  if (!user) return c.json({ ok: false, error: 'invalid-credentials' }, 401)
 
-  const match = await bcrypt.compare(password, user.password_hash);
-  if (!match) {
-    res.status(401).json({ ok: false, error: "invalid-credentials" });
-    return;
-  }
+  const match = await bcrypt.compare(password, user.password_hash)
+  if (!match) return c.json({ ok: false, error: 'invalid-credentials' }, 401)
 
-  const token = createAuthToken(Number(user.id), user.username);
-  res.json({ ok: true, token, username: user.username });
-});
+  const token = await createAuthToken(user.id, user.username, c.env)
+  return c.json({ ok: true, token, username: user.username })
+})
 
-export default router;
+export default router
