@@ -1389,7 +1389,7 @@ class AiSocket extends VirtualSocket {
           this._recv(data.data);
         } else if (data.role === "guest" && this._ai) {
           const msg = JSON.parse(data.data);
-          if (msg.type === "state") this._ai.onState(msg.objects);
+          if (msg.type === "state") this._ai.onState(msg.objects, msg.roundNumber ?? 1);
           if (msg.type === "matched") this._ai.start();
           if (msg.type === "roundEnded" || msg.type === "matchOver") this._ai.stop();
           if (msg.type === "levelChanged") this._ai.reset();

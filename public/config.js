@@ -220,24 +220,24 @@ if (typeof window !== "undefined") {
 export const AI_OPPONENTS = [
   {
     id: "genghis-ai",
-    name: "Genghis",
-    title: "Genghis",
+    name: "Genghis-AI",           // display name shown in game UI
+    title: "Genghis-AI",          // display name shown in lobby
     description: "Aggressive but imprecise",
-    speed: 0.5,                // 0–1, higher = faster drags
-    accuracy: 0.6,             // 0–1, higher = less aim scatter
-    pauseMs: 1000,             // ms pause between actions
-    correctionAggression: 0.7, // 0–1, how fast aim corrects after each shot
-    dragZenithY: 8,           // world-space y apex of missile pickup arc
+    speed: 0.6,                   // 0–1, higher = faster drags and aiming
+    accuracy: 0.6,                // 0–1, higher = less aim scatter (0.6 → ±20°)
+    pauseMs: 1000,                // ms pause between shots
+    correctionAggression: 0.7,    // 0–1, how fast pull scale corrects after each shot
+    dragZenithY: 7,               // world-space y apex of missile pickup arc
   },
   {
     id: "caesar-ai",
-    name: "Caesar",
-    title: "Caesar",
+    name: "Caesar-AI",
+    title: "Caesar-AI",
     description: "Methodical and precise",
-    speed: 0.4,
-    accuracy: 0.9,
+    speed: 0.4,                   // slower, more deliberate
+    accuracy: 0.8,                // 0–1 (0.9 → ±5°)
     pauseMs: 1000,
     correctionAggression: 0.4,
-    dragZenithY: 10,
+    dragZenithY: 9,
   },
 ];

@@ -24,7 +24,8 @@ const ADJUST_DEAD_ZONE      = 3;     // units — ignore errors smaller than thi
 const DRAG_ZENITH_Y         = 7;    // world-space y of arc apex when picking up a missile
 const KING_CLEAR_RADIUS     = 4;     // m — trajectory must stay this far from own king
 const KING_CLEAR_ANGLE_STEP = 5;     // degrees to add each retry when own king is in the way
-const INITIAL_DELAY_MS      = 2000;
+const INITIAL_DELAY_MS          = 2000;
+const LEVEL_DIFFICULTY_BUMP     = 0.035; // speed + accuracy increase per round
 
 const STATE = {
   IDLE:           "IDLE",
@@ -136,6 +137,7 @@ export class AiPlayer {
     this._lastKnownMissileX  = null;
     this._dragStart          = null;
     this._dragT              = 0;
+    this._roundNumber        = 1;
     // Defense
     this._shotCount          = 0;
     this._doDefenseCheck     = false;
@@ -146,8 +148,9 @@ export class AiPlayer {
     this._defenseCmdY        = 0;
   }
 
-  onState(objects) {
+  onState(objects, roundNumber = 1) {
     this._objects = objects;
+    this._roundNumber = roundNumber;
     const trebId = this._role === "Player_1" ? "trebuche-left" : "trebuche-right";
     this._trebuchet     = objects.find((o) => o.id === trebId) ?? null;
     this._loadedMissile = objects.find((o) => o.loadedInto === trebId) ?? null;
@@ -210,6 +213,16 @@ export class AiPlayer {
     this._step(dt);
   }
 
+  _effectiveSpeed() {
+    const bonus = (this._roundNumber - 1) * LEVEL_DIFFICULTY_BUMP;
+    return Math.min(0.95, this._config.speed + bonus);
+  }
+
+  _effectiveAccuracy() {
+    const bonus = (this._roundNumber - 1) * LEVEL_DIFFICULTY_BUMP;
+    return Math.min(0.95, this._config.accuracy + bonus);
+  }
+
   _step(dt) {
     // Defense states are handled by a separate method to keep _step focused
     if (this._state === STATE.CHECK_DEFENSE
@@ -221,7 +234,7 @@ export class AiPlayer {
       return;
     }
 
-    const { speed } = this._config;
+    const speed = this._effectiveSpeed();
 
     switch (this._state) {
 
@@ -549,7 +562,7 @@ export class AiPlayer {
 
     console.log(`[AI] king=(${king?.x.toFixed(1)},${king?.y.toFixed(1)}) angle=${angleDeg}° pullScale=${this._pullScale.toFixed(2)} v=${effectiveV.toFixed(1)}`);
 
-    const halfJitter = (1 - this._config.accuracy) * MAX_JITTER_DEG;
+    const halfJitter = (1 - this._effectiveAccuracy()) * MAX_JITTER_DEG;
     angleDeg += (Math.random() * 2 - 1) * halfJitter;
     angleDeg = Math.max(10, Math.min(75, angleDeg));
 

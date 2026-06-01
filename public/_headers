@@ -1,0 +1,2 @@
+/*.js
+  Cache-Control: no-cache, must-revalidate

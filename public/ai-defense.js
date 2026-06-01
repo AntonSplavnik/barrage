@@ -1,10 +1,10 @@
 // ai-defense.js — king exposure detection and block selection for AI defense.
 
 export const COVER_RADIUS    = 7;     // m — no covering block within this → king exposed
-export const COVER_MIN_Y_ABOVE = 0;   // block.y must exceed king.y + this to count as cover
+export const COVER_MIN_Y_ABOVE = 1.0; // block.y must exceed king.y + this to count as cover (king top ≈ king.y + 0.8)
 export const STACK_X_RANGE   = 2;     // m — x range used to detect blocks above a candidate
 export const LIFT_CLEARANCE  = 5;     // m above king y to lift block before carrying
-export const PLACE_OFFSET    = 4;     // m inside king x where block is lowered
+export const PLACE_OFFSET    = 3;     // m inside king x where block is lowered
 export const LOWER_SPEED_MS  = 0.005; // world units/ms the command position descends
 export const SETTLE_SPEED    = 0.5;   // m/s — block is considered settled below this
 export const DEFENSE_TIMEOUT = 5000;  // ms before giving up on any single defense state
