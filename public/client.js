@@ -1398,7 +1398,7 @@ socket.addEventListener("message", (event) => {
     const spectatorNum = message.playerId?.split("_")[1] ?? "?";
     setLobbyStatus(message.status === "spectating"
       ? `A two player battle. You are spectating. You are in queue position ${spectatorNum} waiting to play a match.`
-      : `A two player battle. You are waiting for an opponent. <button class="copy-url-btn" data-copy-url="https://game-show.cloud-ip.cc/">Copy game URL</button> and give to a friend and prepare for combat!`);
+      : `A two player battle. You are waiting for an opponent. <button class="copy-url-btn" data-copy-url="https://barrage.pages.dev/">Copy game URL</button> and give to a friend and prepare for combat!`);
     switchLevelIfNeeded(currentLevelUrl);
   }
 
