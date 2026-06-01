@@ -4,64 +4,97 @@ This file is for a future assistant or a fresh chat with no context. Read this b
 
 ## Project Goal
 
-`barrage` is a game-jam prototype for a 2D/2.5D multiplayer trebuchet battle. Players defend a king and attack with trebuchets. The game uses a Blender-authored GLB level and a server-authoritative simulation.
+`barrage` is a game-jam prototype for a 2D/2.5D multiplayer trebuchet battle. Players defend a king and attack with trebuchets. The game uses a Blender-authored GLB level and a browser-authoritative simulation.
 
 Current design direction:
 - Author level layout in Blender/GLB wherever possible.
-- Do not spawn walls/extra ammo in code unless it is intentional game-system behavior.
-- Server is the master authority for physics and state.
+- Server is a thin HTTP/signaling layer only — no game simulation.
+- Game simulation runs in a **browser Web Worker** (the "game worker") inside the host player's browser.
 - Client only sends input: pointer/touch positions and actions.
-- Client renders server state and interpolates as little as possible for now.
+- Client renders game worker state and interpolates as little as possible for now.
+
+## Architecture Overview
+
+```
+Host browser
+  ├── client.js (renderer + input)        ← renders game, sends input to WorkerSocket
+  ├── game-worker.js (compiled bundle)    ← Havok physics sim, authoritative state
+  └── rtc.js (RtcHost)                   ← WebRTC DataChannel to guest
+
+Guest browser
+  ├── client.js (renderer + input)        ← renders game, sends input via WebRTC
+  └── rtc.js (RtcGuest)                  ← WebRTC DataChannel to host
+
+Server (Node.js, server.js)
+  ├── /api/auth    — login, register, quickplay (JWT)
+  ├── /api/lobby   — list open sessions
+  ├── /api/sessions — WebRTC signaling (offer/answer/ICE)
+  └── /api/stats   — leaderboard, round results, enemies
+```
+
+The game worker (`src/game-worker/index.js`) is compiled by Vite into `public/game-worker.js`.
+**Always run `npm run build:worker` after changing any file in `src/game-worker/` or `server/`.**
 
 ## Run Commands
 
-Install dependencies:
-
 ```sh
 npm install
+npm run build:worker   # must run after any server/ or src/game-worker/ change
+npm start              # serves on http://localhost:3000
 ```
 
-Start the server:
-
-```sh
-npm start
-```
-
-Open:
-
-```text
-http://localhost:3000
-```
-
-The server serves static files with `Cache-Control: no-store`, but hard refresh the browser after code/config changes.
+Hard refresh browser after code changes (`Cache-Control: no-store` on all responses).
 
 ## Main Files
 
-- `server.js`: Express + WebSocket authoritative master, Babylon `NullEngine`, Havok physics, GLB import, game state, input protocol.
-- `public/client.js`: Browser Babylon renderer, GLB import, pointer input, WebSocket client, visual state application.
-- `public/config.js`: Shared editable gameplay/render/input config imported by server and client.
-- `config/server.js`: Server-only physics/world constants.
-- `public/assets/level1.glb`: Current Blender level.
-- `readme.md`: Original concept/design notes.
+- `server.js` — thin Express HTTP server, mounts API routers, serves `public/`
+- `src/game-worker/index.js` — authoritative physics simulation (Babylon NullEngine + Havok), compiled to `public/game-worker.js`
+- `public/client.js` — browser renderer (Babylon), WebSocket-compatible VirtualSocket, input handling
+- `public/config.js` — shared gameplay/render/input config (imported by both worker and client)
+- `config/server.js` — server-only physics/world constants
+- `public/rtc.js` — WebRTC peer connection classes (RtcHost, RtcGuest)
+- `src/server/auth.js` — JWT auth, login, register, quickplay
+- `src/server/lobby.js` — session listing
+- `src/server/signaling.js` — WebRTC offer/answer/ICE signaling
+- `src/server/stats.js` — leaderboard, round result recording, enemies list
+- `src/server/db.js` — better-sqlite3 database setup and migrations
+- `public/assets/level1.glb` — current default Blender level (levels 1–4 exist)
 
-## Current Dependencies
+## Database
 
-Important dependencies from `package.json`:
-- `@babylonjs/core`
-- `@babylonjs/loaders`
-- `@babylonjs/havok`
-- `express`
-- `ws`
-- `xhr2`
+Uses **better-sqlite3** (synchronous SQLite). DB file: `barrage.db` in project root.
 
-Havok runs on the server. In Node it must be initialized with the local WASM binary:
+Tables:
+- `users` — registered and guest accounts (is_guest=1 for quickplay)
+- `game_sessions` — WebRTC signaling sessions
+- `ice_candidates` — ICE candidate exchange
+- `game_results` — legacy (unused)
+- `player_stats` — battles_won, battles_lost, wars_won, wars_lost per registered user
+- `war_opponents` — who defeated whom in wars
+- `round_results` — one row per round, UNIQUE(session_id, round_number) prevents double-counting
 
-```js
-const wasmBinary = await fs.readFile(path.join(__dirname, "node_modules/@babylonjs/havok/lib/esm/HavokPhysics.wasm"));
-const havokInterface = await HavokPhysics({ wasmBinary });
-```
+**NEXT TASK: Migrate from `better-sqlite3` to `@libsql/client`**
 
-Do not change this back to plain `await HavokPhysics()` unless you also solve Node WASM loading.
+Reason: Hostinger managed Node.js hosting can't build native addons (old GLIBC/Python).
+`@libsql/client` uses WASM, no native compilation, works anywhere.
+
+Key differences to implement:
+- All DB calls become async (`.get()` → `await db.execute()`, `.run()` → `await db.execute()`)
+- `db.prepare(sql).get(args)` → `(await db.execute({ sql, args })).rows[0]`
+- `db.prepare(sql).run(args)` → `await db.execute({ sql, args })`
+- `db.prepare(sql).all(args)` → `(await db.execute({ sql, args })).rows`
+- `db.transaction(fn)` → explicit `BEGIN`/`COMMIT` or `db.batch([...])`
+- All route handlers and auth functions that touch DB need `async/await`
+- The `db.exec()` init block (CREATE TABLE etc) needs to run before server starts: wrap in an async `initDb()` called before `httpServer.listen()`
+- libsql uses `?` placeholders same as SQLite — SQL queries don't change
+
+## Deployment Target: Hostinger Managed Node.js
+
+- Entry file: `server.js`
+- Build command: `npm run build:worker`
+- Node version: 22.x
+- HTTPS provided automatically via Hostinger temp domain
+- **Cannot use `better-sqlite3`** — requires native compilation, fails on Hostinger's CentOS 8 environment
 
 ## Blender Naming Scheme
 
@@ -90,264 +123,84 @@ Current examples in `level1.glb` include:
 - `KingR`
 - `ground`
 
-Trebuchet arm roots are detected as transform nodes that:
-- include `trebuche` and `arm` in the name;
-- are direct children of a trebuchet root;
-- do not include `visual`, `collider`, or `col`;
-- have a descendant whose name includes `missile-load-target`.
-
-Missile load targets in the GLB should include `missile-load-target`, for example:
-- `left-missile-load-target`
-- `right-missile-load-target`
-
 ## Networking Protocol
 
-WebSocket messages from client to server:
+Worker → client messages:
+- `welcome` — sent on connect, includes `playerId`
+- `lobby` — waiting for opponent
+- `matched` — both players connected, game starting
+- `state` — physics state broadcast each tick
+- `event` — game events (kingHit, fire, sounds)
+- `roundEnded` — round winner/loser, scores, optional `matchWon`
+- `levelChanged` — new round loading
+- `matchOver` — match complete
+- `ping` — lag compensation probe
 
+Client → worker messages (via `socket.send`):
 ```js
-{
-  type: "input",
-  seq,
-  action,
-  ...
-}
+{ type: "input", seq, action, ...payload }
 ```
-
-Important actions:
-- `reset`
-- `dragStart`
-- `dragMove`
-- `dragEnd`
-- `aimStart`
-- `aimMove`
-- `aimRelease`
-
-Server broadcasts:
-
-```js
-{
-  type: "state",
-  tick,
-  serverTime,
-  objects: [...]
-}
-```
-
-Each object includes:
-- `id`
-- `x`, `y`, `z`
-- `rot`
-- `vx`, `vy`, `vz`
-- optional `loaded`, `loadedInto`
-- optional `armAngle`, `fireState`
-- optional `hits`, `maxHits`
-
-The `rot` value is degrees. It is currently the server's 2D Havok rotation around Z, converted into protocol degrees. The client clears `rotationQuaternion` and applies it to `visual.rotation.z`.
+Actions: `reset`, `dragStart`, `dragMove`, `dragEnd`, `aimStart`, `aimMove`, `aimRelease`, `pong`
 
 ## Physics
 
-Current physics is Havok on the server, not the old custom AABB simulation.
-
-Important implementation details:
-- `server.js` creates a hidden `TransformNode` per gameplay object and a `PhysicsAggregate`.
-- Missiles use `PhysicsShapeType.SPHERE`.
-- Other objects use `PhysicsShapeType.BOX`.
-- Dynamic objects have mass from `SERVER_CONFIG.dynamicMass`.
-- Static objects have mass `0`.
-- Bodies are synchronized to server state and sent to the client each tick.
-
-2D plane lock:
-- The game plane is X/Y.
-- Z position is forced back to each object's authored `originZ`.
-- Z linear velocity is forced to `0`.
-- For non-trebuchets, X/Y angular velocity is forced to `0` and Z angular velocity is left free.
-- This is intended to allow real 2D tumbling/spin from Havok contacts, not fake spin.
-- Trebuchets are special: Y and Z are locked to origin; only X movement is allowed.
-
-Important: fake spin was intentionally removed. Do not reintroduce rolling-spin coupling or manual impact spin unless explicitly asked. Rotation should come from Havok contact torque.
-
-Current caveat:
-- The 2D lock is still a post-step correction, not a true Havok constraint. If rotation still feels wrong, the next correct improvement is to use real Havok constraints/locked axes, not fake spin.
-
-## Dragging And Release
-
-The client samples pointer movement at a configured rate and sends averaged release velocity on `dragEnd`.
-
-Important config in `public/config.js`:
-
+Havok runs in the game worker browser context (not Node). Initialized with:
 ```js
-normalReleaseVelocityMax: 8
-dragUprightLerp: 0.25
-releaseVelocitySampleHz: 60
-releaseVelocityFrameWindow: 5
-releaseVelocityMinSampleDistance: 0.05
+havokInterfacePromise ??= HavokPhysics(); // browser auto-fetches WASM
 ```
 
-Server clamps normal object release velocity with `normalReleaseVelocityMax`. This is intentionally low so players cannot throw blocks as the main attack. Trebuchet shots have a separate cap.
+2D plane lock: Z position forced to `originZ`, Z linear velocity zeroed each tick.
+Trebuchets: only X movement allowed, Y/Z locked to origin.
+Blocks/kings use magnetic drag (force-based). Missiles use direct position sync.
 
-Dragging syncs object position into the Havok body. On release, the server teleports the Havok body to the released position and then applies the release velocity.
+## Key Bug Fixed This Session
 
-Blocks, kings, and future non-trebuchet/non-missile dynamic objects lerp their `rot` back toward `0` while picked up or dragged. The amount per server tick/drag update is `dragUprightLerp`. This is server-owned behavior; do not trust client drag rotation for these objects.
+`server/input.js` was using `client.id` everywhere but the game worker creates clients as
+`{ playerId, room }` — no `id` property. This made `object.draggedBy` always `undefined`,
+so magnetic drag force was never applied and blocks couldn't be dragged.
+Fix: all `client.id` → `client.playerId` in `server/input.js`.
 
-## Missile Loading
+## Disconnect Handling
 
-Missiles load when released near an unloaded trebuchet. The range is:
+- Guest disconnects → worker broadcasts `roundEnded` with `matchWon: true` to host ✓
+- Host disconnects → guest's WebRTC drops → `socket close` fires → if `matchStarted && !matchOver`, guest sees win screen ✓
+- `matchStarted` flag in client.js stays true through round transitions (unlike `isMatched`)
 
-```js
-missileLoadRange: 0.5
-```
+## Leaderboard / Stats
 
-Server logic:
-- `maybeLoadMissile(missile)` checks range against both the trebuchet root and actual load target.
-- If loaded:
-  - `missile.loadedInto = trebuchet.id`
-  - `trebuchet.loaded = true`
-  - `trebuchet.loadedMissileId = missile.id`
-  - missile is pinned to `loadTargetForTrebuchet(trebuchet)`
+- `POST /api/sessions/:id/result` — either player reports each round result
+- `GET /api/leaderboard` — all registered (non-guest) players, sorted by wars_won
+- `GET /api/me/enemies` — current player's defeated opponents
+- Guests (is_guest=1) are excluded from stats tracking
+- `UNIQUE(session_id, round_number)` prevents double-counting when both players report
+- Lobby has 🏆 Leaderboard button that toggles the panel, hiding Host/Join sections
+- Terminology: Battles = rounds, Wars = full matches
 
-Loaded and dragged missiles are trigger-only in Havok so they do not physically push the trebuchet while loading. They become solid again on release/firing.
+## Login / Lobby Pages
 
-## Trebuchet Movement
+Both `login.html` and `lobby.html` have:
+- Full-screen Babylon.js background scene (random level from levels 1–4)
+- Same camera position as game (computed via `computeCamPos` using config viewport bounds)
+- Same lighting scaling (`importedLightIntensityScale`, `fallbackLightIntensity`, `exposure`, `contrast` from config)
+- `rgba(0,0,0,0.45)` dim overlay
+- `title.webp` banner (max-width: 400px)
+- UI cards with `backdrop-filter: blur(8px)` and `rgba(20,20,30,0.75)` background
 
-Trebuchets are dynamic but constrained by code:
-- They move only along X.
-- Y and Z are locked to origin.
-- Left range:
+## Asset Caching
 
-```js
-trebuchetLeftMinX: -30
-trebuchetLeftMaxX: -5
-```
-
-- Right range:
-
-```js
-trebuchetRightMinX: 5
-trebuchetRightMaxX: 30
-```
-
-Side detection:
-- left if root name includes `p1`, `left`, or `1`;
-- otherwise treated as right.
-
-## Trebuchet Arm And Firing
-
-Trebuchet firing is server-authoritative.
-
-Config:
-
-```js
-trebuchetArmRestRotationZDegrees: 15
-aimMaxPullDistance: 8
-aimPowerScale: 4
-trebuchetArmPullbackMaxDegrees: 80
-trebuchetFireVelocityMax: 28
-fireReleaseAnimationMs: 180
-fireReturnAnimationMs: 220
-```
-
-Flow:
-1. Missile is loaded into a trebuchet.
-2. Client clicks/presses the loaded missile and sends `aimStart`.
-3. Client sends `aimMove` while dragging.
-4. Server updates `trebuchet.armAngle`.
-5. Client sends `aimRelease`.
-6. Server animates arm from pullback angle toward `0`.
-7. Missile now detaches when the arm crosses the configured rest angle, not at `0`.
-8. The arm still completes the release animation to `0`, then lerps back to the rest angle.
-
-Client-only aim assist:
-- While aiming a loaded missile, the client renders a procedural arrow in code.
-- The arrow head is placed at the predicted missile release point for the trebuchet's rest angle.
-- The arrow tail follows the player's current drag point.
-- This arrow is not authored in the GLB and is not server-authoritative.
-
-Current `fireState` values:
-- `idle`
-- `aiming`
-- `releasing`
-- `returning`
-
-The missile must stay pinned to the live `missile-load-target` until the final release frame.
-
-Right trebuchet:
-- The GLB right arm visually wants the same positive rest angle as the left (`+15`), not mirrored negative.
-- Shot direction is mirrored separately in velocity calculation.
-- Left fires toward `+X`; right fires toward `-X`.
-
-## Client Rendering
-
-Client loads the same GLB and registers top-level visual roots.
-
-Important rendering details:
-- Collider-only meshes (`Col`) are disabled on the client.
-- Visuals receive server `x/y/z` and `rot`.
-- The client clears `visual.rotationQuaternion = null` before assigning rotation. This is necessary because GLB imports often use quaternions, which would ignore `.rotation.z`.
-- Trebuchet arms are separately found and rotated by `armAngle`.
-- Camera controls are disabled by default so missed clicks do not rotate the scene:
-
-```js
-cameraControlsEnabled: false
-```
-
-## Config Philosophy
-
-Use `public/config.js` for editable gameplay variables shared by server and client:
-- input inversion
-- camera lock
-- light/shadow/render tuning
-- drag release velocity
-- missile load range
-- trebuchet movement limits
-- trebuchet firing tuning
-
-Use `config/server.js` for server-only simulation/world constants.
-
-## Level Authoring Recommendation
-
-For this prototype, prefer authoring layout in Blender:
-- walls
-- pre-stacked blocks
-- airborne blocks/missiles for initial drop
-- king positions
-- trebuchet positions
-
-Avoid runtime duplication/spawning for level layout. It caused confusing behavior and was rolled back. New levels should usually be new GLBs following the naming scheme.
-
-Runtime spawning should only be used for true game mechanics such as ammo replenishment, waves, or powerups.
-
-## Known Recent Issues And Fixes
-
-Fixed:
-- Runtime block/missile spawning was removed.
-- Server now loads new GLB objects after restart.
-- Browser cache disabled with `Cache-Control: no-store`.
-- Havok horizontal velocity was initially suppressed because pre-step transform sync fought velocities; fixed by only teleporting bodies explicitly for reset/drag/load.
-- Dragged/loaded missiles are trigger-only to avoid pushing trebuchets during loading.
-- Fake spin was removed. Rotation should come from Havok contact torque.
-
-Watch out:
-- If the server is not restarted after changing `level1.glb`, it will keep simulating the old imported level.
-- If the browser appears stale, hard refresh.
-- If rotations still look locked, inspect both server `rot` values and Blender hierarchy. A child visual may counter-rotate or make root rotation hard to see.
-- If Havok rotation remains weak, solve it with real constraints/axis locks, not fake spin.
+Controlled by `BARRAGE_CONFIG.cacheAssets` in `public/config.js`:
+- `false` (default) — all responses get `Cache-Control: no-store` (good for dev)
+- `true` — GLBs, images, sounds get `public, max-age=3600` (set for production)
 
 ## Quick Verification Commands
-
-Check syntax:
 
 ```sh
 node --check server.js
 node --check public/client.js
-node --check public/config.js
-```
-
-Confirm server sees the GLB objects:
-
-```sh
+node --check src/game-worker/index.js
+npm run build:worker
 npm start
 ```
 
-Expected current startup says `Loaded level1.glb with 19 gameplay objects`.
-
-Probe state manually with a small WebSocket script if needed. The server broadcasts object positions and rotations in `state.objects`.
+Server startup should log: `Barrage server running on port 3000`
+Game worker logs: `[worker] Loaded levelX.glb with N gameplay objects`
