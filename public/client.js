@@ -214,13 +214,13 @@ function repositionPlayerNames() {
   if (portraitLeftEl.naturalWidth > 0) {
     const r = portraitLeftEl.getBoundingClientRect();
     playerNameLeftEl.style.left = (r.right + GAP) + "px";
-    playerNameLeftEl.style.top  = (r.bottom - 20) + "px";
+    playerNameLeftEl.style.top  = (r.bottom - 25) + "px";
     playerNameLeftEl.style.right = "";
   }
   if (portraitRightEl.naturalWidth > 0) {
     const r = portraitRightEl.getBoundingClientRect();
     playerNameRightEl.style.right = (window.innerWidth - r.left + GAP) + "px";
-    playerNameRightEl.style.top   = (r.bottom - 20) + "px";
+    playerNameRightEl.style.top   = (r.bottom - 25) + "px";
     playerNameRightEl.style.left  = "";
   }
 }
