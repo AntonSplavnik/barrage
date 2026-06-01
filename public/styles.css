@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Astigmatic&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Asimovian&display=swap');
 
 #babylonUnmuteIcon { display: none !important; }
 
@@ -84,13 +84,37 @@ body {
   top: 100px;
   left: 12px;
   display: flex;
-  gap: 6px;
+  flex-direction: column;
+  gap: 4px;
   padding: 6px;
   background: rgb(18 23 25 / 78%);
   border: 1px solid rgb(255 255 255 / 16%);
   border-radius: 6px;
   z-index: 10;
 }
+
+#media-controls > .sound-row {
+  display: flex;
+  gap: 6px;
+}
+
+#surrender-battle {
+  margin-top: 4px;
+}
+
+#surrender-battle,
+#surrender-war {
+  background: none;
+  border: none;
+  color: rgb(255 255 255 / 60%);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 0;
+  text-align: left;
+  display: none;
+}
+#surrender-battle:hover,
+#surrender-war:hover { color: #fff; }
 
 #media-controls.player-odd {
   background: rgb(160 30 30 / 78%);
@@ -122,8 +146,8 @@ body {
 #player-name-right {
   position: fixed;
   top: 12px;
-  font-family: 'Astigmatic', serif;
-  font-size: 16px;
+  font-family: 'Asimovian', serif;
+  font-size: 18px;
   font-weight: 400;
   color: #f6f2e8;
   text-shadow: 0 1px 4px rgba(0,0,0,0.9);

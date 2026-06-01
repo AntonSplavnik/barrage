@@ -27,12 +27,16 @@
       </svg>
     </button>
     <div id="media-controls">
-      <button id="music-toggle" type="button" aria-label="Enable music" title="Enable music">
-        <span class="music-note" aria-hidden="true">♪</span>
-      </button>
-      <button id="sfx-toggle" type="button" aria-label="Enable sound effects" title="Enable sound effects">
-        <span class="sfx-speaker" aria-hidden="true">🔊</span>
-      </button>
+      <div class="sound-row">
+        <button id="music-toggle" type="button" aria-label="Enable music" title="Enable music">
+          <span class="music-note" aria-hidden="true">♪</span>
+        </button>
+        <button id="sfx-toggle" type="button" aria-label="Enable sound effects" title="Enable sound effects">
+          <span class="sfx-speaker" aria-hidden="true">🔊</span>
+        </button>
+      </div>
+      <button id="surrender-battle" type="button">Surrender Battle</button>
+      <button id="surrender-war"    type="button">Surrender War</button>
     </div>
     <img id="player-portrait-left"  src="/backgrounds/player1.webp" alt="" />
     <img id="player-portrait-right" src="/backgrounds/player2.webp" alt="" />

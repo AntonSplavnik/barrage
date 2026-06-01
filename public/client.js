@@ -57,6 +57,8 @@ const connectionEl = document.getElementById("connection");
 const playerEl = document.getElementById("player");
 const musicToggleEl = document.getElementById("music-toggle");
 const sfxToggleEl = document.getElementById("sfx-toggle");
+const surrenderBattleEl = document.getElementById("surrender-battle");
+const surrenderWarEl = document.getElementById("surrender-war");
 const resetEl = document.getElementById("reset");
 const restartServerEl = document.getElementById("restart-server");
 const lobbyEl = document.getElementById("lobby");
@@ -216,13 +218,13 @@ function repositionPlayerNames() {
   if (portraitLeftEl.naturalWidth > 0) {
     const r = portraitLeftEl.getBoundingClientRect();
     playerNameLeftEl.style.left = (r.right + GAP) + "px";
-    playerNameLeftEl.style.top  = (r.bottom - 25) + "px";
+    playerNameLeftEl.style.top  = (r.bottom - 21) + "px";
     playerNameLeftEl.style.right = "";
   }
   if (portraitRightEl.naturalWidth > 0) {
     const r = portraitRightEl.getBoundingClientRect();
     playerNameRightEl.style.right = (window.innerWidth - r.left + GAP) + "px";
-    playerNameRightEl.style.top   = (r.bottom - 25) + "px";
+    playerNameRightEl.style.top   = (r.bottom - 21) + "px";
     playerNameRightEl.style.left  = "";
   }
 }
@@ -282,13 +284,14 @@ function showMatchWinnerScreen(winnerPlayerId) {
   const num = parseInt(winnerPlayerId.split("_")[1], 10);
   const isLeft = Number.isFinite(num) && num % 2 === 1;
   const portraitSrc = isLeft ? "/backgrounds/player1.webp" : "/backgrounds/player2.webp";
+  const winnerName = isLeft ? playerNameLeftEl.textContent : playerNameRightEl.textContent;
+  const displayName = winnerName || winnerPlayerId;
 
   const overlay = document.getElementById("match-winner-overlay");
   const portraitImg = document.getElementById("match-winner-portrait");
   const messageEl = document.getElementById("match-winner-message");
 
-  const outcome = winnerPlayerId === myPlayerId ? "You have won." : "You have lost.";
-  messageEl.innerHTML = `Your war is over.<br>${outcome}<br><a class="play-again-btn" href="/">Play again?</a>`;
+  messageEl.innerHTML = `The War is over<br>${displayName} has won<br><a class="play-again-btn" href="/">Play again?</a>`;
 
   portraitImg.src = portraitSrc;
   overlay.classList.add("is-visible");
@@ -1397,8 +1400,34 @@ if (_rtcMode === "host") {
     });
 }
 
+// When the host leaves (tab close, navigate away), end the session so it
+// disappears from the lobby immediately rather than waiting for stale cleanup.
+if (_rtcMode === "host" && _rtcSession) {
+  window.addEventListener("beforeunload", () => {
+    fetch(`/api/sessions/${_rtcSession}/end`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${_authToken}` },
+      keepalive: true,
+    });
+  });
+}
+
 socket.addEventListener("open", () => {
   setStatus("Connected");
+});
+
+surrenderBattleEl.addEventListener("click", () => {
+  if (!isMatched) return;
+  socket.send(JSON.stringify({ type: "input", action: "surrender", surrenderType: "battle" }));
+  surrenderBattleEl.style.display = "none";
+  surrenderWarEl.style.display = "none";
+});
+
+surrenderWarEl.addEventListener("click", () => {
+  if (!isMatched) return;
+  socket.send(JSON.stringify({ type: "input", action: "surrender", surrenderType: "war" }));
+  surrenderBattleEl.style.display = "none";
+  surrenderWarEl.style.display = "none";
 });
 
 socket.addEventListener("message", (event) => {
@@ -1467,6 +1496,13 @@ socket.addEventListener("message", (event) => {
       restoreDisabledMissileVisuals();
       isMatched = true;
       matchStarted = true;
+      surrenderBattleEl.style.display = "block";
+      surrenderWarEl.style.display = "block";
+      if (_rtcMode === "host" && _rtcSession) {
+        fetch(`/api/sessions/${_rtcSession}/active`, {
+          method: "POST", headers: { Authorization: `Bearer ${_authToken}` },
+        }).catch(() => {});
+      }
       lobbyPanelEl.classList.add("panel-hidden");
       _lobbyFadeTimer = setTimeout(() => {
         lobbyTitleEl.style.opacity = "0";
@@ -1477,6 +1513,8 @@ socket.addEventListener("message", (event) => {
 
   if (message.type === "roundEnded") {
     isMatched = false;
+    surrenderBattleEl.style.display = "none";
+    surrenderWarEl.style.display = "none";
     const matchWon = message.matchWon;
     const roundWinner = message.winner;
     animateWinCrown(roundWinner, message.scores ?? {}, {
@@ -1497,11 +1535,13 @@ socket.addEventListener("message", (event) => {
     switchLevelIfNeeded(currentLevelUrl, { force: Boolean(message.forceReload) }).then(() => {
       isMatched = true;
       matchStarted = true;
+      surrenderBattleEl.style.display = "block";
+      surrenderWarEl.style.display = "block";
       if (_forfeitLoser) {
         const iLost = _forfeitLoser === myPlayerId;
         const text = iLost
-          ? "You forfeited the last battle via a browser refresh.<br>Now the war continues."
-          : "You won the last battle because your opponent refreshed.<br>Now the war continues.";
+          ? "You surrendered the last battle.<br>Now the war continues."
+          : "Your opponent surrendered the last battle.<br>Now the war continues.";
         setLobbyStatus(text);
         lobbyTitleEl.style.opacity = "0";
         _lobbyFadeTimer = setTimeout(() => {

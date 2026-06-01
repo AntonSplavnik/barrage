@@ -69,14 +69,14 @@ export const BARRAGE_CONFIG = {
   interpolationDelayMs: 50,               // ms — render behind live to absorb jitter (≈3 ticks at 60 Hz)
   interpolationBufferSize: 8,             // number of snapshots to keep
 
-  // Rendering.
+  // Rendering. Resolution
   importedLightIntensityScale: 0.004,      // multiplier
   fallbackLightIntensity: 0.1,            // multiplier
   shadowsEnabled: true,
   shadowMapSize: 2048,                    // px
   shadowBlurEnabled: true,
   shadowBlurKernel: 16,
-  renderMaxHeightPx: 1024,                // px, cap internal render height while keeping fullscreen CSS size
+  renderMaxHeightPx: 1280,                // px, cap internal render height while keeping fullscreen CSS size
   shadowBias: 0.0005,
   shadowNormalBias: 0.02,
   exposure: 1.0,                          // multiplier
@@ -97,7 +97,7 @@ export const BARRAGE_CONFIG = {
   staticFriction: 1.0,                    // 0–1
 
   // UI.
-  hideHud: false,                          // hides player name and buttons panel
+  hideHud: true,                          // hides player name and buttons panel
 
   // Input.
   inputInvertX: true,
@@ -146,8 +146,8 @@ export const BARRAGE_CONFIG = {
   roundEndDelayMs: 5000,                  // ms
   roundsToWin: 10,                         // first player to this many round wins takes the match
   matchEndDelayMs: 4000,                   // ms — how long after match-winning round before both players are disconnected
-  idleTimeoutMs: 10 * 60 * 1000,          // ms — disconnect waiting/spectating client after this long with no input
-  inGameIdleTimeoutMs: 5 * 60 * 1000,     // ms — disconnect in-game client after this long with no input
+  idleTimeoutMs: 30 * 60 * 1000,          // ms — disconnect waiting/spectating client after this long with no input
+  inGameIdleTimeoutMs: 20 * 60 * 1000,     // ms — disconnect in-game client after this long with no input
 
   // Missile Loading.
   missileLoadRange: 3,                    // m

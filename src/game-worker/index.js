@@ -923,12 +923,15 @@ async function advanceRoomAfterRound(room) {
   room.paused = false;
   saveActiveRoomTick();
 
+  const forfeitLoser = room.pendingForfeitLoser ?? null;
+  room.pendingForfeitLoser = null;
   broadcast({
     type: "levelChanged",
     roomId: room.id,
     level: room.level.url,
     roundNumber: room.roundNumber,
     scores: room.scores,
+    ...(forfeitLoser && { forfeitLoser }),
   });
   sendState();
 }
@@ -1239,6 +1242,35 @@ function handlePlayerDisconnect(role) {
   }
 }
 
+function handleSurrenderBattle(role) {
+  if (!activeRoom || activeRoom.roundWinner) return;
+  const loserPlayerId = playerIdForRole(role);
+  activeRoom.pendingForfeitLoser = loserPlayerId;
+  recordRoundWin(loserPlayerId);
+}
+
+function handleSurrenderWar(role) {
+  if (!activeRoom || activeRoom.matchEnded) return;
+  const loserPlayerId = playerIdForRole(role);
+  const winnerRole = role === "host" ? "guest" : "host";
+  const winnerPlayerId = playerIdForRole(winnerRole);
+  activeRoom.matchEnded = true;
+  stopSimulation();
+  broadcast({
+    type: "roundEnded",
+    roomId: activeRoom.id,
+    tick,
+    winner: winnerPlayerId,
+    loser: loserPlayerId,
+    roundNumber: activeRoom?.roundNumber ?? 1,
+    scores: activeRoom?.scores ?? {},
+    matchWon: true,
+  });
+  setTimeout(() => {
+    broadcast({ type: "matchOver" });
+  }, BARRAGE_CONFIG.matchEndDelayMs ?? 4000);
+}
+
 function handlePlayerMessage(role, msg) {
   try {
     if (!activeRoom || !connectedRoles.has("host") || !connectedRoles.has("guest")) return;
@@ -1247,6 +1279,16 @@ function handlePlayerMessage(role, msg) {
     // Pong from guest — update half-RTT measurement
     if (parsed.type === "pong") {
       _handlePong(parsed.ts);
+      return;
+    }
+
+    // Surrender
+    if (parsed.type === "input" && parsed.action === "surrender") {
+      if (parsed.surrenderType === "war") {
+        handleSurrenderWar(role);
+      } else {
+        handleSurrenderBattle(role);
+      }
       return;
     }
 

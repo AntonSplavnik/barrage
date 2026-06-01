@@ -7,7 +7,11 @@
       "Bash(git commit -m ' *)",
       "Bash(git push *)",
       "Bash(node -e ' *)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(git -C /home/rufus/barrage add public/client.js public/styles.css src/game-worker/index.js public/game-worker.js)",
+      "Bash(git -C /home/rufus/barrage commit -m 'feat: show real usernames next to portraits, swap font to Astigmatic *)",
+      "Bash(git -C /home/rufus/barrage add public/client.js src/game-worker/index.js)",
+      "Bash(git -C /home/rufus/barrage commit -m 'fix: keep playerId as Player_1/2 for side detection, add displayName for portraits *)"
     ]
   }
 }

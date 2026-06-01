@@ -1,5 +1,7 @@
 # Barrage
 
+Currently playable at https://barrage.pages.dev/ 
+
 Barrage is a 2 player PVP game for web and mobile. It uses 3D graphics, but the gameplay happens on a 2D plane.
 
 Each player has a trebuchet, a fragile king, and a set of movable defensive blocks. The goal is to protect your own king while launching spherical projectiles at the opponent's defenses. For the first version, each king can withstand 3 hits. The player whose king takes 3 hits loses.

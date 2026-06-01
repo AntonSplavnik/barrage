@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { requireAuth } from './middleware.js'
 
-const SESSION_TTL_MS = 10 * 60 * 1000
+const SESSION_TTL_MS = 2 * 60 * 1000
 
 function randomHex(bytes) {
   const arr = new Uint8Array(bytes)
