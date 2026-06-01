@@ -2,6 +2,7 @@ import express from "express";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { BARRAGE_CONFIG } from "./public/config.js";
 import authRouter from "./src/server/auth.js";
 import lobbyRouter from "./src/server/lobby.js";
 import signalingRouter from "./src/server/signaling.js";
@@ -12,10 +13,13 @@ const __dirname = path.dirname(__filename);
 const PORT = Number(process.env.PORT || 3000);
 const publicDir = path.join(__dirname, "public");
 
+const ASSET_PREFIXES = ["/assets/", "/backgrounds/", "/sounds/"];
+
 const app = express();
 
 app.use((_req, res, next) => {
-  res.setHeader("Cache-Control", "no-store");
+  const isAsset = ASSET_PREFIXES.some(p => _req.path.startsWith(p));
+  res.setHeader("Cache-Control", isAsset && BARRAGE_CONFIG.cacheAssets ? "public, max-age=3600" : "no-store");
   next();
 });
 

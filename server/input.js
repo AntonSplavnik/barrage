@@ -47,7 +47,7 @@ export function createInputHandler({
       if (!canGrab(client.playerId, object)) { console.log("[grab] REJECT canGrab", client.playerId, message.entityId, "x=", object.x); return; }
       console.log("[grab] OK", client.playerId, message.entityId, "x=", object.x);
 
-      object.draggedBy = client.id;
+      object.draggedBy = client.playerId;
       if (isMissileName(object.id)) {
         setPhysicsBodyTrigger(object, true);
       }
@@ -77,7 +77,7 @@ export function createInputHandler({
 
       const aimStart = loadTargetForTrebuchet(trebuchet) ?? missile;
       trebuchet.fireState = armStateAiming;
-      trebuchet.aimedBy = client.id;
+      trebuchet.aimedBy = client.playerId;
       trebuchet.aimStart = {
         x: aimStart.x,
         y: aimStart.y,
@@ -96,7 +96,7 @@ export function createInputHandler({
       if (!missile || !message.point || !missile.loadedInto) return;
 
       const trebuchet = gameObjects().get(missile.loadedInto);
-      if (!trebuchet || trebuchet.aimedBy !== client.id || trebuchet.fireState !== armStateAiming) return;
+      if (!trebuchet || trebuchet.aimedBy !== client.playerId || trebuchet.fireState !== armStateAiming) return;
 
       updateTrebuchetAim(trebuchet, message.point);
     }
@@ -106,7 +106,7 @@ export function createInputHandler({
       if (!missile || !message.point || !missile.loadedInto) return;
 
       const trebuchet = gameObjects().get(missile.loadedInto);
-      if (!trebuchet || trebuchet.aimedBy !== client.id || trebuchet.fireState !== armStateAiming) return;
+      if (!trebuchet || trebuchet.aimedBy !== client.playerId || trebuchet.fireState !== armStateAiming) return;
 
       updateTrebuchetAim(trebuchet, message.point);
       stopTrebuchetStretchSound(trebuchet);
@@ -116,7 +116,7 @@ export function createInputHandler({
     if (message.action === "dragMove") {
       const object = gameObjects().get(message.entityId);
       if (!object || !message.point) return;
-      if (object.draggedBy !== client.id) return;
+      if (object.draggedBy !== client.playerId) return;
 
       const now = Date.now();
       const previous = dragState().get(object.id);
@@ -165,7 +165,7 @@ export function createInputHandler({
     if (message.action === "dragEnd") {
       const object = gameObjects().get(message.entityId);
       if (!object || !message.point) return;
-      if (object.draggedBy !== client.id) return;
+      if (object.draggedBy !== client.playerId) return;
 
       if (usesMagneticDrag(object)) {
         releaseDrag(object, usableReleaseVelocity(object, message));

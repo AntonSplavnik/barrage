@@ -19,16 +19,39 @@
       gap: 2rem;
     }
 
-    h1 {
-      font-size: 2.5rem;
-      letter-spacing: 0.15em;
-      text-transform: uppercase;
-      color: #fff;
+    #login-bg {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+      display: block;
+    }
+
+    #login-bg-dim {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      background: rgba(0, 0, 0, 0.45);
+      pointer-events: none;
+    }
+
+    .title-banner {
+      position: relative;
+      z-index: 2;
+      width: 100%;
+      max-width: 400px;
+      display: block;
+      pointer-events: none;
+      user-select: none;
     }
 
     .card {
-      background: #14141e;
-      border: 1px solid #2a2a3e;
+      position: relative;
+      z-index: 2;
+      background: rgba(20, 20, 30, 0.8);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(42, 42, 62, 0.8);
       border-radius: 10px;
       padding: 2rem;
       width: 100%;
@@ -111,134 +134,218 @@
   </style>
 </head>
 <body>
-  <h1>Barrage</h1>
 
-  <div class="card">
-    <div class="tabs">
-      <button class="tab active" id="tab-quick" type="button">Quick Play</button>
-      <button class="tab" id="tab-login" type="button">Login</button>
-      <button class="tab" id="tab-register" type="button">Register</button>
-    </div>
+<canvas id="login-bg"></canvas>
+<div id="login-bg-dim"></div>
 
-    <form id="form" autocomplete="off">
-      <!-- Quick Play -->
-      <div id="section-quick">
-        <div class="field">
-          <label for="quick-name">Display name</label>
-          <input id="quick-name" type="text" name="name" required maxlength="24" placeholder="e.g. Alice">
-        </div>
-        <p class="quick-hint" style="margin-top:0.6rem">No password needed — just pick a name and play. Your session won't persist after the tab closes.</p>
-      </div>
+<img class="title-banner" src="/backgrounds/title.webp" alt="Barrage" />
 
-      <!-- Login -->
-      <div id="section-login" style="display:none">
-        <div class="field">
-          <label for="login-username">Username</label>
-          <input id="login-username" type="text" name="username" maxlength="24" autocomplete="username">
-        </div>
-        <div class="field" style="margin-top:1rem">
-          <label for="login-password">Password</label>
-          <input id="login-password" type="password" name="password" autocomplete="current-password">
-        </div>
-      </div>
-
-      <!-- Register -->
-      <div id="section-register" style="display:none">
-        <div class="field">
-          <label for="reg-username">Username</label>
-          <input id="reg-username" type="text" name="username" maxlength="24" autocomplete="username">
-        </div>
-        <div class="field" style="margin-top:1rem">
-          <label for="reg-password">Password</label>
-          <input id="reg-password" type="password" name="password" autocomplete="new-password" minlength="6">
-        </div>
-      </div>
-
-      <p class="error" id="error-msg" style="margin-top:0.8rem"></p>
-      <button type="submit" id="submit-btn">Play</button>
-    </form>
+<div class="card">
+  <div class="tabs">
+    <button class="tab active" id="tab-quick" type="button">Quick Play</button>
+    <button class="tab" id="tab-login" type="button">Login</button>
+    <button class="tab" id="tab-register" type="button">Register</button>
   </div>
 
-  <script>
-    const tabs = {
-      quick:    { tab: document.getElementById("tab-quick"),    section: document.getElementById("section-quick") },
-      login:    { tab: document.getElementById("tab-login"),    section: document.getElementById("section-login") },
-      register: { tab: document.getElementById("tab-register"), section: document.getElementById("section-register") },
-    };
+  <form id="form" autocomplete="off">
+    <div id="section-quick">
+      <div class="field">
+        <label for="quick-name">Display name</label>
+        <input id="quick-name" type="text" name="name" required maxlength="24" placeholder="e.g. Alice">
+      </div>
+      <p class="quick-hint" style="margin-top:0.6rem">No password needed — just pick a name and play. Your session won't persist after the tab closes.</p>
+    </div>
 
-    const submitBtn = document.getElementById("submit-btn");
-    const errorMsg  = document.getElementById("error-msg");
-    let mode = "quick";
+    <div id="section-login" style="display:none">
+      <div class="field">
+        <label for="login-username">Username</label>
+        <input id="login-username" type="text" name="username" maxlength="24" autocomplete="username">
+      </div>
+      <div class="field" style="margin-top:1rem">
+        <label for="login-password">Password</label>
+        <input id="login-password" type="password" name="password" autocomplete="current-password">
+      </div>
+    </div>
 
-    function switchTab(next) {
-      mode = next;
-      for (const [key, { tab, section }] of Object.entries(tabs)) {
-        tab.classList.toggle("active", key === next);
-        section.style.display = key === next ? "" : "none";
+    <div id="section-register" style="display:none">
+      <div class="field">
+        <label for="reg-username">Username</label>
+        <input id="reg-username" type="text" name="username" maxlength="24" autocomplete="username">
+      </div>
+      <div class="field" style="margin-top:1rem">
+        <label for="reg-password">Password</label>
+        <input id="reg-password" type="password" name="password" autocomplete="new-password" minlength="6">
+      </div>
+    </div>
+
+    <p class="error" id="error-msg" style="margin-top:0.8rem"></p>
+    <button type="submit" id="submit-btn">Play</button>
+  </form>
+</div>
+
+<script src="https://cdn.babylonjs.com/babylon.js"></script>
+<script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
+<script type="module">
+  import { BARRAGE_CONFIG } from "/config.js";
+
+  // ---------------------------------------------------------------------------
+  // Background 3D scene (same as lobby)
+  // ---------------------------------------------------------------------------
+  (async () => {
+    const canvas = document.getElementById("login-bg");
+    const engine = new BABYLON.Engine(canvas, true, { preserveDrawingBuffer: false, stencil: false });
+    const scene  = new BABYLON.Scene(engine);
+    scene.clearColor = new BABYLON.Color4(0.039, 0.039, 0.059, 1);
+
+    scene.imageProcessingConfiguration.exposure = BARRAGE_CONFIG.exposure ?? 1.0;
+    scene.imageProcessingConfiguration.contrast = BARRAGE_CONFIG.contrast ?? 1.0;
+
+    const LEVEL_FILES = ["level1.glb", "level2.glb", "level3.glb", "level4.glb"];
+    const levelFile = LEVEL_FILES[Math.floor(Math.random() * LEVEL_FILES.length)];
+
+    try {
+      await BABYLON.SceneLoader.AppendAsync("/assets/", levelFile, scene);
+      for (const mesh of scene.meshes) {
+        const n = mesh.name.toLowerCase();
+        if ((n.includes("col") || n.includes("collider")) && !n.includes("colvis")) {
+          mesh.isVisible = false;
+        }
       }
-      submitBtn.textContent = next === "quick" ? "Play" : next === "login" ? "Login" : "Register";
-      errorMsg.textContent = "";
+    } catch (e) {
+      console.warn("[login] GLB load failed:", e.message);
     }
 
-    tabs.quick.tab.addEventListener("click",    () => switchTab("quick"));
-    tabs.login.tab.addEventListener("click",    () => switchTab("login"));
-    tabs.register.tab.addEventListener("click", () => switchTab("register"));
+    const glbCamPos = scene.cameras.length > 0
+      ? (scene.cameras[0].globalPosition?.clone() ?? scene.cameras[0].position.clone())
+      : new BABYLON.Vector3(0, 0, 100);
+    for (const c of [...scene.cameras]) c.dispose();
 
-    document.getElementById("form").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      errorMsg.textContent = "";
-      submitBtn.disabled = true;
+    const camera = new BABYLON.FreeCamera("LoginCamera", glbCamPos, scene);
+    camera.fov        = BARRAGE_CONFIG.cameraVFov ?? 0.4;
+    camera.minZ       = 0.1;
+    camera.maxZ       = 500;
+    camera.rotation.y = Math.PI;
+    camera.inputs.clear();
+    scene.activeCamera = camera;
 
-      const messages = {
-        "username-taken":         "That username is already taken.",
-        "invalid-credentials":    "Incorrect username or password.",
-        "username-length":        "Name must be 2–24 characters.",
-        "username-invalid-chars": "Name can only contain letters, numbers, _ and -.",
-        "password-too-short":     "Password must be at least 6 characters.",
-        "username-and-password-required": "Please enter a username and password.",
-      };
+    let bottomY = BARRAGE_CONFIG.viewportBottomY ?? -8;
+    const vbNode = scene.meshes.find(m => m.name.toLowerCase() === "viewport-vertical_boundary")
+      ?? scene.transformNodes.find(m => m.name.toLowerCase() === "viewport-vertical_boundary");
+    if (vbNode) {
+      if (vbNode.isVisible !== undefined) vbNode.isVisible = false;
+      for (const child of (vbNode.getChildMeshes?.() ?? [])) child.isVisible = false;
+      vbNode.computeWorldMatrix(true);
+      const { min, max } = vbNode.getHierarchyBoundingVectors(true);
+      bottomY = (min.y + max.y) / 2;
+    }
 
-      try {
-        let body, endpoint;
+    {
+      const xMin    = BARRAGE_CONFIG.viewportBfXMin ?? -45;
+      const xMax    = BARRAGE_CONFIG.viewportBfXMax ?? 45;
+      const width   = xMax - xMin;
+      const centreX = (xMin + xMax) / 2;
+      const ar      = engine.getAspectRatio(camera);
+      const vFov    = camera.fov;
+      const hFov    = 2 * Math.atan(Math.tan(vFov / 2) * ar);
+      const dist    = (width / 2) / Math.tan(hFov / 2);
+      const camY    = bottomY + dist * Math.tan(vFov / 2);
+      camera.position.set(centreX, camY, dist);
+    }
 
-        if (mode === "quick") {
-          endpoint = "/api/quickplay";
-          body = { name: document.getElementById("quick-name").value.trim() };
-        } else if (mode === "login") {
-          endpoint = "/api/login";
-          body = {
-            username: document.getElementById("login-username").value.trim(),
-            password: document.getElementById("login-password").value,
-          };
-        } else {
-          endpoint = "/api/register";
-          body = {
-            username: document.getElementById("reg-username").value.trim(),
-            password: document.getElementById("reg-password").value,
-          };
-        }
+    if (scene.lights.length === 0) {
+      const fallback = new BABYLON.HemisphericLight("FallbackLight", new BABYLON.Vector3(0, 1, 0), scene);
+      fallback.intensity = BARRAGE_CONFIG.fallbackLightIntensity ?? 0.8;
+    } else {
+      const scale = BARRAGE_CONFIG.importedLightIntensityScale ?? 1.0;
+      for (const light of scene.lights) light.intensity *= scale;
+    }
 
-        const res = await fetch(endpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        const data = await res.json();
+    engine.runRenderLoop(() => scene.render());
+    window.addEventListener("resize", () => engine.resize());
+  })();
 
-        if (!data.ok) {
-          errorMsg.textContent = messages[data.error] ?? "Something went wrong.";
-          submitBtn.disabled = false;
-          return;
-        }
+  // ---------------------------------------------------------------------------
+  // Login / register / quick-play form
+  // ---------------------------------------------------------------------------
+  const tabs = {
+    quick:    { tab: document.getElementById("tab-quick"),    section: document.getElementById("section-quick") },
+    login:    { tab: document.getElementById("tab-login"),    section: document.getElementById("section-login") },
+    register: { tab: document.getElementById("tab-register"), section: document.getElementById("section-register") },
+  };
 
-        sessionStorage.setItem("barrage_token", data.token);
-        sessionStorage.setItem("barrage_username", data.username);
-        window.location.href = "/lobby.html";
-      } catch {
-        errorMsg.textContent = "Network error. Please try again.";
-        submitBtn.disabled = false;
+  const submitBtn = document.getElementById("submit-btn");
+  const errorMsg  = document.getElementById("error-msg");
+  let mode = "quick";
+
+  function switchTab(next) {
+    mode = next;
+    for (const [key, { tab, section }] of Object.entries(tabs)) {
+      tab.classList.toggle("active", key === next);
+      section.style.display = key === next ? "" : "none";
+    }
+    submitBtn.textContent = next === "quick" ? "Play" : next === "login" ? "Login" : "Register";
+    errorMsg.textContent  = "";
+  }
+
+  tabs.quick.tab.addEventListener("click",    () => switchTab("quick"));
+  tabs.login.tab.addEventListener("click",    () => switchTab("login"));
+  tabs.register.tab.addEventListener("click", () => switchTab("register"));
+
+  document.getElementById("form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    errorMsg.textContent = "";
+    submitBtn.disabled   = true;
+
+    const messages = {
+      "username-taken":                 "That username is already taken.",
+      "invalid-credentials":            "Incorrect username or password.",
+      "username-length":                "Name must be 2–24 characters.",
+      "username-invalid-chars":         "Name can only contain letters, numbers, _ and -.",
+      "password-too-short":             "Password must be at least 6 characters.",
+      "username-and-password-required": "Please enter a username and password.",
+    };
+
+    try {
+      let body, endpoint;
+
+      if (mode === "quick") {
+        endpoint = "/api/quickplay";
+        body     = { name: document.getElementById("quick-name").value.trim() };
+      } else if (mode === "login") {
+        endpoint = "/api/login";
+        body     = {
+          username: document.getElementById("login-username").value.trim(),
+          password: document.getElementById("login-password").value,
+        };
+      } else {
+        endpoint = "/api/register";
+        body     = {
+          username: document.getElementById("reg-username").value.trim(),
+          password: document.getElementById("reg-password").value,
+        };
       }
-    });
-  </script>
+
+      const res  = await fetch(endpoint, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify(body),
+      });
+      const data = await res.json();
+
+      if (!data.ok) {
+        errorMsg.textContent = messages[data.error] ?? "Something went wrong.";
+        submitBtn.disabled   = false;
+        return;
+      }
+
+      sessionStorage.setItem("barrage_token",    data.token);
+      sessionStorage.setItem("barrage_username", data.username);
+      window.location.href = "/lobby.html";
+    } catch {
+      errorMsg.textContent = "Network error. Please try again.";
+      submitBtn.disabled   = false;
+    }
+  });
+</script>
 </body>
 </html>

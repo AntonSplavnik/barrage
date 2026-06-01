@@ -1423,6 +1423,7 @@ socket.addEventListener("message", (event) => {
     switchLevelIfNeeded(currentLevelUrl).then(() => {
       restoreDisabledMissileVisuals();
       isMatched = true;
+      matchStarted = true;
       lobbyPanelEl.classList.add("panel-hidden");
       _lobbyFadeTimer = setTimeout(() => {
         lobbyTitleEl.style.opacity = "0";
@@ -1451,6 +1452,7 @@ socket.addEventListener("message", (event) => {
     const _forfeitLoser = message.forfeitLoser ?? null;
     switchLevelIfNeeded(currentLevelUrl, { force: Boolean(message.forceReload) }).then(() => {
       isMatched = true;
+      matchStarted = true;
       if (_forfeitLoser) {
         const iLost = _forfeitLoser === myPlayerId;
         const text = iLost
@@ -1554,11 +1556,12 @@ socket.addEventListener("message", (event) => {
 
 let idleDisconnected = false;
 let matchOver = false;
+let matchStarted = false;
 socket.addEventListener("message", (event) => {
   try {
     const msg = JSON.parse(event.data);
     if (msg.type === "idleDisconnect") idleDisconnected = true;
-    if (msg.type === "matchOver") matchOver = true;
+    if (msg.type === "matchOver") { matchOver = true; matchStarted = false; }
   } catch { /* handled by main message listener */ }
 }, { capture: true });
 
@@ -1567,11 +1570,11 @@ socket.addEventListener("close", () => {
   isMatched = false;
   hudOpponentEl.style.display = "none";
   if (matchOver) return;
-  if (idleDisconnected) {
-    setLobbyStatus(`Disconnected due to inactivity. <a class="copy-url-btn" href="/">Reconnect.</a>`);
-  } else {
-    setLobbyStatus(`Disconnected due to inactivity. <a class="copy-url-btn" href="/">Reconnect.</a>`);
+  if (matchStarted && myPlayerId) {
+    showMatchWinnerScreen(myPlayerId);
+    return;
   }
+  setLobbyStatus(`Disconnected. <a class="copy-url-btn" href="/">Reconnect.</a>`);
 });
 
 function sendInput(action, payload) {

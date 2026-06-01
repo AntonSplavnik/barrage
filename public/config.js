@@ -1,6 +1,7 @@
 export const BARRAGE_CONFIG = {
   // Assets.
   levelUrl: "/assets/level1.glb",
+  cacheAssets: false,               // true = cache GLBs/images/sounds; false = no-store (set true for production)
 
   // Music.
   musicTuneUrl: "/strudel.js",
