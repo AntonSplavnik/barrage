@@ -119,20 +119,20 @@ body {
 #player-name-left,
 #player-name-right {
   position: fixed;
-  top: 96px;
-  font-size: 12px;
-  font-weight: 600;
+  top: 12px;
+  font-size: 16px;
+  font-weight: 700;
   color: #f6f2e8;
-  text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+  text-shadow: 0 1px 4px rgba(0,0,0,0.9);
   pointer-events: none;
   z-index: 10;
-  max-width: 90px;
+  max-width: 140px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-#player-name-left  { left: 12px; }
-#player-name-right { right: 12px; text-align: right; }
+#player-name-left  { left: 90px; }
+#player-name-right { right: 90px; text-align: right; }
 
 #crowns-left,
 #crowns-right {
