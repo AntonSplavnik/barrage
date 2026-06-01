@@ -1292,6 +1292,10 @@ self.onmessage = ({ data }) => {
       });
       break;
 
+    case "setUsername":
+      playerUsernames[data.role] = data.username;
+      break;
+
     case "playerConnect":
       handlePlayerConnect(data.role, data.username).catch((err) => {
         self.postMessage({ type: "error", message: err.message });

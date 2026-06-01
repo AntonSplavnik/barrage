@@ -1331,10 +1331,17 @@ class WorkerSocket extends VirtualSocket {
     // Guest connects via WebRTC → tell worker
     rtc.onConnected = () => {
       console.log("[host] RTC onConnected → notifying worker");
-      worker.postMessage({ type: "playerConnect", role: "guest", username: _myUsername });
+      worker.postMessage({ type: "playerConnect", role: "guest" });
     };
-    // Message from guest → forward to worker
+    // Message from guest → forward to worker (intercept setUsername)
     rtc.onMessage = (data) => {
+      try {
+        const parsed = JSON.parse(data);
+        if (parsed.type === "setUsername") {
+          worker.postMessage({ type: "setUsername", role: "guest", username: parsed.username });
+          return;
+        }
+      } catch {}
       worker.postMessage({ type: "playerMessage", role: "guest", data });
     };
     // Guest disconnects
@@ -1380,6 +1387,7 @@ if (_rtcMode === "host") {
   _rtcGuest.start()
     .then(() => {
       console.log("[guest] RTC DataChannel open → socket open");
+      if (_myUsername) _rtcGuest.send(JSON.stringify({ type: "setUsername", username: _myUsername }));
       socket._open();
     })
     .catch((err) => {
