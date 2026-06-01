@@ -131,8 +131,7 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-#player-name-left  { left: 90px; }
-#player-name-right { right: 90px; text-align: right; }
+#player-name-right { text-align: right; }
 
 #crowns-left,
 #crowns-right {

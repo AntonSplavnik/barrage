@@ -208,10 +208,31 @@ function repositionCrowns() {
     crownsRightEl.style.right = (window.innerWidth - r.left + GAP) + "px";
   }
 }
+
+function repositionPlayerNames() {
+  const GAP = 6;
+  if (portraitLeftEl.naturalWidth > 0) {
+    const r = portraitLeftEl.getBoundingClientRect();
+    playerNameLeftEl.style.left = (r.right + GAP) + "px";
+    playerNameLeftEl.style.top  = (r.bottom - 20) + "px";
+    playerNameLeftEl.style.right = "";
+  }
+  if (portraitRightEl.naturalWidth > 0) {
+    const r = portraitRightEl.getBoundingClientRect();
+    playerNameRightEl.style.right = (window.innerWidth - r.left + GAP) + "px";
+    playerNameRightEl.style.top   = (r.bottom - 20) + "px";
+    playerNameRightEl.style.left  = "";
+  }
+}
+
 portraitLeftEl.addEventListener("load", repositionCrowns);
 portraitRightEl.addEventListener("load", repositionCrowns);
 if (portraitLeftEl.complete)  repositionCrowns();
 window.addEventListener("resize", repositionCrowns);
+portraitLeftEl.addEventListener("load", repositionPlayerNames);
+portraitRightEl.addEventListener("load", repositionPlayerNames);
+if (portraitLeftEl.complete)  repositionPlayerNames();
+window.addEventListener("resize", repositionPlayerNames);
 
 function updateCrowns(scores) {
   if (JSON.stringify(scores) === JSON.stringify(displayedScores)) return;
