@@ -1,6 +1,11 @@
 // AiPlayer — local AI opponent running in the host browser.
 // Posts the same input messages the human client sends, driven by a state machine.
 
+import {
+  isKingExposed, findFreeBlock,
+  LIFT_CLEARANCE, PLACE_OFFSET, LOWER_SPEED_MS, SETTLE_SPEED, DEFENSE_TIMEOUT,
+} from "./ai-defense.js";
+
 const LOAD_TARGET_OFFSET_Y  = 3.5;
 const DRAG_UNITS_PER_MS     = 0.02;  // at speed=1.0
 const AIM_UNITS_PER_MS      = 0.01;
@@ -16,19 +21,25 @@ const GRAVITY               = -9.81;
 const DAMPING               = 0.15;  // missileLinearDamping
 const PULL_SCALE_MIN        = 0.5;   // minimum pull (limits minimum power)
 const ADJUST_DEAD_ZONE      = 3;     // units — ignore errors smaller than this
+const DRAG_ZENITH_Y         = 7;    // world-space y of arc apex when picking up a missile
 const KING_CLEAR_RADIUS     = 4;     // m — trajectory must stay this far from own king
 const KING_CLEAR_ANGLE_STEP = 5;     // degrees to add each retry when own king is in the way
 const INITIAL_DELAY_MS      = 2000;
 
 const STATE = {
-  IDLE:         "IDLE",
-  PAUSE:        "PAUSE",
-  FIND_MISSILE: "FIND_MISSILE",
-  DRAG_TO_LOAD: "DRAG_TO_LOAD",
-  WAIT_LOADED:  "WAIT_LOADED",
-  AIM_START:    "AIM_START",
-  AIM_PULL:     "AIM_PULL",
-  FIRE:         "FIRE",
+  IDLE:           "IDLE",
+  PAUSE:          "PAUSE",
+  FIND_MISSILE:   "FIND_MISSILE",
+  DRAG_TO_LOAD:   "DRAG_TO_LOAD",
+  WAIT_LOADED:    "WAIT_LOADED",
+  AIM_START:      "AIM_START",
+  AIM_PULL:       "AIM_PULL",
+  FIRE:           "FIRE",
+  CHECK_DEFENSE:  "CHECK_DEFENSE",
+  GRAB_BLOCK:     "GRAB_BLOCK",
+  LIFT_BLOCK:     "LIFT_BLOCK",
+  CARRY_BLOCK:    "CARRY_BLOCK",
+  LOWER_BLOCK:    "LOWER_BLOCK",
 };
 
 // ---------------------------------------------------------------------------
@@ -120,9 +131,19 @@ export class AiPlayer {
     this._pauseRemaining  = 0;
     this._waitLoadedMs       = 0;
     this._useOutside         = false;
-    this._pullScale          = 1.0;       // 1 = max pull; reduced on overshoot
+    this._pullScale          = 1.0;
     this._firedMissileId     = null;
     this._lastKnownMissileX  = null;
+    this._dragStart          = null;
+    this._dragT              = 0;
+    // Defense
+    this._shotCount          = 0;
+    this._doDefenseCheck     = false;
+    this._defenseBlockId     = null;
+    this._defenseMs          = 0;
+    this._liftTargetY        = 0;
+    this._carryTargetX       = 0;
+    this._defenseCmdY        = 0;
   }
 
   onState(objects) {
@@ -172,6 +193,12 @@ export class AiPlayer {
     this._waitLoadedMs      = 0;
     this._firedMissileId    = null;
     this._lastKnownMissileX = null;
+    this._dragStart         = null;
+    this._dragT             = 0;
+    this._shotCount         = 0;
+    this._doDefenseCheck    = false;
+    this._defenseBlockId    = null;
+    this._defenseMs         = 0;
     this._lastTick          = null;
     // _pullScale intentionally kept — systematic physics error persists across rounds
   }
@@ -184,13 +211,26 @@ export class AiPlayer {
   }
 
   _step(dt) {
+    // Defense states are handled by a separate method to keep _step focused
+    if (this._state === STATE.CHECK_DEFENSE
+     || this._state === STATE.GRAB_BLOCK
+     || this._state === STATE.LIFT_BLOCK
+     || this._state === STATE.CARRY_BLOCK
+     || this._state === STATE.LOWER_BLOCK) {
+      this._stepDefense(dt);
+      return;
+    }
+
     const { speed } = this._config;
 
     switch (this._state) {
 
       case STATE.PAUSE: {
         this._pauseRemaining -= dt;
-        if (this._pauseRemaining <= 0) this._state = STATE.FIND_MISSILE;
+        if (this._pauseRemaining <= 0) {
+          this._state = this._doDefenseCheck ? STATE.CHECK_DEFENSE : STATE.FIND_MISSILE;
+          this._doDefenseCheck = false;
+        }
         break;
       }
 
@@ -204,7 +244,8 @@ export class AiPlayer {
                      ?? this._pickMissile(!this._useOutside);
         if (!missile) return;
         this._targetMissile = missile;
-        this._dragCurrent = { x: missile.x, y: missile.y, z: missile.z };
+        this._dragStart = { x: missile.x, y: missile.y, z: missile.z };
+        this._dragT     = 0;
         this._post({ type: "input", action: "dragStart",
           entityId: missile.id,
           point:    { x: missile.x, y: missile.y, z: missile.z },
@@ -214,18 +255,34 @@ export class AiPlayer {
       }
 
       case STATE.DRAG_TO_LOAD: {
-        if (!this._trebuchet || !this._targetMissile) { this._state = STATE.FIND_MISSILE; return; }
+        if (!this._trebuchet || !this._targetMissile || !this._dragStart) {
+          this._state = STATE.FIND_MISSILE; return;
+        }
         const treb    = this._trebuchet;
         const targetX = treb.x;
         const targetY = treb.y + LOAD_TARGET_OFFSET_Y;
         const targetZ = treb.z;
-        const maxMove = DRAG_UNITS_PER_MS * speed * dt;
-        const dx = targetX - this._dragCurrent.x;
-        const dy = targetY - this._dragCurrent.y;
-        const dist = Math.hypot(dx, dy);
+        const startX  = this._dragStart.x;
+        const startY  = this._dragStart.y;
 
-        if (dist <= maxMove) {
-          this._dragCurrent = { x: targetX, y: targetY, z: targetZ };
+        // Parabola: y at t=0 is startY, y at t=0.5 is zenith, y at t=1 is targetY
+        const zenith  = Math.max(this._config.dragZenithY ?? DRAG_ZENITH_Y, startY + 1, targetY + 1);
+        const pa      = -4 * zenith + 2 * (startY + targetY);
+        const pb      = 4 * zenith - 3 * startY - targetY;
+
+        const hDist = Math.abs(targetX - startX);
+        if (hDist > 0.01) {
+          // Advance t by horizontal speed
+          this._dragT = Math.min(1, this._dragT + (DRAG_UNITS_PER_MS * speed * dt) / hDist);
+        } else {
+          this._dragT = 1;
+        }
+
+        const t = this._dragT;
+        const x = startX + t * (targetX - startX);
+        const y = pa * t * t + pb * t + startY;
+
+        if (t >= 1) {
           this._post({ type: "input", action: "dragMove",
             entityId: this._targetMissile.id,
             point:    { x: targetX, y: targetY, z: targetZ },
@@ -237,12 +294,9 @@ export class AiPlayer {
           this._waitLoadedMs = 0;
           this._state = STATE.WAIT_LOADED;
         } else {
-          const nx = this._dragCurrent.x + (dx / dist) * maxMove;
-          const ny = this._dragCurrent.y + (dy / dist) * maxMove;
-          this._dragCurrent = { x: nx, y: ny, z: targetZ };
           this._post({ type: "input", action: "dragMove",
             entityId: this._targetMissile.id,
-            point:    { x: nx, y: ny, z: targetZ },
+            point:    { x, y, z: targetZ },
           });
         }
         break;
@@ -314,6 +368,8 @@ export class AiPlayer {
         }
         this._firedMissileId    = this._loadedMissile.id;
         this._lastKnownMissileX = this._loadedMissile.x;
+        this._shotCount++;
+        if (this._shotCount % 2 === 0) this._doDefenseCheck = true;
         this._post({ type: "input", action: "aimRelease",
           entityId: this._loadedMissile.id,
           point:    { x: this._aimCurrent.x, y: this._aimCurrent.y, z: this._trebuchet.z },
@@ -322,6 +378,111 @@ export class AiPlayer {
         this._useOutside = !this._useOutside;
         this._pauseRemaining = this._config.pauseMs ?? 1000;
         this._state = STATE.PAUSE;
+        break;
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Defense state handlers
+  // ---------------------------------------------------------------------------
+
+  _abandonDefense() {
+    const block = this._objects?.find((o) => o.id === this._defenseBlockId);
+    if (block) {
+      this._post({ type: "input", action: "dragEnd",
+        entityId: block.id,
+        point: { x: block.x, y: block.y, z: block.z },
+      });
+    }
+    this._defenseBlockId = null;
+    this._state = STATE.FIND_MISSILE;
+  }
+
+  _stepDefense(dt) {
+    const ownLeft = this._role === "Player_1";
+
+    switch (this._state) {
+
+      case STATE.CHECK_DEFENSE: {
+        const ownKing = this._findOwnKing();
+        if (!ownKing || !this._objects) { this._state = STATE.FIND_MISSILE; return; }
+        if (!isKingExposed(this._objects, ownKing, ownLeft)) {
+          this._state = STATE.FIND_MISSILE;
+          return;
+        }
+        const block = findFreeBlock(this._objects, ownKing, ownLeft, GRAB_ZONE);
+        if (!block) { this._state = STATE.FIND_MISSILE; return; }
+        this._defenseBlockId = block.id;
+        this._liftTargetY    = ownKing.y + LIFT_CLEARANCE;
+        this._carryTargetX   = ownKing.x + (ownLeft ? PLACE_OFFSET : -PLACE_OFFSET);
+        this._defenseMs      = 0;
+        this._state = STATE.GRAB_BLOCK;
+        break;
+      }
+
+      case STATE.GRAB_BLOCK: {
+        const block = this._objects?.find((o) => o.id === this._defenseBlockId);
+        if (!block) { this._state = STATE.FIND_MISSILE; return; }
+        this._post({ type: "input", action: "dragStart",
+          entityId: block.id,
+          point: { x: block.x, y: block.y, z: block.z },
+        });
+        this._defenseMs = 0;
+        this._state = STATE.LIFT_BLOCK;
+        break;
+      }
+
+      case STATE.LIFT_BLOCK: {
+        this._defenseMs += dt;
+        const block = this._objects?.find((o) => o.id === this._defenseBlockId);
+        if (!block || this._defenseMs > DEFENSE_TIMEOUT) { this._abandonDefense(); return; }
+        this._post({ type: "input", action: "dragMove",
+          entityId: block.id,
+          point: { x: block.x, y: this._liftTargetY, z: block.z },
+        });
+        if (block.y >= this._liftTargetY - 1) {
+          this._defenseMs = 0;
+          this._state = STATE.CARRY_BLOCK;
+        }
+        break;
+      }
+
+      case STATE.CARRY_BLOCK: {
+        this._defenseMs += dt;
+        const block = this._objects?.find((o) => o.id === this._defenseBlockId);
+        if (!block || this._defenseMs > DEFENSE_TIMEOUT) { this._abandonDefense(); return; }
+        this._post({ type: "input", action: "dragMove",
+          entityId: block.id,
+          point: { x: this._carryTargetX, y: this._liftTargetY, z: block.z },
+        });
+        if (Math.abs(block.x - this._carryTargetX) < 1) {
+          this._defenseMs  = 0;
+          this._defenseCmdY = this._liftTargetY;
+          this._state = STATE.LOWER_BLOCK;
+        }
+        break;
+      }
+
+      case STATE.LOWER_BLOCK: {
+        this._defenseMs += dt;
+        const block = this._objects?.find((o) => o.id === this._defenseBlockId);
+        if (!block || this._defenseMs > DEFENSE_TIMEOUT) { this._abandonDefense(); return; }
+        const speed = Math.hypot(block.vx ?? 0, block.vy ?? 0);
+        if (speed < SETTLE_SPEED && this._defenseMs > 800) {
+          this._post({ type: "input", action: "dragEnd",
+            entityId: block.id,
+            point: { x: block.x, y: block.y, z: block.z },
+          });
+          this._defenseBlockId = null;
+          this._state = STATE.FIND_MISSILE;
+          return;
+        }
+        this._defenseCmdY = Math.max(0, this._defenseCmdY - LOWER_SPEED_MS * dt);
+        this._post({ type: "input", action: "dragMove",
+          entityId: block.id,
+          point: { x: this._carryTargetX, y: this._defenseCmdY, z: block.z },
+        });
         break;
       }
     }

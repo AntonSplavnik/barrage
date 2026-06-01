@@ -227,6 +227,7 @@ export const AI_OPPONENTS = [
     accuracy: 0.6,             // 0–1, higher = less aim scatter
     pauseMs: 1000,             // ms pause between actions
     correctionAggression: 0.7, // 0–1, how fast aim corrects after each shot
+    dragZenithY: 8,           // world-space y apex of missile pickup arc
   },
   {
     id: "caesar-ai",
@@ -237,5 +238,6 @@ export const AI_OPPONENTS = [
     accuracy: 0.9,
     pauseMs: 1000,
     correctionAggression: 0.4,
+    dragZenithY: 10,
   },
 ];
