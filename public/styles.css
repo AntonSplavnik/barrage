@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Oi&display=swap');
+
 #babylonUnmuteIcon { display: none !important; }
 
 html,
@@ -120,8 +122,9 @@ body {
 #player-name-right {
   position: fixed;
   top: 12px;
-  font-size: 16px;
-  font-weight: 700;
+  font-family: 'Oi', serif;
+  font-size: 18px;
+  font-weight: 400;
   color: #f6f2e8;
   text-shadow: 0 1px 4px rgba(0,0,0,0.9);
   pointer-events: none;
