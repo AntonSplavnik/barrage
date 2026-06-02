@@ -720,8 +720,8 @@ function ensureCameraAndLight() {
 
   const cam = new FreeCamera("GameCamera", glbCamPos, scene);
   cam.fov       = CONFIG.cameraVFov ?? 0.4;  // vertical FOV in radians
-  cam.minZ      = 0.1;
-  cam.maxZ      = 500;
+  cam.minZ      = CONFIG.cameraMinZ ?? 0.1;
+  cam.maxZ      = CONFIG.cameraMaxZ ?? 2000;
   cam.rotation.y = Math.PI;                  // face along -Z toward the action plane
   scene.activeCamera = cam;
 
@@ -1608,10 +1608,13 @@ socket.addEventListener("message", (event) => {
   }
 
   if (message.type === "event") {
+    for (const ev of message.events ?? []) {
+      playSoundEffectEvent(ev);
+    }
+
     if (currentLevelUrl && loadedLevelUrl !== currentLevelUrl) return;
 
     for (const ev of message.events ?? []) {
-      playSoundEffectEvent(ev);
       vfxManager.handleEvent(ev);
 
 
@@ -2117,9 +2120,23 @@ scene.onBeforeRenderObservable.add(interpolator.applyInterpolatedPositions);
 const resizeEngine = () => {
   applyRenderResolutionLimit(engine, CONFIG);
   engine.resize();
+  cameraControl.onViewportResize();
 };
-new ResizeObserver(resizeEngine).observe(canvas);
-window.addEventListener("orientationchange", resizeEngine);
+let resizeFrame = null;
+let resizeTimer = null;
+function scheduleResize() {
+  if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
+  resizeFrame = requestAnimationFrame(() => {
+    resizeFrame = null;
+    resizeEngine();
+  });
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(resizeEngine, 250);
+}
+new ResizeObserver(scheduleResize).observe(canvas);
+window.addEventListener("resize", scheduleResize);
+window.addEventListener("orientationchange", scheduleResize);
+window.visualViewport?.addEventListener("resize", scheduleResize);
 
 window.addEventListener("blur", () => {
   stopReleaseVelocitySampling();

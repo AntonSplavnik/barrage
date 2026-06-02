@@ -222,8 +222,8 @@
 
     const camera = new BABYLON.FreeCamera("LoginCamera", glbCamPos, scene);
     camera.fov        = BARRAGE_CONFIG.cameraVFov ?? 0.4;
-    camera.minZ       = 0.1;
-    camera.maxZ       = 500;
+    camera.minZ       = BARRAGE_CONFIG.cameraMinZ ?? 0.1;
+    camera.maxZ       = BARRAGE_CONFIG.cameraMaxZ ?? 2000;
     camera.rotation.y = Math.PI;
     camera.inputs.clear();
     scene.activeCamera = camera;
@@ -277,11 +277,21 @@
   const errorMsg  = document.getElementById("error-msg");
   let mode = "quick";
 
+  const fieldsByMode = {
+    quick:    [document.getElementById("quick-name")],
+    login:    [document.getElementById("login-username"), document.getElementById("login-password")],
+    register: [document.getElementById("reg-username"), document.getElementById("reg-password")],
+  };
+
   function switchTab(next) {
     mode = next;
     for (const [key, { tab, section }] of Object.entries(tabs)) {
       tab.classList.toggle("active", key === next);
       section.style.display = key === next ? "" : "none";
+      for (const field of fieldsByMode[key]) {
+        field.disabled = key !== next;
+        field.required = key === next;
+      }
     }
     submitBtn.textContent = next === "quick" ? "Play" : next === "login" ? "Login" : "Register";
     errorMsg.textContent  = "";
@@ -290,6 +300,7 @@
   tabs.quick.tab.addEventListener("click",    () => switchTab("quick"));
   tabs.login.tab.addEventListener("click",    () => switchTab("login"));
   tabs.register.tab.addEventListener("click", () => switchTab("register"));
+  switchTab(mode);
 
   document.getElementById("form").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -300,7 +311,7 @@
       "username-taken":                 "That username is already taken.",
       "invalid-credentials":            "Incorrect username or password.",
       "username-length":                "Name must be 2–24 characters.",
-      "username-invalid-chars":         "Name can only contain letters, numbers, _ and -.",
+      "username-invalid-chars":         "Name can use letters, numbers, spaces, _ - . ' and @.",
       "password-too-short":             "Password must be at least 6 characters.",
       "username-and-password-required": "Please enter a username and password.",
     };

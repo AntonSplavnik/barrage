@@ -187,6 +187,8 @@ export const BARRAGE_CONFIG = {
 
   // Camera.
   cameraVFov: 0.4,                      // rad — vertical field of view (22.9°)
+  cameraMinZ: 0.1,                      // m — near clipping plane
+  cameraMaxZ: 2000,                     // m — far clipping plane; portrait framing can put camera near 500m
 
   // Camera Viewport.
   // World-space, action plane at Z=0.

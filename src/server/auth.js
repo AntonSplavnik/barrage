@@ -4,9 +4,13 @@ import { createAuthToken, requireAuth } from './middleware.js'
 
 const SALT_ROUNDS = 10
 
+function normalizeUsername(username) {
+  return typeof username === 'string' ? username.trim().replace(/\s+/g, ' ') : ''
+}
+
 function validateUsername(username) {
   if (!username || username.length < 2 || username.length > 24) return 'username-length'
-  if (!/^[a-zA-Z0-9_\-]+$/.test(username)) return 'username-invalid-chars'
+  if (!/^[a-zA-Z0-9 _.'@-]+$/.test(username)) return 'username-invalid-chars'
   return null
 }
 
@@ -19,7 +23,8 @@ function randomHex(bytes) {
 const router = new Hono()
 
 router.post('/quickplay', async (c) => {
-  const { name } = await c.req.json().catch(() => ({}))
+  const body = await c.req.json().catch(() => ({}))
+  const name = normalizeUsername(body.name)
   const err = validateUsername(name)
   if (err) return c.json({ ok: false, error: err }, 400)
 
@@ -37,7 +42,9 @@ router.post('/quickplay', async (c) => {
 })
 
 router.post('/register', async (c) => {
-  const { username, password } = await c.req.json().catch(() => ({}))
+  const body = await c.req.json().catch(() => ({}))
+  const username = normalizeUsername(body.username)
+  const { password } = body
   if (!username || !password) return c.json({ ok: false, error: 'username-and-password-required' }, 400)
   const usernameErr = validateUsername(username)
   if (usernameErr) return c.json({ ok: false, error: usernameErr }, 400)
@@ -59,7 +66,9 @@ router.post('/register', async (c) => {
 })
 
 router.post('/login', async (c) => {
-  const { username, password } = await c.req.json().catch(() => ({}))
+  const body = await c.req.json().catch(() => ({}))
+  const username = normalizeUsername(body.username)
+  const { password } = body
   if (!username || !password) return c.json({ ok: false, error: 'username-and-password-required' }, 400)
 
   const user = await c.env.DB

@@ -23,6 +23,7 @@ export function createSoundEffectsController(button, scene, { onStatus } = {}) {
   let initialized = false;
   let decodeAudioContext = null;
   let outputGain = null;
+  let outputGainContext = null;
   const baseAudioBuffers = new Map();
   const activeEffects = new Map();
 
@@ -55,12 +56,14 @@ export function createSoundEffectsController(button, scene, { onStatus } = {}) {
   }
 
   function ensureOutputGain() {
-    if (outputGain) return outputGain;
-
     const audioContext = getAudioContext() ?? ensureDecodeAudioContext();
     if (!audioContext) return null;
 
+    if (outputGain && outputGainContext === audioContext) return outputGain;
+
+    try { outputGain?.disconnect(); } catch {}
     outputGain = audioContext.createGain();
+    outputGainContext = audioContext;
     outputGain.gain.value = CONFIG.soundEffectTrackVolume ?? 1.0;
     outputGain.connect(audioContext.destination);
     return outputGain;
@@ -203,7 +206,17 @@ export function createSoundEffectsController(button, scene, { onStatus } = {}) {
     return playback;
   }
 
+  function resumeAudioContextForPlayback() {
+    const audioContext = getAudioContext();
+    if (audioContext?.state === "suspended") {
+      audioContext.resume().catch((error) => {
+        console.warn("Could not resume sound effects audio context.", error);
+      });
+    }
+  }
+
   function playEffect(effectId, overrides = {}) {
+    resumeAudioContextForPlayback();
     const playback = createPlayback(effectId, overrides);
     if (!playback) return;
 
@@ -213,6 +226,7 @@ export function createSoundEffectsController(button, scene, { onStatus } = {}) {
 
   function startEffect(effectId, instanceId, overrides = {}) {
     if (!instanceId) return;
+    resumeAudioContextForPlayback();
 
     const key = effectInstanceKey(effectId, instanceId);
     stopEffectByKey(key);

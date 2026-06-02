@@ -347,8 +347,8 @@
 
     const camera = new BABYLON.FreeCamera("LobbyCamera", glbCamPos, scene);
     camera.fov      = BARRAGE_CONFIG.cameraVFov ?? 0.4;
-    camera.minZ     = 0.1;
-    camera.maxZ     = 500;
+    camera.minZ     = BARRAGE_CONFIG.cameraMinZ ?? 0.1;
+    camera.maxZ     = BARRAGE_CONFIG.cameraMaxZ ?? 2000;
     camera.rotation.y = Math.PI;
     camera.inputs.clear();
     scene.activeCamera = camera;
