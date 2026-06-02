@@ -57,11 +57,17 @@
       padding: 1.2rem 1.5rem 2rem;
       display: flex;
       flex-direction: column;
-      gap: 1.2rem;
+      gap: 1.45rem;
     }
 
-    .section { display: flex; flex-direction: column; gap: 1rem; }
+    .section { display: flex; flex-direction: column; gap: 1.15rem; }
     .section-title { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.12em; color: #888; }
+
+    #game-sections {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
 
     /* Shared card style used by all panels */
     .panel-card {
@@ -95,7 +101,7 @@
       align-items: center;
       gap: 1rem;
     }
-    .host-desc { color: #aaa; font-size: 0.9rem; max-width: 340px; line-height: 1.5; }
+    .host-desc { color: #aaa; font-size: 0.9rem; max-width: min(460px, 100%); line-height: 1.5; }
     .host-desc strong { color: #fff; display: block; font-size: 1rem; margin-bottom: 0.3rem; }
 
     /* Join card */
@@ -156,7 +162,7 @@
     }
     .btn-join:hover { background: #6c63ff; color: #fff; }
 
-    .empty-state { color: #666; font-size: 0.9rem; text-align: center; padding: 1.5rem 0; }
+    .empty-state { color: #666; font-size: 0.9rem; text-align: center; padding: 0.65rem 0; }
     .error-msg { color: #f56565; font-size: 0.85rem; }
     .status-msg { color: #888; font-size: 0.85rem; text-align: center; }
 
@@ -255,12 +261,10 @@
 
     <div id="game-sections">
     <div class="section">
-      <div class="section-title">Start a game</div>
       <div class="panel-card host-card">
         <div class="host-desc">
           <strong>Host a Game</strong>
-          Create a room and wait for an opponent to join.
-          The game runs directly in your browser — no server lag.
+          Create a room and wait for a human opponent to join.
         </div>
         <button class="btn-primary" id="host-btn">Host Game</button>
       </div>
@@ -268,11 +272,13 @@
     </div>
 
     <div class="section">
-      <div class="sessions-header">
-        <div class="section-title">Join a game</div>
-        <button class="refresh-btn" id="refresh-btn">↻ Refresh</button>
-      </div>
       <div class="panel-card join-card">
+        <div class="sessions-header">
+          <div class="host-desc">
+            <strong>Join a Human vs. Human Game</strong>
+          </div>
+          <button class="refresh-btn" id="refresh-btn">↻ Refresh</button>
+        </div>
         <div id="sessions-list">
           <p class="status-msg">Loading…</p>
         </div>
@@ -280,7 +286,6 @@
       </div>
     </div>
     <div class="section">
-      <div class="section-title">Challenge an AI</div>
       <div class="panel-card join-card" id="ai-list">
       </div>
     </div>
@@ -418,7 +423,11 @@
   // ---------------------------------------------------------------------------
   {
     const aiList = document.getElementById("ai-list");
-    aiList.innerHTML = AI_OPPONENTS.map((ai) => `
+    aiList.innerHTML = `
+      <div class="host-desc">
+        <strong>Challenge an AI</strong>
+      </div>
+    ` + AI_OPPONENTS.map((ai) => `
       <div class="ai-row">
         <div>
           <span class="ai-name">${escHtml(ai.title)}</span>

@@ -24,6 +24,8 @@ const ADJUST_DEAD_ZONE      = 3;     // units — ignore errors smaller than thi
 const DRAG_ZENITH_Y         = 7;    // world-space y of arc apex when picking up a missile
 const KING_CLEAR_RADIUS     = 4;     // m — trajectory must stay this far from own king
 const KING_CLEAR_ANGLE_STEP = 5;     // degrees to add each retry when own king is in the way
+const MIN_SHOT_ANGLE_DEG    = 10;
+const MAX_SHOT_ANGLE_DEG    = 75;
 const INITIAL_DELAY_MS          = 2000;
 const LEVEL_DIFFICULTY_BUMP     = 0.035; // speed + accuracy increase per round
 
@@ -101,16 +103,52 @@ function findBestAngle(fromX, fromY, targetX, targetY, sideSign, speed = V_MAX) 
   return bestAngle;
 }
 
+function pointSegmentDistance(px, py, ax, ay, bx, by) {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  if (len2 <= 0.0001) return Math.hypot(px - ax, py - ay);
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2));
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+
 // Returns true if the trajectory from (fromX,fromY) at (vx,vy) passes within
-// KING_CLEAR_RADIUS of (kingX, kingY) at any point before hitting the ground.
-function trajectoryHitsKing(fromX, fromY, vx, vy, kingX, kingY) {
+// KING_CLEAR_RADIUS of (kingX, kingY) before hitting the ground. Segment
+// distance catches near misses between simulation samples.
+function trajectoryThreatensKing(fromX, fromY, vx, vy, kingX, kingY) {
   const step = 0.05;
+  let prev = { x: fromX, y: fromY };
   for (let t = step; t < 25; t += step) {
     const p = dampedPos(fromX, fromY, vx, vy, t);
-    if (Math.hypot(p.x - kingX, p.y - kingY) < KING_CLEAR_RADIUS) return true;
+    if (pointSegmentDistance(kingX, kingY, prev.x, prev.y, p.x, p.y) <= KING_CLEAR_RADIUS) return true;
     if (p.y < -10) break;
+    prev = p;
   }
   return false;
+}
+
+function trajectoryThreatensKingAtAngle(fromX, fromY, angleDeg, sideSign, speed, king) {
+  const rad = angleDeg * Math.PI / 180;
+  const vx  = speed * Math.cos(rad) * sideSign;
+  const vy  = speed * Math.sin(rad);
+  return trajectoryThreatensKing(fromX, fromY, vx, vy, king.x, king.y);
+}
+
+function raiseAngleToClearKing(fromX, fromY, angleDeg, sideSign, speed, king) {
+  let safeAngle = Math.max(MIN_SHOT_ANGLE_DEG, Math.min(MAX_SHOT_ANGLE_DEG, angleDeg));
+  let attempts = 0;
+
+  while (safeAngle < MAX_SHOT_ANGLE_DEG
+      && trajectoryThreatensKingAtAngle(fromX, fromY, safeAngle, sideSign, speed, king)) {
+    safeAngle = Math.min(MAX_SHOT_ANGLE_DEG, safeAngle + KING_CLEAR_ANGLE_STEP);
+    attempts++;
+  }
+
+  return {
+    angle: safeAngle,
+    attempts,
+    cleared: !trajectoryThreatensKingAtAngle(fromX, fromY, safeAngle, sideSign, speed, king),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -255,7 +293,12 @@ export class AiPlayer {
         }
         const missile = this._pickMissile(this._useOutside)
                      ?? this._pickMissile(!this._useOutside);
-        if (!missile) return;
+        if (!missile) {
+          if (this._canBuildDefense()) {
+            this._state = STATE.CHECK_DEFENSE;
+          }
+          return;
+        }
         this._targetMissile = missile;
         this._dragStart = { x: missile.x, y: missile.y, z: missile.z };
         this._dragT     = 0;
@@ -525,6 +568,15 @@ export class AiPlayer {
     return candidates.reduce((best, o) => (o.y > best.y ? o : best));
   }
 
+  _canBuildDefense() {
+    if (!this._objects) return false;
+    const ownLeft = this._role === "Player_1";
+    const ownKing = this._findOwnKing();
+    if (!ownKing) return false;
+    if (!isKingExposed(this._objects, ownKing, ownLeft)) return false;
+    return Boolean(findFreeBlock(this._objects, ownKing, ownLeft, GRAB_ZONE));
+  }
+
   // ---------------------------------------------------------------------------
   // Pull target: uses damped ballistic solver + adaptive angle correction + jitter.
   // ---------------------------------------------------------------------------
@@ -543,28 +595,25 @@ export class AiPlayer {
       console.warn("[AI] enemy king not found in state");
     }
 
-    // If trajectory passes through own king, keep raising angle until it clears
+    const halfJitter = (1 - this._effectiveAccuracy()) * MAX_JITTER_DEG;
+    angleDeg += (Math.random() * 2 - 1) * halfJitter;
+    angleDeg = Math.max(MIN_SHOT_ANGLE_DEG, Math.min(MAX_SHOT_ANGLE_DEG, angleDeg));
+
+    // If the final trajectory passes through own king, keep raising angle until it clears.
+    // This must happen after jitter; otherwise inaccuracy can undo the safety correction.
     const ownKing = this._findOwnKing();
     if (ownKing) {
-      let attempts = 0;
-      while (attempts < 12) {
-        const rad = angleDeg * Math.PI / 180;
-        const vx  = effectiveV * Math.cos(rad) * sideSign;
-        const vy  = effectiveV * Math.sin(rad);
-        if (!trajectoryHitsKing(aimStartX, aimStartY, vx, vy, ownKing.x, ownKing.y)) break;
-        angleDeg += KING_CLEAR_ANGLE_STEP;
-        attempts++;
+      const clearance = raiseAngleToClearKing(aimStartX, aimStartY, angleDeg, sideSign, effectiveV, ownKing);
+      angleDeg = clearance.angle;
+      if (clearance.attempts > 0) {
+        console.log(`[AI] raised angle by ${clearance.attempts * KING_CLEAR_ANGLE_STEP}° to clear own king at (${ownKing.x.toFixed(1)},${ownKing.y.toFixed(1)})`);
       }
-      if (attempts > 0) {
-        console.log(`[AI] raised angle by ${attempts * KING_CLEAR_ANGLE_STEP}° to clear own king at (${ownKing.x.toFixed(1)},${ownKing.y.toFixed(1)})`);
+      if (!clearance.cleared) {
+        console.warn(`[AI] could not fully clear own king at max angle ${MAX_SHOT_ANGLE_DEG}°`);
       }
     }
 
     console.log(`[AI] king=(${king?.x.toFixed(1)},${king?.y.toFixed(1)}) angle=${angleDeg}° pullScale=${this._pullScale.toFixed(2)} v=${effectiveV.toFixed(1)}`);
-
-    const halfJitter = (1 - this._effectiveAccuracy()) * MAX_JITTER_DEG;
-    angleDeg += (Math.random() * 2 - 1) * halfJitter;
-    angleDeg = Math.max(10, Math.min(75, angleDeg));
 
     const rad = angleDeg * Math.PI / 180;
     return {

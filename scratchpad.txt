@@ -1,1 +1,1 @@
-one issue is that if playing on a phone when there is a switch from portrait to landscape it messes up the scaling.  if i am in portrait and the level loads and i switch to landscap it is already scaled for portrait.  can we have a rescaling on orientation shift?  
+
