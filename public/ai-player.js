@@ -28,14 +28,16 @@ const MAX_TRAJECTORY_DURATION = 25;
 const PULL_SCALE_MIN        = 0.5;   // minimum pull (limits minimum power)
 const ADJUST_DEAD_ZONE      = 3;     // units — ignore errors smaller than this
 const DRAG_ZENITH_Y         = 7;    // world-space y of arc apex when picking up a missile
+const DEFENSE_INITIAL_LIFT_Y = 2;    // m — always lift a selected defense block before carrying/lowering
 const KING_CLEAR_RADIUS     = 4;     // m — trajectory must stay this far from own king
 const KING_CLEAR_ANGLE_STEP = 5;     // degrees to add each retry when own king is in the way
 const OWN_BLOCK_CLEAR_RADIUS = 2.8;  // m — conservative block hit radius in the 2D aim plane
 const OWN_BLOCK_CLEAR_ANGLE_STEP = 5;
 const DEFAULT_AVOID_OWN_BLOCKS = 2 / 3; // fraction of shots that try to clear own blocks
 const MIN_AIM_PULL_RATIO    = 0.25;
-const PULL_SEARCH_STEP      = 0.2;   // m
-const ANGLE_SEARCH_STEP_DEG = 1;
+const PULL_SEARCH_STEP      = 0.4;   // m
+const ANGLE_SEARCH_STEP_DEG = 2;
+const SHOT_CANDIDATE_LIMIT  = 18;    // expensive collision checks run only on this shortlist
 const OWN_BLOCK_HIT_PENALTY = 40;
 const OWN_KING_HIT_PENALTY  = 1000;
 const MIN_SHOT_ANGLE_DEG    = 10;
@@ -131,6 +133,7 @@ function findBestShot(fromX, fromY, target, sideSign, maxPull, powerScale, maxVe
   ownBlocks = [],
   ownKing = null,
 } = {}) {
+  const candidates = [];
   let best = {
     angleDeg: 45,
     pull: maxPull,
@@ -149,19 +152,33 @@ function findBestShot(fromX, fromY, target, sideSign, maxPull, powerScale, maxVe
       if (yAtTarget === null) continue;
 
       const targetError = Math.abs(yAtTarget - target.y);
-      const ownKingThreat = ownKing
-        ? trajectoryThreatensKing(fromX, fromY, vx, vy, ownKing.x, ownKing.y)
-        : false;
-      const ownBlockHit = avoidOwnBlocks
-        ? trajectoryThreatensBlocks(fromX, fromY, vx, vy, ownBlocks)
-        : null;
-      const score = targetError
-        + (ownBlockHit ? OWN_BLOCK_HIT_PENALTY : 0)
-        + (ownKingThreat ? OWN_KING_HIT_PENALTY : 0);
+      candidates.push({ angleDeg, pull, speed, vx, vy, targetError });
+    }
+  }
 
-      if (score < best.score) {
-        best = { angleDeg, pull, speed, score, targetError, ownBlockHit, ownKingThreat };
-      }
+  candidates.sort((a, b) => a.targetError - b.targetError);
+
+  for (const candidate of candidates.slice(0, SHOT_CANDIDATE_LIMIT)) {
+    const ownKingThreat = ownKing
+      ? trajectoryThreatensKing(fromX, fromY, candidate.vx, candidate.vy, ownKing.x, ownKing.y)
+      : false;
+    const ownBlockHit = avoidOwnBlocks
+      ? trajectoryThreatensBlocks(fromX, fromY, candidate.vx, candidate.vy, ownBlocks)
+      : null;
+    const score = candidate.targetError
+      + (ownBlockHit ? OWN_BLOCK_HIT_PENALTY : 0)
+      + (ownKingThreat ? OWN_KING_HIT_PENALTY : 0);
+
+    if (score < best.score) {
+      best = {
+        angleDeg: candidate.angleDeg,
+        pull: candidate.pull,
+        speed: candidate.speed,
+        score,
+        targetError: candidate.targetError,
+        ownBlockHit,
+        ownKingThreat,
+      };
     }
   }
 
@@ -588,7 +605,7 @@ export class AiPlayer {
         const block = findFreeBlock(this._objects, ownKing, ownLeft, GRAB_ZONE);
         if (!block) { this._state = STATE.FIND_MISSILE; return; }
         this._defenseBlockId = block.id;
-        this._liftTargetY    = ownKing.y + LIFT_CLEARANCE;
+        this._liftTargetY    = Math.max(ownKing.y + LIFT_CLEARANCE, block.y + DEFENSE_INITIAL_LIFT_Y);
         this._carryTargetX   = ownKing.x + (ownLeft ? PLACE_OFFSET : -PLACE_OFFSET);
         this._defenseMs      = 0;
         this._state = STATE.GRAB_BLOCK;
