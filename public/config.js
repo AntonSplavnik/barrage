@@ -221,13 +221,25 @@ if (typeof window !== "undefined") {
 
 export const AI_OPPONENTS = [
   {
+    id: "hegseth-ai",
+    name: "Hegseth-AI",
+    title: "Hegseth-AI",
+    description: "Inexperienced commander, reckless and slow",
+    speed: 0.3,                   // 0–1, higher = faster drags and aiming
+    accuracy: 0.3,                // 0–1, higher = less aim scatter
+    pauseMs: 1000,
+    correctionAggression: 0.7,
+    avoidOwnBlocks: 2 / 3,        // 0–1, fraction of shots that aim higher to clear own blocks
+    dragZenithY: 7,
+  },
+  {
     id: "genghis-ai",
     name: "Genghis-AI",           // display name shown in game UI
     title: "Genghis-AI",          // display name shown in lobby
     description: "Aggressive but imprecise",
     speed: 0.6,                   // 0–1, higher = faster drags and aiming
-    accuracy: 0.6,                // 0–1, higher = less aim scatter (0.6 → ±20°)
-    pauseMs: 1000,                // ms pause between shots
+    accuracy: 0.5,                // 0–1, higher = less aim scatter (0.6 → ±20°)
+    pauseMs: 800,                // ms pause between shots
     correctionAggression: 0.7,    // 0–1, how fast pull scale corrects after each shot
     avoidOwnBlocks: 2 / 3,        // 0–1, fraction of shots that aim higher to clear own blocks
     dragZenithY: 7,               // world-space y apex of missile pickup arc
