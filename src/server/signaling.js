@@ -51,6 +51,19 @@ router.post('/sessions', requireAuth, async (c) => {
   return c.json({ ok: true, sessionId: id }, 201)
 })
 
+router.post('/sessions/ai', requireAuth, async (c) => {
+  const db = c.env.DB
+  await expireOldSessions(db)
+
+  const id = randomHex(4)
+  const now = Date.now()
+  await db.prepare(
+    `INSERT INTO game_sessions (id, host_user_id, status, created_at, updated_at) VALUES (?, ?, 'active', ?, ?)`
+  ).bind(id, c.get('auth').userId, now, now).run()
+
+  return c.json({ ok: true, sessionId: id }, 201)
+})
+
 router.post('/sessions/:id/offer', requireAuth, async (c) => {
   const { sdp } = await c.req.json().catch(() => ({}))
   if (!sdp) return c.json({ ok: false, error: 'sdp-required' }, 400)

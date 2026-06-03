@@ -4,6 +4,7 @@ import authRouter from '../../src/server/auth.js'
 import lobbyRouter from '../../src/server/lobby.js'
 import signalingRouter from '../../src/server/signaling.js'
 import statsRouter from '../../src/server/stats.js'
+import adminRouter from '../../src/server/admin.js'
 
 const app = new Hono().basePath('/api')
 
@@ -11,6 +12,7 @@ app.route('/', authRouter)
 app.route('/', lobbyRouter)
 app.route('/', signalingRouter)
 app.route('/', statsRouter)
+app.route('/', adminRouter)
 
 app.onError((err, c) => {
   console.error('[api error]', err.message)

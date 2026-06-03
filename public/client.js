@@ -1320,6 +1320,7 @@ class WorkerSocket extends VirtualSocket {
         this._open();
       } else if (data.type === "toPlayer") {
         if (data.role === "host") {
+          reportRoundResultFromHost(data.data);
           this._recv(data.data);       // → host's game client
         } else if (data.role === "guest") {
           const msg = JSON.parse(data.data);
@@ -1386,6 +1387,7 @@ class AiSocket extends VirtualSocket {
         this._open();
       } else if (data.type === "toPlayer") {
         if (data.role === "host") {
+          reportRoundResultFromHost(data.data);
           this._recv(data.data);
         } else if (data.role === "guest" && this._ai) {
           const msg = JSON.parse(data.data);
@@ -1424,12 +1426,14 @@ const _myUsername = sessionStorage.getItem("barrage_username") ?? undefined;
 const _rtcParams = new URLSearchParams(window.location.search);
 const _rtcMode = _rtcParams.get("mode");
 const _rtcSession = _rtcParams.get("session");
+let _statsSession = _rtcSession;
 
 let socket;
 
 if (_rtcMode === "ai") {
   const _opponentId = _rtcParams.get("opponent");
   const _aiConfig = AI_OPPONENTS.find((a) => a.id === _opponentId) ?? AI_OPPONENTS[0];
+  _statsSession = await createAiStatsSession();
   socket = new AiSocket(_aiConfig);
 } else if (_rtcMode === "host") {
   socket = new WorkerSocket(_rtcSession, _authToken);
@@ -1452,9 +1456,9 @@ if (_rtcMode === "ai") {
 
 // When the host leaves (tab close, navigate away), end the session so it
 // disappears from the lobby immediately rather than waiting for stale cleanup.
-if (_rtcMode === "host" && _rtcSession) {
+if ((_rtcMode === "host" || _rtcMode === "ai") && _statsSession) {
   window.addEventListener("beforeunload", () => {
-    fetch(`/api/sessions/${_rtcSession}/end`, {
+    fetch(`/api/sessions/${_statsSession}/end`, {
       method: "POST",
       headers: { Authorization: `Bearer ${_authToken}` },
       keepalive: true,
@@ -1571,7 +1575,6 @@ socket.addEventListener("message", (event) => {
       onComplete: matchWon ? () => showMatchWinnerScreen(roundWinner) : undefined,
     });
     cameraControl.onRoundWin(roundWinner);
-    reportRoundResult(message);
   }
 
   if (message.type === "levelChanged") {
@@ -1714,11 +1717,28 @@ socket.addEventListener("close", () => {
   setLobbyStatus(`Disconnected. <a class="copy-url-btn" href="/">Reconnect.</a>`);
 });
 
-function reportRoundResult(message) {
-  if (!_rtcSession || !_authToken) return;
+async function createAiStatsSession() {
+  const res = await fetch("/api/sessions/ai", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${_authToken}` },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!data.ok) throw new Error(data.error ?? "failed-to-create-ai-session");
+  return data.sessionId;
+}
+
+function reportRoundResultFromHost(rawMessage) {
+  if (!_statsSession || !_authToken) return;
+  let message = null;
+  try {
+    message = typeof rawMessage === "string" ? JSON.parse(rawMessage) : rawMessage;
+  } catch {
+    return;
+  }
+  if (message?.type !== "roundEnded") return;
   // Player_1 = host, Player_2 = guest
   const winnerRole = (message.winner ?? "").includes("_1") ? "host" : "guest";
-  fetch(`/api/sessions/${_rtcSession}/result`, {
+  fetch(`/api/sessions/${_statsSession}/result`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${_authToken}` },
     body: JSON.stringify({
