@@ -6,7 +6,14 @@ const router = new Hono()
 router.get('/lobby', requireAuth, async (c) => {
   const { results } = await c.env.DB
     .prepare(`
-      SELECT gs.id, COALESCE(u.display_name, u.username) AS hostUsername, gs.created_at AS createdAt
+      SELECT
+        gs.id,
+        CASE
+          WHEN u.is_guest = 1 AND u.display_name IS NOT NULL THEN u.display_name
+          WHEN u.is_guest = 1 AND instr(u.username, '~') > 0 THEN substr(u.username, 1, instr(u.username, '~') - 1)
+          ELSE COALESCE(u.display_name, u.username)
+        END AS hostUsername,
+        gs.created_at AS createdAt
       FROM game_sessions gs
       JOIN users u ON u.id = gs.host_user_id
       WHERE gs.status IN ('waiting', 'signaling')

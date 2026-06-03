@@ -51,7 +51,11 @@ router.get('/admin/summary', async (c) => {
     SELECT
       u.id,
       u.username,
-      COALESCE(u.display_name, u.username) AS displayName,
+      CASE
+        WHEN u.is_guest = 1 AND u.display_name IS NOT NULL THEN u.display_name
+        WHEN u.is_guest = 1 AND instr(u.username, '~') > 0 THEN substr(u.username, 1, instr(u.username, '~') - 1)
+        ELSE COALESCE(u.display_name, u.username)
+      END AS displayName,
       u.is_guest AS isGuest,
       u.created_at AS createdAt,
       COALESCE(ps.battles_won, 0) AS battlesWon,

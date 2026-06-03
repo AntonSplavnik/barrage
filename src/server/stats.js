@@ -72,7 +72,11 @@ router.post('/sessions/:id/result', requireAuth, async (c) => {
 router.get('/leaderboard', requireAuth, async (c) => {
   const { results } = await c.env.DB.prepare(`
     SELECT
-      COALESCE(u.display_name, u.username) AS username,
+      CASE
+        WHEN u.is_guest = 1 AND u.display_name IS NOT NULL THEN u.display_name
+        WHEN u.is_guest = 1 AND instr(u.username, '~') > 0 THEN substr(u.username, 1, instr(u.username, '~') - 1)
+        ELSE COALESCE(u.display_name, u.username)
+      END AS username,
       COALESCE(ps.battles_won,  0) AS battles_won,
       COALESCE(ps.battles_lost, 0) AS battles_lost,
       COALESCE(ps.wars_won,     0) AS wars_won,
@@ -88,7 +92,13 @@ router.get('/leaderboard', requireAuth, async (c) => {
 
 router.get('/me/enemies', requireAuth, async (c) => {
   const { results } = await c.env.DB.prepare(`
-    SELECT COALESCE(u.display_name, u.username) AS username, wo.created_at AS defeatedAt
+    SELECT
+      CASE
+        WHEN u.is_guest = 1 AND u.display_name IS NOT NULL THEN u.display_name
+        WHEN u.is_guest = 1 AND instr(u.username, '~') > 0 THEN substr(u.username, 1, instr(u.username, '~') - 1)
+        ELSE COALESCE(u.display_name, u.username)
+      END AS username,
+      wo.created_at AS defeatedAt
     FROM war_opponents wo
     JOIN users u ON u.id = wo.loser_user_id
     WHERE wo.winner_user_id = ?
