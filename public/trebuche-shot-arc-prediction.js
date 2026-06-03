@@ -4,7 +4,7 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
-function flightDurationToGround(startPoint, velocity, gravity, groundY) {
+export function flightDurationToGround(startPoint, velocity, gravity, groundY) {
   const a = 0.5 * gravity;
   const b = velocity.y;
   const c = startPoint.y - groundY;
@@ -18,7 +18,7 @@ function flightDurationToGround(startPoint, velocity, gravity, groundY) {
   return Math.max(0.1, t1, t2);
 }
 
-function dampedPosition(startPoint, velocity, gravity, damping, t) {
+export function dampedPosition(startPoint, velocity, gravity, damping, t) {
   if (damping <= 0.0001) {
     return {
       x: startPoint.x + velocity.x * t,
@@ -38,7 +38,7 @@ function dampedPosition(startPoint, velocity, gravity, damping, t) {
   };
 }
 
-function dampedFlightDurationToGround(startPoint, velocity, gravity, damping, groundY, maxDuration) {
+export function dampedFlightDurationToGround(startPoint, velocity, gravity, damping, groundY, maxDuration) {
   if (damping <= 0.0001) {
     return flightDurationToGround(startPoint, velocity, gravity, groundY);
   }

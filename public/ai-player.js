@@ -5,6 +5,11 @@ import {
   isKingExposed, findFreeBlock,
   LIFT_CLEARANCE, PLACE_OFFSET, LOWER_SPEED_MS, SETTLE_SPEED, DEFENSE_TIMEOUT,
 } from "./ai-defense.js";
+import { BARRAGE_CONFIG } from "./config.js";
+import {
+  dampedFlightDurationToGround,
+  dampedPosition,
+} from "./trebuche-shot-arc-prediction.js";
 
 const LOAD_TARGET_OFFSET_Y  = 3.5;
 const DRAG_UNITS_PER_MS     = 0.02;  // at speed=1.0
@@ -19,11 +24,20 @@ const V_MAX                 = 40;    // trebuchetFireVelocityMax (config.js)
 const MAX_PULL              = 6;     // aimMaxPullDistance
 const GRAVITY               = -9.81;
 const DAMPING               = 0.15;  // missileLinearDamping
+const MAX_TRAJECTORY_DURATION = 25;
 const PULL_SCALE_MIN        = 0.5;   // minimum pull (limits minimum power)
 const ADJUST_DEAD_ZONE      = 3;     // units — ignore errors smaller than this
 const DRAG_ZENITH_Y         = 7;    // world-space y of arc apex when picking up a missile
 const KING_CLEAR_RADIUS     = 4;     // m — trajectory must stay this far from own king
 const KING_CLEAR_ANGLE_STEP = 5;     // degrees to add each retry when own king is in the way
+const OWN_BLOCK_CLEAR_RADIUS = 2.8;  // m — conservative block hit radius in the 2D aim plane
+const OWN_BLOCK_CLEAR_ANGLE_STEP = 5;
+const DEFAULT_AVOID_OWN_BLOCKS = 2 / 3; // fraction of shots that try to clear own blocks
+const MIN_AIM_PULL_RATIO    = 0.25;
+const PULL_SEARCH_STEP      = 0.2;   // m
+const ANGLE_SEARCH_STEP_DEG = 1;
+const OWN_BLOCK_HIT_PENALTY = 40;
+const OWN_KING_HIT_PENALTY  = 1000;
 const MIN_SHOT_ANGLE_DEG    = 10;
 const MAX_SHOT_ANGLE_DEG    = 75;
 const INITIAL_DELAY_MS          = 2000;
@@ -50,57 +64,108 @@ const STATE = {
 // Returns the angle (degrees, 10–75) that gets closest to (targetX, targetY).
 // sideSign: +1 fires in +x direction, −1 fires in −x direction.
 // ---------------------------------------------------------------------------
-function dampedPos(x0, y0, vx, vy, t) {
-  if (Math.abs(DAMPING) < 0.0001) {
-    return {
-      x: x0 + vx * t,
-      y: y0 + vy * t + 0.5 * GRAVITY * t * t,
-    };
+function trajectoryGravity() {
+  return BARRAGE_CONFIG.gravity ?? GRAVITY;
+}
+
+function trajectoryDamping() {
+  return Math.max(0, BARRAGE_CONFIG.shotArcLinearDamping ?? BARRAGE_CONFIG.missileLinearDamping ?? DAMPING);
+}
+
+function trajectoryGroundY() {
+  return BARRAGE_CONFIG.shotArcGroundY ?? 0;
+}
+
+function trajectoryPosition(fromX, fromY, vx, vy, t) {
+  return dampedPosition(
+    { x: fromX, y: fromY, z: 0 },
+    { x: vx, y: vy, z: 0 },
+    trajectoryGravity(),
+    trajectoryDamping(),
+    t,
+  );
+}
+
+function trajectoryDuration(fromX, fromY, vx, vy) {
+  return dampedFlightDurationToGround(
+    { x: fromX, y: fromY, z: 0 },
+    { x: vx, y: vy, z: 0 },
+    trajectoryGravity(),
+    trajectoryDamping(),
+    trajectoryGroundY(),
+    MAX_TRAJECTORY_DURATION,
+  );
+}
+
+function trajectoryYAtX(fromX, fromY, vx, vy, targetX) {
+  const dx = targetX - fromX;
+  if (Math.sign(dx) !== Math.sign(vx) || Math.abs(vx) < 0.0001) return null;
+
+  const damping = trajectoryDamping();
+  let t = 0;
+  if (damping <= 0.0001) {
+    t = dx / vx;
+  } else {
+    const velocityScale = dx / vx;
+    const decay = 1 - damping * velocityScale;
+    if (decay <= 0 || decay > 1) return null;
+    t = -Math.log(decay) / damping;
   }
-  const decay  = Math.exp(-DAMPING * t);
-  const vScale = (1 - decay) / DAMPING;
-  const gScale = t / DAMPING - (1 - decay) / (DAMPING * DAMPING);
+
+  if (!Number.isFinite(t) || t < 0 || t > MAX_TRAJECTORY_DURATION) return null;
+  return trajectoryPosition(fromX, fromY, vx, vy, t).y;
+}
+
+function shotVelocityForPull(angleDeg, pull, sideSign, powerScale, maxVelocity) {
+  const rad = angleDeg * Math.PI / 180;
+  const speed = Math.min(pull * powerScale, maxVelocity);
   return {
-    x: x0 + vx * vScale,
-    y: y0 + vy * vScale + GRAVITY * gScale,
+    vx: speed * Math.cos(rad) * sideSign,
+    vy: speed * Math.sin(rad),
+    speed,
   };
 }
 
-function findBestAngle(fromX, fromY, targetX, targetY, sideSign, speed = V_MAX) {
-  let bestAngle = 45;
-  let bestError = Infinity;
-  const step = 0.05; // simulation time step (s)
+function findBestShot(fromX, fromY, target, sideSign, maxPull, powerScale, maxVelocity, {
+  avoidOwnBlocks = false,
+  ownBlocks = [],
+  ownKing = null,
+} = {}) {
+  let best = {
+    angleDeg: 45,
+    pull: maxPull,
+    speed: Math.min(maxPull * powerScale, maxVelocity),
+    score: Infinity,
+    targetError: Infinity,
+    ownBlockHit: null,
+    ownKingThreat: false,
+  };
+  const minPull = Math.max(0.5, maxPull * MIN_AIM_PULL_RATIO);
 
-  for (let deg = 10; deg <= 75; deg += 1) {
-    const rad = deg * Math.PI / 180;
-    const vx  = speed * Math.cos(rad) * sideSign;
-    const vy  = speed * Math.sin(rad);
+  for (let pull = minPull; pull <= maxPull + 0.0001; pull += PULL_SEARCH_STEP) {
+    for (let angleDeg = MIN_SHOT_ANGLE_DEG; angleDeg <= MAX_SHOT_ANGLE_DEG; angleDeg += ANGLE_SEARCH_STEP_DEG) {
+      const { vx, vy, speed } = shotVelocityForPull(angleDeg, pull, sideSign, powerScale, maxVelocity);
+      const yAtTarget = trajectoryYAtX(fromX, fromY, vx, vy, target.x);
+      if (yAtTarget === null) continue;
 
-    for (let t = step; t < 25; t += step) {
-      const cur  = dampedPos(fromX, fromY, vx, vy, t);
-      const prev = dampedPos(fromX, fromY, vx, vy, t - step);
+      const targetError = Math.abs(yAtTarget - target.y);
+      const ownKingThreat = ownKing
+        ? trajectoryThreatensKing(fromX, fromY, vx, vy, ownKing.x, ownKing.y)
+        : false;
+      const ownBlockHit = avoidOwnBlocks
+        ? trajectoryThreatensBlocks(fromX, fromY, vx, vy, ownBlocks)
+        : null;
+      const score = targetError
+        + (ownBlockHit ? OWN_BLOCK_HIT_PENALTY : 0)
+        + (ownKingThreat ? OWN_KING_HIT_PENALTY : 0);
 
-      const passedTarget = sideSign > 0
-        ? (prev.x < targetX && cur.x >= targetX)
-        : (prev.x > targetX && cur.x <= targetX);
-
-      if (passedTarget) {
-        // Interpolate y at exact targetX crossing
-        const alpha = Math.abs(targetX - prev.x) / Math.max(0.0001, Math.abs(cur.x - prev.x));
-        const yAtTarget = prev.y + alpha * (cur.y - prev.y);
-        const error = Math.abs(yAtTarget - targetY);
-        if (error < bestError) {
-          bestError = error;
-          bestAngle = deg;
-        }
-        break;
+      if (score < best.score) {
+        best = { angleDeg, pull, speed, score, targetError, ownBlockHit, ownKingThreat };
       }
-
-      if (cur.y < -10) break; // missile hit the ground
     }
   }
 
-  return bestAngle;
+  return best;
 }
 
 function pointSegmentDistance(px, py, ax, ay, bx, by) {
@@ -115,16 +180,20 @@ function pointSegmentDistance(px, py, ax, ay, bx, by) {
 // Returns true if the trajectory from (fromX,fromY) at (vx,vy) passes within
 // KING_CLEAR_RADIUS of (kingX, kingY) before hitting the ground. Segment
 // distance catches near misses between simulation samples.
-function trajectoryThreatensKing(fromX, fromY, vx, vy, kingX, kingY) {
-  const step = 0.05;
+function trajectoryPassesNearPoint(fromX, fromY, vx, vy, pointX, pointY, radius) {
+  const step = 1 / 60;
+  const duration = trajectoryDuration(fromX, fromY, vx, vy);
   let prev = { x: fromX, y: fromY };
-  for (let t = step; t < 25; t += step) {
-    const p = dampedPos(fromX, fromY, vx, vy, t);
-    if (pointSegmentDistance(kingX, kingY, prev.x, prev.y, p.x, p.y) <= KING_CLEAR_RADIUS) return true;
-    if (p.y < -10) break;
+  for (let t = step; t <= duration; t += step) {
+    const p = trajectoryPosition(fromX, fromY, vx, vy, t);
+    if (pointSegmentDistance(pointX, pointY, prev.x, prev.y, p.x, p.y) <= radius) return true;
     prev = p;
   }
   return false;
+}
+
+function trajectoryThreatensKing(fromX, fromY, vx, vy, kingX, kingY) {
+  return trajectoryPassesNearPoint(fromX, fromY, vx, vy, kingX, kingY, KING_CLEAR_RADIUS);
 }
 
 function trajectoryThreatensKingAtAngle(fromX, fromY, angleDeg, sideSign, speed, king) {
@@ -151,6 +220,45 @@ function raiseAngleToClearKing(fromX, fromY, angleDeg, sideSign, speed, king) {
   };
 }
 
+function isBlockId(id) {
+  const n = id.toLowerCase();
+  return n.includes("block") && !n.includes("frag");
+}
+
+function trajectoryThreatensBlocksAtAngle(fromX, fromY, angleDeg, sideSign, speed, blocks) {
+  const rad = angleDeg * Math.PI / 180;
+  const vx  = speed * Math.cos(rad) * sideSign;
+  const vy  = speed * Math.sin(rad);
+  return blocks.find((block) =>
+    trajectoryPassesNearPoint(fromX, fromY, vx, vy, block.x, block.y, OWN_BLOCK_CLEAR_RADIUS),
+  ) ?? null;
+}
+
+function trajectoryThreatensBlocks(fromX, fromY, vx, vy, blocks) {
+  return blocks.find((block) =>
+    trajectoryPassesNearPoint(fromX, fromY, vx, vy, block.x, block.y, OWN_BLOCK_CLEAR_RADIUS),
+  ) ?? null;
+}
+
+function raiseAngleToClearBlocks(fromX, fromY, angleDeg, sideSign, speed, blocks) {
+  let safeAngle = Math.max(MIN_SHOT_ANGLE_DEG, Math.min(MAX_SHOT_ANGLE_DEG, angleDeg));
+  let attempts = 0;
+  let blockingBlock = trajectoryThreatensBlocksAtAngle(fromX, fromY, safeAngle, sideSign, speed, blocks);
+
+  while (safeAngle < MAX_SHOT_ANGLE_DEG && blockingBlock) {
+    safeAngle = Math.min(MAX_SHOT_ANGLE_DEG, safeAngle + OWN_BLOCK_CLEAR_ANGLE_STEP);
+    attempts++;
+    blockingBlock = trajectoryThreatensBlocksAtAngle(fromX, fromY, safeAngle, sideSign, speed, blocks);
+  }
+
+  return {
+    angle: safeAngle,
+    attempts,
+    cleared: !blockingBlock,
+    blockingBlock,
+  };
+}
+
 // ---------------------------------------------------------------------------
 
 export class AiPlayer {
@@ -167,6 +275,7 @@ export class AiPlayer {
     this._loadedMissile   = null;
     this._dragCurrent     = null;
     this._aimCurrent      = null;
+    this._aimPullTarget   = null;
     this._pauseRemaining  = 0;
     this._waitLoadedMs       = 0;
     this._useOutside         = false;
@@ -222,6 +331,7 @@ export class AiPlayer {
     this._state = STATE.IDLE;
     this._firedMissileId    = null;
     this._lastKnownMissileX = null;
+    this._aimPullTarget     = null;
   }
 
   reset() {
@@ -231,6 +341,7 @@ export class AiPlayer {
     this._loadedMissile     = null;
     this._dragCurrent       = null;
     this._aimCurrent        = null;
+    this._aimPullTarget     = null;
     this._waitLoadedMs      = 0;
     this._firedMissileId    = null;
     this._lastKnownMissileX = null;
@@ -382,6 +493,7 @@ export class AiPlayer {
         const ax = treb.x;
         const ay = treb.y + LOAD_TARGET_OFFSET_Y;
         this._aimCurrent = { x: ax, y: ay, z: treb.z };
+        this._aimPullTarget = this._calcPullTarget(treb);
         this._post({ type: "input", action: "aimStart",
           entityId: loaded.id,
           point:    { x: ax, y: ay, z: treb.z },
@@ -391,9 +503,14 @@ export class AiPlayer {
       }
 
       case STATE.AIM_PULL: {
-        if (!this._trebuchet || !this._loadedMissile) { this._state = STATE.FIND_MISSILE; return; }
+        if (!this._trebuchet || !this._loadedMissile) {
+          this._aimPullTarget = null;
+          this._state = STATE.FIND_MISSILE;
+          return;
+        }
         const treb = this._trebuchet;
-        const pull = this._calcPullTarget(treb);
+        const pull = this._aimPullTarget ?? this._calcPullTarget(treb);
+        this._aimPullTarget = pull;
         const maxMove = AIM_UNITS_PER_MS * speed * dt;
         const dx = pull.x - this._aimCurrent.x;
         const dy = pull.y - this._aimCurrent.y;
@@ -431,6 +548,7 @@ export class AiPlayer {
           point:    { x: this._aimCurrent.x, y: this._aimCurrent.y, z: this._trebuchet.z },
         });
         this._aimCurrent = null;
+        this._aimPullTarget = null;
         this._useOutside = !this._useOutside;
         this._pauseRemaining = this._config.pauseMs ?? 1000;
         this._state = STATE.PAUSE;
@@ -584,13 +702,28 @@ export class AiPlayer {
     const sideSign    = this._role === "Player_1" ? 1 : -1;
     const aimStartX   = treb.x;
     const aimStartY   = treb.y + LOAD_TARGET_OFFSET_Y;
-    const pull        = MAX_PULL * this._pullScale;
-    const effectiveV  = Math.min(pull * 8, V_MAX);
+    const maxPull     = this._config.aimMaxPullDistance ?? BARRAGE_CONFIG.aimMaxPullDistance ?? MAX_PULL;
+    const powerScale  = this._config.aimPowerScale ?? BARRAGE_CONFIG.aimPowerScale ?? 8;
+    const maxVelocity = BARRAGE_CONFIG.trebuchetFireVelocityMax ?? V_MAX;
 
     const king = this._findEnemyKing();
+    const ownKing = this._findOwnKing();
+    const avoidOwnBlocks = this._shouldAvoidOwnBlocksThisShot();
+    const ownBlocks = avoidOwnBlocks ? this._findOwnBlocks() : [];
     let angleDeg = 45;
+    let pull = maxPull * this._pullScale;
+    let targetError = null;
+    let blockedByOwnBlock = null;
     if (king) {
-      angleDeg = findBestAngle(aimStartX, aimStartY, king.x, king.y, sideSign, effectiveV);
+      const shot = findBestShot(aimStartX, aimStartY, king, sideSign, maxPull, powerScale, maxVelocity, {
+        avoidOwnBlocks,
+        ownBlocks,
+        ownKing,
+      });
+      angleDeg = shot.angleDeg;
+      pull = shot.pull;
+      targetError = shot.targetError;
+      blockedByOwnBlock = shot.ownBlockHit;
     } else {
       console.warn("[AI] enemy king not found in state");
     }
@@ -598,10 +731,12 @@ export class AiPlayer {
     const halfJitter = (1 - this._effectiveAccuracy()) * MAX_JITTER_DEG;
     angleDeg += (Math.random() * 2 - 1) * halfJitter;
     angleDeg = Math.max(MIN_SHOT_ANGLE_DEG, Math.min(MAX_SHOT_ANGLE_DEG, angleDeg));
+    const pullJitter = 1 + ((Math.random() * 2 - 1) * (1 - this._effectiveAccuracy()) * 0.12);
+    pull = Math.max(maxPull * MIN_AIM_PULL_RATIO, Math.min(maxPull, pull * pullJitter));
+    let effectiveV = Math.min(pull * powerScale, maxVelocity);
 
     // If the final trajectory passes through own king, keep raising angle until it clears.
     // This must happen after jitter; otherwise inaccuracy can undo the safety correction.
-    const ownKing = this._findOwnKing();
     if (ownKing) {
       const clearance = raiseAngleToClearKing(aimStartX, aimStartY, angleDeg, sideSign, effectiveV, ownKing);
       angleDeg = clearance.angle;
@@ -613,7 +748,21 @@ export class AiPlayer {
       }
     }
 
-    console.log(`[AI] king=(${king?.x.toFixed(1)},${king?.y.toFixed(1)}) angle=${angleDeg}° pullScale=${this._pullScale.toFixed(2)} v=${effectiveV.toFixed(1)}`);
+    // Most shots try to clear the AI's own defensive blocks, but some are
+    // allowed to break them up like a human sometimes would.
+    if (avoidOwnBlocks && ownBlocks.length > 0) {
+      const clearance = raiseAngleToClearBlocks(aimStartX, aimStartY, angleDeg, sideSign, effectiveV, ownBlocks);
+      angleDeg = clearance.angle;
+      if (clearance.attempts > 0) {
+        console.log(`[AI] raised angle by ${clearance.attempts * OWN_BLOCK_CLEAR_ANGLE_STEP}° to clear own blocks`);
+      }
+      if (!clearance.cleared && clearance.blockingBlock) {
+        console.warn(`[AI] could not fully clear own block ${clearance.blockingBlock.id} at max angle ${MAX_SHOT_ANGLE_DEG}°`);
+      }
+    }
+
+    effectiveV = Math.min(pull * powerScale, maxVelocity);
+    console.log(`[AI] king=(${king?.x.toFixed(1)},${king?.y.toFixed(1)}) angle=${angleDeg.toFixed(1)}° pull=${pull.toFixed(2)}/${maxPull.toFixed(1)} v=${effectiveV.toFixed(1)} targetErr=${targetError?.toFixed(2) ?? "n/a"} avoidOwnBlocks=${avoidOwnBlocks}${blockedByOwnBlock ? ` blockedBy=${blockedByOwnBlock.id}` : ""}`);
 
     const rad = angleDeg * Math.PI / 180;
     return {
@@ -645,6 +794,22 @@ export class AiPlayer {
     if (!this._objects) return null;
     const pattern = this._role === "Player_1" ? "kingl" : "kingr";
     return this._objects.find((o) => o.id.toLowerCase().includes(pattern)) ?? null;
+  }
+
+  _shouldAvoidOwnBlocksThisShot() {
+    const fraction = Number.isFinite(this._config.avoidOwnBlocks)
+      ? this._config.avoidOwnBlocks
+      : DEFAULT_AVOID_OWN_BLOCKS;
+    return Math.random() < Math.max(0, Math.min(1, fraction));
+  }
+
+  _findOwnBlocks() {
+    if (!this._objects) return [];
+    const ownLeft = this._role === "Player_1";
+    return this._objects.filter((o) => {
+      if (!isBlockId(o.id)) return false;
+      return ownLeft ? o.x < 0 : o.x > 0;
+    });
   }
 
   _findEnemyKing() {
