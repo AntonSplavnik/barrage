@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { requireAuth } from './middleware.js'
+import { AI_OPPONENTS } from '../../public/config.js'
 
 const SESSION_TTL_MS = 2 * 60 * 1000
 
@@ -25,6 +26,22 @@ async function expireOldSessions(db) {
 }
 
 const router = new Hono()
+
+function aiOpponentForId(id) {
+  return AI_OPPONENTS.find((ai) => ai.id === id) ?? AI_OPPONENTS[0]
+}
+
+async function ensureAiUser(db, ai) {
+  const username = `ai-${ai.id}`
+  const now = Date.now()
+  await db.prepare(`
+    INSERT OR IGNORE INTO users (username, display_name, is_guest, password_hash, created_at)
+    VALUES (?, ?, 1, '', ?)
+  `).bind(username, ai.name ?? ai.title ?? ai.id, now).run()
+
+  const user = await db.prepare('SELECT id FROM users WHERE username = ?').bind(username).first()
+  return user?.id ?? null
+}
 
 router.post('/sessions', requireAuth, async (c) => {
   const db = c.env.DB
@@ -55,11 +72,15 @@ router.post('/sessions/ai', requireAuth, async (c) => {
   const db = c.env.DB
   await expireOldSessions(db)
 
+  const body = await c.req.json().catch(() => ({}))
+  const ai = aiOpponentForId(body.opponentId)
+  const aiUserId = await ensureAiUser(db, ai)
+
   const id = randomHex(4)
   const now = Date.now()
   await db.prepare(
-    `INSERT INTO game_sessions (id, host_user_id, status, created_at, updated_at) VALUES (?, ?, 'active', ?, ?)`
-  ).bind(id, c.get('auth').userId, now, now).run()
+    `INSERT INTO game_sessions (id, host_user_id, guest_user_id, status, created_at, updated_at) VALUES (?, ?, ?, 'active', ?, ?)`
+  ).bind(id, c.get('auth').userId, aiUserId, now, now).run()
 
   return c.json({ ok: true, sessionId: id }, 201)
 })

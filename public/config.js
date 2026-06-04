@@ -235,7 +235,7 @@ export const AI_OPPONENTS = [
     description: "Inexperienced commander, reckless and slow",
     speed: 0.3,                   // 0–1, higher = faster drags and aiming
     accuracy: 0.2,                // 0–1, higher = less aim scatter
-    pauseMs: 1000,
+    pauseMs: 1200,
     correctionAggression: 0.7,
     avoidOwnBlocks: 2 / 3,        // 0–1, fraction of shots that aim higher to clear own blocks
     dragZenithY: 8,

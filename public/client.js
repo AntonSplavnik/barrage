@@ -1445,7 +1445,7 @@ let socket;
 if (_rtcMode === "ai") {
   const _opponentId = _rtcParams.get("opponent");
   const _aiConfig = AI_OPPONENTS.find((a) => a.id === _opponentId) ?? AI_OPPONENTS[0];
-  _statsSession = await createAiStatsSession();
+  _statsSession = await createAiStatsSession(_aiConfig.id);
   socket = new AiSocket(_aiConfig);
 } else if (_rtcMode === "host") {
   socket = new WorkerSocket(_rtcSession, _authToken);
@@ -1729,10 +1729,11 @@ socket.addEventListener("close", () => {
   setLobbyStatus(`Disconnected. <a class="copy-url-btn" href="/">Reconnect.</a>`);
 });
 
-async function createAiStatsSession() {
+async function createAiStatsSession(opponentId) {
   const res = await fetch("/api/sessions/ai", {
     method: "POST",
-    headers: { Authorization: `Bearer ${_authToken}` },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${_authToken}` },
+    body: JSON.stringify({ opponentId }),
   });
   const data = await res.json().catch(() => ({}));
   if (!data.ok) throw new Error(data.error ?? "failed-to-create-ai-session");
