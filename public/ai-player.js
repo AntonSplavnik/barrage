@@ -429,14 +429,14 @@ export class AiPlayer {
           this._state = STATE.AIM_START;
           return;
         }
-        const missile = this._pickMissile(this._useOutside)
-                     ?? this._pickMissile(!this._useOutside);
+        const missile = this._pickMissile();
         if (!missile) {
           if (this._canBuildDefense()) {
             this._state = STATE.CHECK_DEFENSE;
           }
           return;
         }
+        this._useOutside = missile.outside;
         this._targetMissile = missile;
         this._dragStart = { x: missile.x, y: missile.y, z: missile.z };
         this._dragT     = 0;
@@ -692,25 +692,51 @@ export class AiPlayer {
   // ---------------------------------------------------------------------------
   // Missile picking: inside = between trebuchet and centre; outside = beyond trebuchet (bombs).
   // ---------------------------------------------------------------------------
-  _pickMissile(outside) {
+  _pickMissile() {
     if (!this._objects || !this._trebuchet) return null;
     const treb    = this._trebuchet;
     const ownLeft = this._role === "Player_1";
+    const preferredOutside = this._useOutside;
+    const fallbackOutside = !preferredOutside;
+    const target = { x: treb.x, y: treb.y + LOAD_TARGET_OFFSET_Y, z: treb.z ?? 0 };
 
-    const candidates = this._objects.filter((o) => {
+    const baseCandidates = this._objects.filter((o) => {
       if (!o.id.toLowerCase().includes("missile")) return false;
       if (o.loadedInto) return false;
       if (o.draggedBy) return false;
       if (o.inFlight) return false;
-      const inZone = ownLeft ? o.x <= GRAB_ZONE : o.x >= -GRAB_ZONE;
-      if (!inZone && !canGrabMissileEverywhere(o)) return false;
-      return outside
-        ? (ownLeft ? o.x < treb.x : o.x > treb.x)
-        : (ownLeft ? o.x > treb.x : o.x < treb.x);
+      return true;
     });
 
-    if (candidates.length === 0) return null;
-    return candidates.reduce((best, o) => (o.y > best.y ? o : best));
+    const nearestIn = (outside, allowEverywhere) => {
+      const candidates = baseCandidates.filter((o) => {
+        const inZone = ownLeft ? o.x <= GRAB_ZONE : o.x >= -GRAB_ZONE;
+        if (!inZone && (!allowEverywhere || !canGrabMissileEverywhere(o))) return false;
+        return outside
+          ? (ownLeft ? o.x < treb.x : o.x > treb.x)
+          : (ownLeft ? o.x > treb.x : o.x < treb.x);
+      });
+      if (candidates.length === 0) return null;
+      return candidates.reduce((best, o) => {
+        const bestDist = Math.hypot(best.x - target.x, best.y - target.y, (best.z ?? 0) - target.z);
+        const dist = Math.hypot(o.x - target.x, o.y - target.y, (o.z ?? 0) - target.z);
+        return dist < bestDist ? o : best;
+      });
+    };
+
+    const orderedSearch = [
+      { outside: preferredOutside, allowEverywhere: false },
+      { outside: fallbackOutside, allowEverywhere: false },
+      { outside: preferredOutside, allowEverywhere: true },
+      { outside: fallbackOutside, allowEverywhere: true },
+    ];
+
+    for (const search of orderedSearch) {
+      const missile = nearestIn(search.outside, search.allowEverywhere);
+      if (missile) return { ...missile, outside: search.outside };
+    }
+
+    return null;
   }
 
   _canBuildDefense() {
