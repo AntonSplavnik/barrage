@@ -264,4 +264,16 @@ export const AI_OPPONENTS = [
     avoidOwnBlocks: 2 / 3,        // 0–1, fraction of shots that aim higher to clear own blocks
     dragZenithY: 9,
   },
+  {
+    id: "alexander-ai",
+    name: "Alexander-AI",
+    title: "Alexander-AI",
+    description: "The Great. Goated, relentless and accurate A.F.",
+    speed: 0.6,
+    accuracy: 0.6,
+    pauseMs: 750,
+    correctionAggression: 0.7,
+    avoidOwnBlocks: 4 / 5,
+    dragZenithY: 6,
+  },
 ];
