@@ -219,7 +219,7 @@ export const BARRAGE_CONFIG = {
   cameraWinZoomMs: 3000,                 // ms — animate to winner's side on round end
 
   // AI.
-  aiLevelDifficultyBump: 0.025,          // speed + accuracy increase per round after round 1
+  aiLevelDifficultyBump: 0.03,          // speed + accuracy increase per round after round 1
   aiEffectiveSkillCap: 0.9,              // max effective AI speed and accuracy after round scaling
 };
 
