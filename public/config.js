@@ -217,6 +217,10 @@ export const BARRAGE_CONFIG = {
   cameraReturnDelayMs: 4000,            // ms — wait after shot fires before panning back
   cameraReturnMs: 2000,                 // ms — battlefield → player after shot
   cameraWinZoomMs: 3000,                 // ms — animate to winner's side on round end
+
+  // AI.
+  aiLevelDifficultyBump: 0.025,          // speed + accuracy increase per round after round 1
+  aiEffectiveSkillCap: 0.9,              // max effective AI speed and accuracy after round scaling
 };
 
 if (typeof window !== "undefined") {
@@ -230,19 +234,19 @@ export const AI_OPPONENTS = [
     title: "Hegseth-AI",
     description: "Inexperienced commander, reckless and slow",
     speed: 0.3,                   // 0–1, higher = faster drags and aiming
-    accuracy: 0.3,                // 0–1, higher = less aim scatter
+    accuracy: 0.2,                // 0–1, higher = less aim scatter
     pauseMs: 1000,
     correctionAggression: 0.7,
     avoidOwnBlocks: 2 / 3,        // 0–1, fraction of shots that aim higher to clear own blocks
-    dragZenithY: 7,
+    dragZenithY: 8,
   },
   {
     id: "genghis-ai",
     name: "Genghis-AI",           // display name shown in game UI
     title: "Genghis-AI",          // display name shown in lobby
     description: "Aggressive but imprecise",
-    speed: 0.6,                   // 0–1, higher = faster drags and aiming
-    accuracy: 0.5,                // 0–1, higher = less aim scatter (0.6 → ±20°)
+    speed: 0.4,                   // 0–1, higher = faster drags and aiming
+    accuracy: 0.3,                // 0–1, higher = less aim scatter (0.6 → ±20°)
     pauseMs: 800,                // ms pause between shots
     correctionAggression: 0.7,    // 0–1, how fast pull scale corrects after each shot
     avoidOwnBlocks: 2 / 3,        // 0–1, fraction of shots that aim higher to clear own blocks
@@ -253,8 +257,8 @@ export const AI_OPPONENTS = [
     name: "Caesar-AI",
     title: "Caesar-AI",
     description: "Methodical and precise",
-    speed: 0.4,                   // slower, more deliberate
-    accuracy: 0.8,                // 0–1 (0.9 → ±5°)
+    speed: 0.3,                   // slower, more deliberate
+    accuracy: 0.4,                // 0–1 (0.9 → ±5°)
     pauseMs: 1000,
     correctionAggression: 0.4,
     avoidOwnBlocks: 2 / 3,        // 0–1, fraction of shots that aim higher to clear own blocks

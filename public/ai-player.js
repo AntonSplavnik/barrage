@@ -42,8 +42,6 @@ const OWN_KING_HIT_PENALTY  = 1000;
 const MIN_SHOT_ANGLE_DEG    = 10;
 const MAX_SHOT_ANGLE_DEG    = 75;
 const INITIAL_DELAY_MS          = 2000;
-const LEVEL_DIFFICULTY_BUMP     = 0.035; // speed + accuracy increase per round
-
 function isMissileBombName(id) {
   const lowerId = id.toLowerCase();
   return lowerId.includes("missile") && lowerId.includes("bomb");
@@ -390,13 +388,13 @@ export class AiPlayer {
   }
 
   _effectiveSpeed() {
-    const bonus = (this._roundNumber - 1) * LEVEL_DIFFICULTY_BUMP;
-    return Math.min(0.95, this._config.speed + bonus);
+    const bonus = (this._roundNumber - 1) * (BARRAGE_CONFIG.aiLevelDifficultyBump ?? 0.035);
+    return Math.min(BARRAGE_CONFIG.aiEffectiveSkillCap ?? 0.9, this._config.speed + bonus);
   }
 
   _effectiveAccuracy() {
-    const bonus = (this._roundNumber - 1) * LEVEL_DIFFICULTY_BUMP;
-    return Math.min(0.95, this._config.accuracy + bonus);
+    const bonus = (this._roundNumber - 1) * (BARRAGE_CONFIG.aiLevelDifficultyBump ?? 0.035);
+    return Math.min(BARRAGE_CONFIG.aiEffectiveSkillCap ?? 0.9, this._config.accuracy + bonus);
   }
 
   _step(dt) {
