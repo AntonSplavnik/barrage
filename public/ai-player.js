@@ -16,7 +16,6 @@ const DRAG_UNITS_PER_MS     = 0.02;  // at speed=1.0
 const AIM_UNITS_PER_MS      = 0.01;
 const MAX_JITTER_DEG        = 50;    // accuracy 0.8 → ±(0.2×50)=±10°
 const WAIT_LOADED_TIMEOUT   = 3500;  // ms before giving up on a load
-const IN_FLIGHT_SPEED       = 2;     // m/s — missiles above this ignored
 const NO_MANS_LAND          = 5;
 const GRAB_TOLERANCE        = 1.5;
 const GRAB_ZONE             = NO_MANS_LAND + GRAB_TOLERANCE; // 6.5
@@ -44,6 +43,17 @@ const MIN_SHOT_ANGLE_DEG    = 10;
 const MAX_SHOT_ANGLE_DEG    = 75;
 const INITIAL_DELAY_MS          = 2000;
 const LEVEL_DIFFICULTY_BUMP     = 0.035; // speed + accuracy increase per round
+
+function isMissileBombName(id) {
+  const lowerId = id.toLowerCase();
+  return lowerId.includes("missile") && lowerId.includes("bomb");
+}
+
+function canGrabMissileEverywhere(missile) {
+  return isMissileBombName(missile.id)
+    ? BARRAGE_CONFIG.grabBombsEverywhere === true
+    : BARRAGE_CONFIG.grabMissilesEverywhere === true;
+}
 
 const STATE = {
   IDLE:           "IDLE",
@@ -681,7 +691,6 @@ export class AiPlayer {
 
   // ---------------------------------------------------------------------------
   // Missile picking: inside = between trebuchet and centre; outside = beyond trebuchet (bombs).
-  // Only at-rest missiles within the player's grab zone.
   // ---------------------------------------------------------------------------
   _pickMissile(outside) {
     if (!this._objects || !this._trebuchet) return null;
@@ -691,9 +700,10 @@ export class AiPlayer {
     const candidates = this._objects.filter((o) => {
       if (!o.id.toLowerCase().includes("missile")) return false;
       if (o.loadedInto) return false;
-      if (Math.hypot(o.vx ?? 0, o.vy ?? 0, o.vz ?? 0) > IN_FLIGHT_SPEED) return false;
+      if (o.draggedBy) return false;
+      if (o.inFlight) return false;
       const inZone = ownLeft ? o.x <= GRAB_ZONE : o.x >= -GRAB_ZONE;
-      if (!inZone) return false;
+      if (!inZone && !canGrabMissileEverywhere(o)) return false;
       return outside
         ? (ownLeft ? o.x < treb.x : o.x > treb.x)
         : (ownLeft ? o.x > treb.x : o.x < treb.x);

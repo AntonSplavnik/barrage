@@ -127,6 +127,10 @@ export const BARRAGE_CONFIG = {
 
   // Gameplay Rules.
   noMansLandX: 5,                         // m (half-width of centre dead zone)
+  grabMissilesInFlight: false,            // true = trebuchet-fired regular missiles remain grabbable before first collision
+  grabBombInFlight: false,                // true = trebuchet-fired bomb missiles remain grabbable before first collision
+  grabMissilesEverywhere: true,           // true = regular missiles can be grabbed outside the player's zone when not in flight
+  grabBombsEverywhere: false,             // true = bomb missiles can be grabbed outside the player's zone when not in flight
   kingKnockoutAngle: 50,                  // deg
   blockMaxHits: 3,                        // hits before fragmentation
   kingHitVelocityMin: 5,                  // m/s (min speed to register a king hit)

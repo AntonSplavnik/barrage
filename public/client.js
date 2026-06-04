@@ -515,6 +515,18 @@ function isMissileName(name) {
   return name.toLowerCase().includes("missile");
 }
 
+function isMissileBombName(name) {
+  const lowerName = name.toLowerCase();
+  return lowerName.includes("missile") && lowerName.includes("bomb");
+}
+
+function canGrabMissileEverywhere(object) {
+  if (object.inFlight || !isMissileName(object.id ?? "")) return false;
+  return isMissileBombName(object.id)
+    ? CONFIG.grabBombsEverywhere === true
+    : CONFIG.grabMissilesEverywhere === true;
+}
+
 function isBlockName(name) {
   const lowerName = name.toLowerCase();
   return lowerName.includes("block") && !lowerName.includes("frag");
@@ -1948,7 +1960,7 @@ function pickDraggableRoot() {
   if (!root || !isDraggableRoot(root)) return null;
 
   const objectState = latestObjectStates.get(root.name);
-  if (objectState && !isInMyZone(objectState.x)) {
+  if (objectState && !canGrabMissileEverywhere(objectState) && !isInMyZone(objectState.x)) {
     console.log("[drag] isInMyZone rejected", root.name, "x=", objectState.x, "myPlayerId=", myPlayerId);
     return null;
   }

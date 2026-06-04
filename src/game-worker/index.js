@@ -332,6 +332,8 @@ function toWireObject(object) {
     vx: object.vx,
     vy: object.vy,
     vz: object.vz,
+    ...(object.draggedBy ? { draggedBy: object.draggedBy } : {}),
+    ...(object.inFlight !== undefined ? { inFlight: object.inFlight } : {}),
     ...(object.loaded !== undefined ? { loaded: object.loaded } : {}),
     ...(object.loadedInto ? { loadedInto: object.loadedInto } : {}),
     ...(object.armAngle !== undefined ? { armAngle: object.armAngle, fireState: object.fireState } : {}),
@@ -432,6 +434,7 @@ const applyInput = createInputHandler({
   getActiveRoom: () => activeRoom,
   getTick: () => tick,
   isInPlayerZone,
+  isMissileBombName,
   isMissileName,
   loadTargetForTrebuchet,
   localPointForObject,
@@ -650,6 +653,7 @@ function releaseLoadedMissileFromTrebuchet(trebuchet, velocity, armAngle = null)
   }
 
   missile.loadedInto = null;
+  missile.inFlight = true;
   setPhysicsBodyTrigger(missile, false);
   missile.vx = velocity.x;
   missile.vy = velocity.y;

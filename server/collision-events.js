@@ -82,6 +82,8 @@ function handlePhysicsContact(contact, deps) {
   const trebuchet = deps.isTrebuchetName(object.id) ? object : deps.isTrebuchetName(other.id) ? other : null;
   const ground = deps.isGroundName(object.id) ? object : deps.isGroundName(other.id) ? other : null;
 
+  if (missile) missile.inFlight = false;
+
   if (ground && block) {
     deps.maybeBroadcastGroundImpactSound("block_hit_ground", block, ground, contactPositionFor(contact, block, ground));
     return;

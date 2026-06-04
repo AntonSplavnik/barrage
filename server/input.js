@@ -1,4 +1,19 @@
 import { Vector3 } from "@babylonjs/core/Maths/math.vector.js";
+import { BARRAGE_CONFIG } from "../public/config.js";
+
+function canGrabInFlightMissile(object, { isMissileBombName, isMissileName }) {
+  if (!object.inFlight || !isMissileName(object.id)) return true;
+  return isMissileBombName(object.id)
+    ? BARRAGE_CONFIG.grabBombInFlight === true
+    : BARRAGE_CONFIG.grabMissilesInFlight === true;
+}
+
+function canGrabMissileEverywhere(object, { isMissileBombName, isMissileName }) {
+  if (object.inFlight || !isMissileName(object.id)) return false;
+  return isMissileBombName(object.id)
+    ? BARRAGE_CONFIG.grabBombsEverywhere === true
+    : BARRAGE_CONFIG.grabMissilesEverywhere === true;
+}
 
 export function createInputHandler({
   armStateAiming,
@@ -14,6 +29,7 @@ export function createInputHandler({
   getActiveRoom,
   getTick,
   isInPlayerZone,
+  isMissileBombName,
   isMissileName,
   loadTargetForTrebuchet,
   localPointForObject,
@@ -42,9 +58,11 @@ export function createInputHandler({
       const object = gameObjects().get(message.entityId);
       if (!object || !message.point) return;
       if (!object.dynamic) { console.log("[grab] REJECT not dynamic", message.entityId); return; }
+      if (object.draggedBy) { console.log("[grab] REJECT draggedBy", message.entityId, object.draggedBy); return; }
       if (object.loadedInto) { console.log("[grab] REJECT loadedInto", message.entityId, object.loadedInto); return; }
       if (object.isFragment) { console.log("[grab] REJECT isFragment", message.entityId); return; }
-      if (!canGrab(client.playerId, object)) { console.log("[grab] REJECT canGrab", client.playerId, message.entityId, "x=", object.x); return; }
+      if (!canGrabInFlightMissile(object, { isMissileBombName, isMissileName })) { console.log("[grab] REJECT inFlight", message.entityId); return; }
+      if (!canGrabMissileEverywhere(object, { isMissileBombName, isMissileName }) && !canGrab(client.playerId, object)) { console.log("[grab] REJECT canGrab", client.playerId, message.entityId, "x=", object.x); return; }
       console.log("[grab] OK", client.playerId, message.entityId, "x=", object.x);
 
       object.draggedBy = client.playerId;
@@ -124,7 +142,7 @@ export function createInputHandler({
       const next = constrainedPointForObject(object, message.point);
 
       const side = playerSide(client.playerId);
-      if (side && !isInPlayerZone(side, next.x)) {
+      if (!canGrabMissileEverywhere(object, { isMissileBombName, isMissileName }) && side && !isInPlayerZone(side, next.x)) {
         if (!usesMagneticDrag(object)) {
           object.x = zoneLimitX(side);
           object.y = next.y;
