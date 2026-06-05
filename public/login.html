@@ -147,11 +147,11 @@
     <button class="tab" id="tab-register" type="button">Register</button>
   </div>
 
-  <form id="form" autocomplete="off">
+  <form id="form" autocomplete="on">
     <div id="section-quick">
       <div class="field">
         <label for="quick-name">Display name</label>
-        <input id="quick-name" type="text" name="name" required maxlength="24" placeholder="e.g. Alice">
+        <input id="quick-name" type="text" name="name" required maxlength="24" autocomplete="off" placeholder="e.g. Alice">
       </div>
       <p class="quick-hint" style="margin-top:0.6rem">No password needed — just pick a name and play. Your session won't persist after the tab closes.</p>
     </div>
