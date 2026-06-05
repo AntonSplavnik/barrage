@@ -7,8 +7,6 @@
     "build:worker": "vite build --config vite.worker.config.js",
     "build": "vite build --config vite.worker.config.js",
     "dev": "wrangler pages dev",
-    "inspect:glb": "gltf-transform inspect",
-    "inspect:level1": "gltf-transform inspect public/assets/level1.glb",
     "deploy": "wrangler pages deploy public"
   },
   "dependencies": {
@@ -21,7 +19,6 @@
     "xhr2": "^0.2.1"
   },
   "devDependencies": {
-    "@gltf-transform/cli": "^4.3.0",
     "vite": "^8.0.14",
     "wrangler": "^4.0.0"
   }
